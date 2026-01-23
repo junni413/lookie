@@ -1,13 +1,19 @@
 # ================================
 # 1단계: 빌드
 # ================================
-FROM gradle:8.5-jdk17 AS build
+FROM maven:3.9.6-eclipse-temurin-17 AS build
 
 WORKDIR /app
+
+# pom.xml 먼저 복사 (의존성 캐시 최적화)
+COPY pom.xml .
+RUN mvn -B dependency:go-offline
+
+# 나머지 소스 복사
 COPY . .
 
-# Spring Boot 실행 JAR 생성
-RUN gradle clean bootJar
+# Spring Boot JAR 빌드
+RUN mvn clean package -DskipTests
 
 
 # ================================
@@ -18,10 +24,8 @@ FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
 # 빌드된 jar 복사
-COPY --from=build /app/build/libs/*.jar app.jar
+COPY --from=build /app/target/*.jar app.jar
 
-# Spring 기본 포트
 EXPOSE 8080
 
-# 컨테이너 시작 시 Spring 실행
 ENTRYPOINT ["java", "-jar", "app.jar"]
