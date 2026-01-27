@@ -1,0 +1,13 @@
+pipeline {
+  agent any
+
+  stages {
+    stage('Checkout 확인') {
+      steps {
+        sh 'pwd'
+        sh 'ls -al'
+        sh 'ls -al infra/jenkins || true'
+      }
+    }
+  }
+}
