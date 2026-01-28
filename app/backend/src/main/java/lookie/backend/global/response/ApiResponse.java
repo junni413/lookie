@@ -36,7 +36,7 @@ public class ApiResponse<T> {
         return new ApiResponse<>(
                 false,
                 message,
-                errorCode == null ? null : errorCode.name(),
+                errorCode == null ? null : errorCode.getCode(),
                 null
         );
     }
