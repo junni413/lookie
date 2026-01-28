@@ -14,7 +14,10 @@ export default function AdminLayout() {
         <div className="flex-1 min-w-0">
           {/* Sidebar 고정 + 본문만 스크롤 */}
           <main className="h-screen overflow-y-auto p-6">
-            <Outlet />
+            {/* 콘텐츠 폭 제한 + 여백 통일 */}
+            <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">
+              <Outlet />
+            </div>
           </main>
         </div>
       </div>

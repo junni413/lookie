@@ -31,6 +31,7 @@ export default function AdminSidebar() {
               )
             }
           >
+            <span className="mr-2 inline-block h-2 w-2 rounded-full bg-primary/60" />
             {item.label}
           </NavLink>
         ))}
