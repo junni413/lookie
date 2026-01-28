@@ -4,7 +4,7 @@ pipeline {
   environment {
     DEPLOY_HOST   = "i14b105.p.ssafy.io"
     DEPLOY_USER   = "ubuntu"
-    DEPLOY_DIR    = "/home/ubuntu/S14P11B105"   // EC2 경로
+    DEPLOY_DIR    = "/home/ubuntu/S14P11B105"
     TARGET_BRANCH = "feat/S14P11B105-28_CICD"
   }
 
@@ -18,25 +18,33 @@ pipeline {
       steps {
         checkout scm
         sh """
-          echo "[Checkout] BRANCH_NAME=${BRANCH_NAME}"
+          echo "[Checkout] GIT_BRANCH=${GIT_BRANCH}"
           git rev-parse HEAD
         """
       }
     }
 
-    // ✅ 이 파이프라인은 해당 브랜치에 대해서만 진행
+    // ✅ GitLab webhook/일반 pipeline에서는 BRANCH_NAME이 없을 수 있으니
+    //    보통 들어오는 GIT_BRANCH / gitlabBranch를 써서 "브랜치 판별"을 함
     stage('Guard: Only Target Branch') {
       steps {
         script {
-          if (env.BRANCH_NAME != env.TARGET_BRANCH) {
+          // 우선순위: GitLab plugin 변수 -> Jenkins GIT_BRANCH
+          def b = (env.gitlabBranch ?: env.GIT_BRANCH ?: "")
+          // 형태 정리: origin/feat/... 또는 */feat/... 같은 접두어 제거
+          b = b.replaceFirst(/^origin\\//, "")
+               .replaceFirst(/^\\*\\//, "")
+
+          echo "[Guard] detected branch = ${b}"
+
+          if (b != env.TARGET_BRANCH) {
             currentBuild.result = 'NOT_BUILT'
-            error("Skip: Only runs for ${env.TARGET_BRANCH}. Current: ${env.BRANCH_NAME}")
+            error("Skip: only runs for ${env.TARGET_BRANCH} (current: ${b})")
           }
         }
       }
     }
 
-    // ✅ Build/Test 실제 수행 (Maven Wrapper)
     stage('Build/Test') {
       steps {
         sh """
@@ -62,27 +70,16 @@ pipeline {
           if [ -f "app/frontend/package.json" ]; then
             echo "[Frontend] npm install & build"
             cd app/frontend
-
             if [ -f "package-lock.json" ]; then
               npm ci
             else
               npm install
             fi
-
-            # test 스크립트가 있으면 실행 (원하면 실패 시 파이프라인 실패로 바꿀 수 있음)
-            if npm run | grep -q " test"; then
-              npm test --silent || true
-            else
-              echo "[Frontend] skip test (no test script)"
-            fi
-
-            # build 스크립트가 있으면 빌드
             if npm run | grep -q " build"; then
               npm run build
             else
               echo "[Frontend] skip build (no build script)"
             fi
-
             cd ../../
           else
             echo "[Frontend] skip (no app/frontend/package.json)"
@@ -93,7 +90,6 @@ pipeline {
       }
     }
 
-    // ✅ EC2 배포 (해당 브랜치만)
     stage('Deploy to EC2') {
       steps {
         sshagent(credentials: ['ec2-ssh']) {
@@ -132,8 +128,7 @@ pipeline {
   }
 
   post {
-    success { echo "✅ SUCCESS (Build/Test + Deploy completed for ${TARGET_BRANCH})" }
+    success { echo "✅ SUCCESS" }
     failure { echo "❌ FAILURE - check console log" }
-    aborted { echo "🟡 ABORTED" }
   }
 }
