@@ -2,13 +2,19 @@ pipeline {
   agent any
 
   environment {
-    DEPLOY_HOST   = 'i14b105.p.ssafy.io'
-    DEPLOY_USER   = 'ubuntu'
-    DEPLOY_DIR    = '/home/ubuntu/lookie/S14P11B105'
-    TARGET_BRANCH = 'feat/S14P11B105-28_CICD'
+    DEPLOY_HOST    = 'i14b105.p.ssafy.io'
+    DEPLOY_USER    = 'ubuntu'
+    DEPLOY_DIR     = '/home/ubuntu/lookie/S14P11B105'
+    TARGET_BRANCH  = 'feat/S14P11B105-28_CICD'
 
-    NODE_VERSION  = '24'
-    SSH_CRED_ID   = 'ec2-ssh-key'
+    NODE_VERSION   = '24'
+    SSH_CRED_ID    = 'ec2-ssh-key'
+
+    // ✅ GitLab 토큰(Username/Password) credentialsId
+    GITLAB_CRED_ID = 'gitlab-deploy-token'
+
+    // ✅ 원격에서 clone/fetch 할 Git URL (토큰은 런타임에 주입)
+    GIT_REPO_HTTP  = 'lab.ssafy.com/s14-webmobile1-sub1/S14P11B105.git'
   }
 
   options {
@@ -48,7 +54,7 @@ pipeline {
     stage('Build/Test') {
       steps {
         sh '''#!/usr/bin/env bash
-          set -e
+          set -euo pipefail
           echo "=== [Build/Test] start ==="
 
           # --------------------------
@@ -73,7 +79,7 @@ pipeline {
             echo "[Frontend] npm install & build (via bash -lc + nvm)"
 
             bash -lc "
-              set -e
+              set -euo pipefail
               export NVM_DIR=\\\"\\$HOME/.nvm\\\"
               [ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"
 
@@ -104,36 +110,53 @@ pipeline {
 
     stage('Deploy to EC2') {
       steps {
+        // ✅ 1) EC2 SSH 접속 키
         sshagent(credentials: ["${SSH_CRED_ID}"]) {
-          sh '''#!/usr/bin/env bash
-            set -e
 
-            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} /bin/bash -s <<EOF
-set -e
+          // ✅ 2) GitLab 토큰(Username/Password) 꺼내서 원격 git fetch에 사용
+          withCredentials([usernamePassword(
+            credentialsId: "${GITLAB_CRED_ID}",
+            usernameVariable: 'GL_USER',
+            passwordVariable: 'GL_TOKEN'
+          )]) {
+
+            sh '''#!/usr/bin/env bash
+              set -euo pipefail
+
+              REMOTE="${DEPLOY_USER}@${DEPLOY_HOST}"
+              # 토큰 포함 URL (원격에서 origin set-url에 사용)
+              REPO_URL="https://${GL_USER}:${GL_TOKEN}@${GIT_REPO_HTTP}"
+
+              ssh -o StrictHostKeyChecking=no "$REMOTE" /bin/bash -s <<EOF
+set -euo pipefail
+
 echo "=== [Deploy] start ==="
 echo "[0] DEPLOY_DIR=${DEPLOY_DIR}"
 echo "[0] TARGET_BRANCH=${TARGET_BRANCH}"
 
-# 1) 이동
-if [ ! -d "${DEPLOY_DIR}" ]; then
-  echo "ERROR: DEPLOY_DIR not found: ${DEPLOY_DIR}" >&2
-  exit 1
-fi
+mkdir -p "${DEPLOY_DIR}"
 cd "${DEPLOY_DIR}"
 
-# 2) git repo 체크
+# 1) .git 없으면 최초 clone
 if [ ! -d ".git" ]; then
-  echo "ERROR: ${DEPLOY_DIR} is not a git repository (.git not found)" >&2
-  echo "       => 먼저 이 경로에 프로젝트를 git clone 해두거나, DEPLOY_DIR을 실제 repo 경로로 바꿔야 합니다." >&2
-  exit 1
+  echo "[1] repo not found -> git clone"
+  git clone "${REPO_URL}" .
+else
+  echo "[1] repo exists -> update origin url (token) and fetch"
+  git remote set-url origin "${REPO_URL}"
 fi
 
-echo "[1] git sync to ${TARGET_BRANCH}"
-git fetch --all
+# 2) 브랜치 동기화
+echo "[2] git sync to ${TARGET_BRANCH}"
+git fetch --all --prune
 git checkout "${TARGET_BRANCH}" || git checkout -b "${TARGET_BRANCH}" "origin/${TARGET_BRANCH}"
 git reset --hard "origin/${TARGET_BRANCH}"
 
-echo "[2] .env check"
+# (선택) 보안상 토큰 URL을 남기기 싫으면 여기서 origin을 '토큰 없는 URL'로 되돌릴 수도 있음
+# git remote set-url origin "https://${GIT_REPO_HTTP}"
+
+# 3) .env 체크
+echo "[3] .env check"
 if [ ! -f .env ]; then
   if [ -f .env.example ]; then
     cp .env.example .env
@@ -143,15 +166,17 @@ if [ ! -f .env ]; then
   fi
 fi
 
-echo "[3] docker compose up"
+# 4) docker compose 배포
+echo "[4] docker compose up"
 docker compose -f docker-compose.yml up -d --build
 
-echo "[4] docker ps"
+echo "[5] docker ps"
 docker ps
 
 echo "=== [Deploy] done ==="
 EOF
-          '''
+            '''
+          }
         }
       }
     }
