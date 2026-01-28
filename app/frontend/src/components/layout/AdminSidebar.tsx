@@ -31,6 +31,15 @@ export default function AdminSidebar() {
           </NavLink>
         ))}
       </nav>
+      
+      {/* Footer */}
+      <div className="mt-auto pt-6">
+        <div className="rounded-md bg-muted/40 p-3">
+          <div className="text-xs text-muted-foreground">Signed in as</div>
+          <div className="text-sm font-medium">관리자</div>
+        </div>
+      </div>
+
     </div>
   );
 }
