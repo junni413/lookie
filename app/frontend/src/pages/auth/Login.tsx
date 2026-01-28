@@ -2,12 +2,6 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 
-/**
- * ✅ 지금은 true: 검은 버튼(가짜 로그인)만 동작
- * ✅ 나중에 API 붙이면 false로 바꾸면 파란 버튼이 실제 로그인 동작
- */
-const USE_MOCK_LOGIN = true;
-
 export default function Login() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
@@ -19,32 +13,32 @@ export default function Login() {
     return id.trim().length > 0 && pw.trim().length > 0;
   }, [id, pw]);
 
-  // ✅ "완성본" 로그인 핸들러: 나중에 API만 연결하면 됨
+  /**
+   * 실제 로그인 핸들러
+   * - 현재는 DEV 환경에서만 차단
+   * - API 연결 시 이 함수 내부에 로직 추가 예정
+   */
   const handleRealLogin = async () => {
     if (!canSubmit) {
       alert("아이디/비밀번호를 입력해주세요");
       return;
     }
 
-    // ✅ 지금은 막아두기 (API 붙이면 아래 try/catch로 교체)
-    if (USE_MOCK_LOGIN) {
+    if (import.meta.env.DEV) {
       alert("현재는 DEV 가짜 로그인(검은 버튼)으로만 진입 가능합니다.");
       return;
     }
 
     try {
-      /**
-       * TODO (Day5)
-       * const res = await authApi.login({ username: id, password: pw });
-       * login({ token: res.accessToken, role: res.role });
-       * navigate(res.role === "WORKER" ? "/worker/home" : "/admin/dashboard", { replace: true });
-       */
+      // API 연동 시 로그인 로직 구현
     } catch {
       alert("로그인에 실패했습니다.");
     }
   };
 
-  // ✅ 검은 버튼: 지금 당장 화면 진입용
+  /**
+   * DEV 전용 가짜 로그인
+   */
   const handleMockLogin = (role: "WORKER" | "ADMIN") => {
     login({ token: "dummy-token", role });
     navigate(role === "WORKER" ? "/worker/home" : "/admin/dashboard", {
@@ -55,7 +49,9 @@ export default function Login() {
   return (
     <div className="min-h-[100dvh] flex items-center justify-center bg-white px-4">
       <div className="w-full max-w-[560px] text-center">
-        <h1 className="mb-10 text-5xl font-extrabold text-blue-600">Lookie</h1>
+        <h1 className="mb-10 text-5xl font-extrabold text-blue-600">
+          Lookie
+        </h1>
 
         <div className="mx-auto w-full max-w-[520px]">
           <input
@@ -78,7 +74,6 @@ export default function Login() {
             비밀번호 찾기
           </div>
 
-          {/* ✅ 파란 로그인 버튼: UI/검증/흐름은 완성, 지금은 막힘 */}
           <button
             type="button"
             onClick={handleRealLogin}
@@ -88,9 +83,10 @@ export default function Login() {
             로그인
           </button>
 
-          <div className="text-sm text-gray-300 cursor-pointer">회원가입</div>
+          <div className="text-sm text-gray-300 cursor-pointer">
+            회원가입
+          </div>
 
-          {/* ✅ 지금은 검은 버튼으로만 진입 (DEV에서만 보이게) */}
           {import.meta.env.DEV && (
             <div className="mt-10 flex flex-col items-center gap-3">
               <div className="text-xs tracking-widest text-gray-300">
@@ -103,7 +99,7 @@ export default function Login() {
                   onClick={() => handleMockLogin("WORKER")}
                   className="rounded-xl bg-gray-900 px-6 py-3 text-sm font-semibold text-white hover:bg-black"
                 >
-                  가짜 로그인 (WORKER)
+                  임시 로그인 (WORKER)
                 </button>
 
                 <button
@@ -111,12 +107,12 @@ export default function Login() {
                   onClick={() => handleMockLogin("ADMIN")}
                   className="rounded-xl bg-gray-900 px-6 py-3 text-sm font-semibold text-white hover:bg-black"
                 >
-                  가짜 로그인 (ADMIN)
+                  임시 로그인 (ADMIN)
                 </button>
               </div>
 
               <div className="text-[11px] text-gray-300">
-                ※ API 연결 후 USE_MOCK_LOGIN=false 또는 DEV ONLY 제거
+                ※ API 연결 후 DEV ONLY 영역 제거
               </div>
             </div>
           )}
