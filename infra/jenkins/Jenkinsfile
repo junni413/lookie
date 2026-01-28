@@ -2,11 +2,11 @@ pipeline {
   agent any
 
   environment {
-    DEPLOY_HOST   = "i14b105.p.ssafy.io"
-    DEPLOY_USER   = "ubuntu"
-    DEPLOY_DIR    = "/home/ubuntu/S14P11B105"
-    TARGET_BRANCH = "feat/S14P11B105-28_CICD"
-    NODE_VERSION  = "24"
+    DEPLOY_HOST   = 'i14b105.p.ssafy.io'
+    DEPLOY_USER   = 'ubuntu'
+    DEPLOY_DIR    = '/home/ubuntu/S14P11B105'
+    TARGET_BRANCH = 'feat/S14P11B105-28_CICD'
+    NODE_VERSION  = '24'
   }
 
   options {
@@ -18,10 +18,11 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
-        sh """
+        sh '''
+          set -e
           echo "[Checkout] GIT_BRANCH=${GIT_BRANCH}"
           git rev-parse HEAD
-        """
+        '''
       }
     }
 
@@ -29,8 +30,8 @@ pipeline {
       steps {
         script {
           def b = (env.gitlabBranch ?: env.GIT_BRANCH ?: "")
-          b = b.replaceFirst(/^origin\\//, "")
-               .replaceFirst(/^\\*\\//, "")
+          b = b.replaceFirst(/^origin\//, "")
+               .replaceFirst(/^\*\//, "")
 
           echo "[Guard] detected branch = ${b}"
 
@@ -44,7 +45,7 @@ pipeline {
 
     stage('Build/Test') {
       steps {
-        sh """
+        sh '''#!/usr/bin/env bash
           set -e
           echo "=== [Build/Test] start ==="
 
@@ -63,7 +64,8 @@ pipeline {
 
           # --------------------------
           # Frontend (React/Vite)
-          # ✅ nvm/npm은 /bin/sh에서 자동 로드 안 되므로 bash -lc로 강제
+          # ✅ Jenkins의 sh는 /bin/sh로 돌 수 있어 nvm 자동 로드가 안 됨
+          # ✅ 그래서 bash -lc + nvm 로드를 강제로 수행
           # --------------------------
           if [ -f "app/frontend/package.json" ]; then
             echo "[Frontend] npm install & build (via bash -lc + nvm)"
@@ -73,7 +75,7 @@ pipeline {
               export NVM_DIR="$HOME/.nvm"
               [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-              nvm use ${NODE_VERSION} >/dev/null
+              nvm use "$NODE_VERSION" >/dev/null
               echo "[Frontend] node=$(node -v), npm=$(npm -v)"
 
               cd app/frontend
@@ -94,14 +96,16 @@ pipeline {
           fi
 
           echo "=== [Build/Test] done ==="
-        """
+        '''
       }
     }
 
     stage('Deploy to EC2') {
       steps {
         sshagent(credentials: ['ec2-ssh']) {
-          sh """
+          sh '''#!/usr/bin/env bash
+            set -e
+
             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
               set -e
               echo "=== [Deploy] start ==="
@@ -129,14 +133,14 @@ pipeline {
               docker ps
               echo "=== [Deploy] done ==="
             '
-          """
+          '''
         }
       }
     }
   }
 
   post {
-    success { echo "✅ SUCCESS" }
-    failure { echo "❌ FAILURE - check console log" }
+    success { echo '✅ SUCCESS' }
+    failure { echo '❌ FAILURE - check console log' }
   }
 }
