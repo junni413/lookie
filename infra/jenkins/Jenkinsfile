@@ -7,6 +7,7 @@ pipeline {
     DEPLOY_DIR    = '/home/ubuntu/S14P11B105'
     TARGET_BRANCH = 'feat/S14P11B105-28_CICD'
     NODE_VERSION  = '24'
+    SSH_CRED_ID = 'ec2-ssh-key'
   }
 
   options {
@@ -102,7 +103,7 @@ pipeline {
 
     stage('Deploy to EC2') {
       steps {
-        sshagent(credentials: ['ec2-ssh']) {
+        sshagent(credentials: ["${SSH_CRED_ID}"]) {
           sh '''#!/usr/bin/env bash
             set -e
 
