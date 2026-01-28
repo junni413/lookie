@@ -37,18 +37,19 @@ export default function Signup() {
     if (!phone.trim()) next.phone = "전화번호를 입력해주세요.";
     else if (onlyDigits(phone).length < 10)
       next.phone = "전화번호 형식을 확인해주세요.";
+    else if (!phoneVerified)
+      next.phone = "전화번호 중복확인을 완료해주세요.";
 
     if (!email.trim()) next.email = "이메일을 입력해주세요.";
     else if (!isValidEmail(email))
       next.email = "이메일 형식을 확인해주세요.";
+    else if (!emailVerified) next.email = "이메일 인증을 완료해주세요.";
 
     if (!pw.trim()) next.pw = "비밀번호를 입력해주세요.";
-    else if (pw.length < 8)
-      next.pw = "비밀번호는 8자 이상이어야 합니다.";
+    else if (pw.length < 8) next.pw = "비밀번호는 8자 이상이어야 합니다.";
 
     if (!pw2.trim()) next.pw2 = "비밀번호 확인을 입력해주세요.";
-    else if (pw !== pw2)
-      next.pw2 = "비밀번호가 일치하지 않습니다.";
+    else if (pw !== pw2) next.pw2 = "비밀번호가 일치하지 않습니다.";
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -60,9 +61,11 @@ export default function Signup() {
       phone.trim() &&
       email.trim() &&
       pw.trim().length >= 8 &&
-      pw === pw2
+      pw === pw2 &&
+      phoneVerified &&
+      emailVerified
     );
-  }, [name, phone, email, pw, pw2]);
+  }, [name, phone, email, pw, pw2, phoneVerified, emailVerified]);
 
   const handleSubmit = async () => {
     if (!validate()) return;
@@ -125,7 +128,11 @@ export default function Signup() {
             <div className="flex gap-2">
               <input
                 value={phone}
-                onChange={(e) => setPhone(onlyDigits(e.target.value))}
+                onChange={(e) => {
+                  // ✅ 값 변경 시 기존 중복확인 무효화
+                  if (phoneVerified) setPhoneVerified(false);
+                  setPhone(onlyDigits(e.target.value));
+                }}
                 placeholder="010-0000-0000"
                 className={inputClass(!!errors.phone)}
               />
@@ -147,7 +154,11 @@ export default function Signup() {
             <div className="flex gap-2">
               <input
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  // ✅ 값 변경 시 기존 이메일 인증 무효화
+                  if (emailVerified) setEmailVerified(false);
+                  setEmail(e.target.value);
+                }}
                 placeholder="ssafy@gmail.com"
                 className={inputClass(!!errors.email)}
               />

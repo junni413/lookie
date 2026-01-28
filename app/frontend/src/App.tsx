@@ -7,7 +7,8 @@ import MobileLayout from "./components/layout/MobileLayout";
 
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
-import WorkerHome from "./pages/worker/Home";
+
+import WorkerAttend from "./pages/worker/Attend";
 import AdminDashboard from "./pages/admin/Dashboard";
 
 // ✅ 인증 가드: token 없으면 /login
@@ -17,7 +18,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// ✅ 역할 가드: role 없으면 /login, role 다르면 해당 role 홈으로
+// ✅ 역할 가드: role 없으면 /login, role 다르면 해당 role 첫 화면으로
 function RequireRole({
   allow,
   children,
@@ -32,7 +33,7 @@ function RequireRole({
   if (role !== allow) {
     return (
       <Navigate
-        to={role === "WORKER" ? "/worker/home" : "/admin/dashboard"}
+        to={role === "WORKER" ? "/worker/attend" : "/admin/dashboard"}
         replace
       />
     );
@@ -41,15 +42,16 @@ function RequireRole({
   return <>{children}</>;
 }
 
-// ✅ 루트 진입(/): token/role 있으면 해당 홈으로, 아니면 /login
+// ✅ 루트 진입(/): token/role 있으면 해당 첫 화면으로, 아니면 /login
 function IndexRedirect() {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.role);
 
   if (!token || !role) return <Navigate to="/login" replace />;
+
   return (
     <Navigate
-      to={role === "WORKER" ? "/worker/home" : "/admin/dashboard"}
+      to={role === "WORKER" ? "/worker/attend" : "/admin/dashboard"}
       replace
     />
   );
@@ -76,10 +78,11 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to="home" replace />} />
-        <Route path="home" element={<WorkerHome />} />
+        {/* ✅ 워커 기본 진입 = 출근하기 */}
+        <Route index element={<Navigate to="/worker/attend" replace />} />
+        <Route path="attend" element={<WorkerAttend />} />
         {/* 필요하면 여기 아래로 worker 라우트 추가 */}
-        {/* <Route path="attend" element={<Attend />} /> */}
+        {/* <Route path="issue" element={<WorkerIssue />} /> */}
       </Route>
 
       {/* ADMIN */}
