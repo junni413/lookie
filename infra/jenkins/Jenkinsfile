@@ -4,7 +4,7 @@ pipeline {
   environment {
     DEPLOY_HOST   = 'i14b105.p.ssafy.io'
     DEPLOY_USER   = 'ubuntu'
-    DEPLOY_DIR    = '/home/ubuntu/S14P11B105'
+    DEPLOY_DIR    = '/home/ubuntu/lookie/S14P11B105'
     TARGET_BRANCH = 'feat/S14P11B105-28_CICD'
 
     NODE_VERSION  = '24'
