@@ -6,6 +6,7 @@ pipeline {
     DEPLOY_USER   = "ubuntu"
     DEPLOY_DIR    = "/home/ubuntu/S14P11B105"
     TARGET_BRANCH = "feat/S14P11B105-28_CICD"
+    NODE_VERSION  = "24"
   }
 
   options {
@@ -24,14 +25,10 @@ pipeline {
       }
     }
 
-    // ✅ GitLab webhook/일반 pipeline에서는 BRANCH_NAME이 없을 수 있으니
-    //    보통 들어오는 GIT_BRANCH / gitlabBranch를 써서 "브랜치 판별"을 함
     stage('Guard: Only Target Branch') {
       steps {
         script {
-          // 우선순위: GitLab plugin 변수 -> Jenkins GIT_BRANCH
           def b = (env.gitlabBranch ?: env.GIT_BRANCH ?: "")
-          // 형태 정리: origin/feat/... 또는 */feat/... 같은 접두어 제거
           b = b.replaceFirst(/^origin\\//, "")
                .replaceFirst(/^\\*\\//, "")
 
@@ -65,22 +62,33 @@ pipeline {
           fi
 
           # --------------------------
-          # Frontend (React/Vite) - 있으면 실행
+          # Frontend (React/Vite)
+          # ✅ nvm/npm은 /bin/sh에서 자동 로드 안 되므로 bash -lc로 강제
           # --------------------------
           if [ -f "app/frontend/package.json" ]; then
-            echo "[Frontend] npm install & build"
-            cd app/frontend
-            if [ -f "package-lock.json" ]; then
-              npm ci
-            else
-              npm install
-            fi
-            if npm run | grep -q " build"; then
-              npm run build
-            else
-              echo "[Frontend] skip build (no build script)"
-            fi
-            cd ../../
+            echo "[Frontend] npm install & build (via bash -lc + nvm)"
+
+            bash -lc '
+              set -e
+              export NVM_DIR="$HOME/.nvm"
+              [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+              nvm use ${NODE_VERSION} >/dev/null
+              echo "[Frontend] node=$(node -v), npm=$(npm -v)"
+
+              cd app/frontend
+              if [ -f "package-lock.json" ]; then
+                npm ci
+              else
+                npm install
+              fi
+
+              if npm run | grep -q " build"; then
+                npm run build
+              else
+                echo "[Frontend] skip build (no build script)"
+              fi
+            '
           else
             echo "[Frontend] skip (no app/frontend/package.json)"
           fi
