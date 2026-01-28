@@ -2,11 +2,10 @@ pipeline {
   agent any
 
   environment {
-    // GitLab webhook로부터 브랜치가 들어오면 Jenkins가 자동으로 env에 넣어주는 경우가 많지만,
-    // 안전하게 기본값도 둠
-    DEPLOY_HOST = "i14b105.p.ssafy.io"
-    DEPLOY_USER = "ubuntu"
-    DEPLOY_DIR  = "/home/ubuntu/S14P11B105"   // EC2에 클론해둔 경로
+    DEPLOY_HOST   = "i14b105.p.ssafy.io"
+    DEPLOY_USER   = "ubuntu"
+    DEPLOY_DIR    = "/home/ubuntu/S14P11B105"   // EC2 경로
+    TARGET_BRANCH = "feat/S14P11B105-28_CICD"
   }
 
   options {
@@ -18,47 +17,113 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
-        sh 'git rev-parse --abbrev-ref HEAD'
+        sh """
+          echo "[Checkout] BRANCH_NAME=${BRANCH_NAME}"
+          git rev-parse HEAD
+        """
       }
     }
 
-    stage('Build/Test (optional)') {
+    // ✅ 이 파이프라인은 해당 브랜치에 대해서만 진행
+    stage('Guard: Only Target Branch') {
       steps {
-        // 여기서 백엔드 테스트/프론트 테스트를 하고 싶으면 추가
-        // 예) sh 'cd app/backend && ./gradlew test'
-        // 예) sh 'cd app/frontend && npm ci && npm test'
-        echo "skip for now"
-      }
-    }
-
-    stage('Deploy to EC2') {
-      when {
-        anyOf {
-          branch 'develop'
-          branch 'master'
-          branch 'release'
-          // feature는 보통 배포 안 하는데, 지금은 CICD 브랜치 테스트 중이라 열어둘 수도 있음
-          expression { return env.BRANCH_NAME?.startsWith("feat/") }
+        script {
+          if (env.BRANCH_NAME != env.TARGET_BRANCH) {
+            currentBuild.result = 'NOT_BUILT'
+            error("Skip: Only runs for ${env.TARGET_BRANCH}. Current: ${env.BRANCH_NAME}")
+          }
         }
       }
+    }
+
+    // ✅ Build/Test 실제 수행 (Maven Wrapper)
+    stage('Build/Test') {
+      steps {
+        sh """
+          set -e
+          echo "=== [Build/Test] start ==="
+
+          # --------------------------
+          # Backend (Spring - Maven)
+          # --------------------------
+          if [ -f "app/backend/mvnw" ]; then
+            echo "[Backend] mvnw test"
+            cd app/backend
+            chmod +x mvnw
+            ./mvnw -B test
+            cd ../../
+          else
+            echo "[Backend] skip (no app/backend/mvnw)"
+          fi
+
+          # --------------------------
+          # Frontend (React/Vite) - 있으면 실행
+          # --------------------------
+          if [ -f "app/frontend/package.json" ]; then
+            echo "[Frontend] npm install & build"
+            cd app/frontend
+
+            if [ -f "package-lock.json" ]; then
+              npm ci
+            else
+              npm install
+            fi
+
+            # test 스크립트가 있으면 실행 (원하면 실패 시 파이프라인 실패로 바꿀 수 있음)
+            if npm run | grep -q " test"; then
+              npm test --silent || true
+            else
+              echo "[Frontend] skip test (no test script)"
+            fi
+
+            # build 스크립트가 있으면 빌드
+            if npm run | grep -q " build"; then
+              npm run build
+            else
+              echo "[Frontend] skip build (no build script)"
+            fi
+
+            cd ../../
+          else
+            echo "[Frontend] skip (no app/frontend/package.json)"
+          fi
+
+          echo "=== [Build/Test] done ==="
+        """
+      }
+    }
+
+    // ✅ EC2 배포 (해당 브랜치만)
+    stage('Deploy to EC2') {
       steps {
         sshagent(credentials: ['ec2-ssh']) {
           sh """
             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
               set -e
+              echo "=== [Deploy] start ==="
               cd ${DEPLOY_DIR}
 
-              echo "[1] git fetch/pull"
+              echo "[1] git sync to ${TARGET_BRANCH}"
               git fetch --all
-              git checkout ${BRANCH_NAME}
-              git pull origin ${BRANCH_NAME}
+              git checkout ${TARGET_BRANCH} || git checkout -b ${TARGET_BRANCH} origin/${TARGET_BRANCH}
+              git reset --hard origin/${TARGET_BRANCH}
 
-              echo "[2] docker compose build/up"
-              docker compose -f docker-compose.yml pull || true
+              echo "[2] .env check"
+              if [ ! -f .env ]; then
+                if [ -f .env.example ]; then
+                  cp .env.example .env
+                  echo "WARN: .env missing -> copied from .env.example (fill real values if needed)"
+                else
+                  echo "WARN: .env missing and no .env.example"
+                fi
+              fi
+
+              echo "[3] docker compose up"
               docker compose -f docker-compose.yml up -d --build
 
-              echo "[3] docker ps"
+              echo "[4] docker ps"
               docker ps
+              echo "=== [Deploy] done ==="
             '
           """
         }
@@ -67,7 +132,8 @@ pipeline {
   }
 
   post {
-    success { echo "✅ SUCCESS" }
+    success { echo "✅ SUCCESS (Build/Test + Deploy completed for ${TARGET_BRANCH})" }
     failure { echo "❌ FAILURE - check console log" }
+    aborted { echo "🟡 ABORTED" }
   }
 }
