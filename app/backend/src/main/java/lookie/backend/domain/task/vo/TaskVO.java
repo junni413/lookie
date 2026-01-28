@@ -18,11 +18,13 @@ public class TaskVO {
     private Long batchId;
     private Long zoneId;
 
-    private Long workerId; //nullable
+    private Long workerId; // nullable
     private Long toteId;
-    private String status; //UNASSIGNED/IN_PROGRESS/COMPLETED
+    private String status; // UNASSIGNED / IN_PROGRESS / COMPLETED
 
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
 
+    private LocalDateTime toteScannedAt;
+    private LocalDateTime toteReleasedAt;
 }

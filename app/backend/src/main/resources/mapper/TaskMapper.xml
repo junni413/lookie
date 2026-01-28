@@ -4,6 +4,24 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="lookie.backend.domain.task.mapper.TaskMapper">
+
+    <!--[조회] 작업 ID로 해당 작업 찾기-->
+    <select id="findById" parameterType="long" resultType="TaskVO">
+        SELECT
+            batch_task_id AS batchTaskId,
+            batch_id AS batchId,
+            zone_id AS zoneId,
+            worker_id AS workerId,
+            status,
+            started_at AS startedAt,
+            completed_at AS completedAt,
+            tote_id AS toteId,
+            tote_scanned_at AS toteScannedAt,
+            tote_released_at AS toteReleasedAt
+        FROM batch_tasks
+        WHERE batch_task_id = #{batchTaskId}
+    </select>
+
     <!--[조회] 다음 할당할 작업 찾기-->
     <select id = "findNextUnassignedForZoneForUpdate" resultType="TaskVO">
         SELECT
