@@ -16,18 +16,20 @@ public class JwtProvider {
 
     private final SecretKey secretKey;
     private final long accessExpiration;
-    private final long refreshExpiration = 1209600000L; // 14일 (1000 * 60 * 60 * 24 * 14)
+    private final long refreshExpiration;
 
     /**
      * 1. 생성자: 설정 파일에서 비밀키와 Access Token 만료 시간을 가져옴
      * (@Value 사용하여 application.properties 값을 주입받음)
      */
+    // [수정] 생성자에서 refreshExpiration 주입 받음
     public JwtProvider(@Value("${jwt.secret}") String secret,
-                       @Value("${jwt.expiration}") long accessExpiration) {
+                       @Value("${jwt.expiration}") long accessExpiration,
+                       @Value("${jwt.refresh-expiration}") long refreshExpiration) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessExpiration = accessExpiration;
+        this.refreshExpiration = refreshExpiration;
     }
-
     /**
      * 2. Access Token 생성 (단기용)
      * - 용도: API 요청 시 인증용
@@ -72,7 +74,9 @@ public class JwtProvider {
 
     /**
      * 4. 토큰 검증
-     * 토큰의 서명이 올바른지, 만료되지 않았는지 유효성 검사
+     * [주의] 이 메서드는 토큰의 서명(Signature)과 만료(Expires) 여부, 구조적 유효성만 검사합니다.
+     * Access Token인지 Refresh Token인지(Role 유무 등)는 구분하지 않으므로,
+     * 비즈니스 로직(Filter 등)에서 용도에 맞는 추가 검증이 필요합니다.
      */
     public boolean validateToken(String token) {
         try {

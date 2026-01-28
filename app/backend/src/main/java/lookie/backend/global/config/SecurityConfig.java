@@ -3,6 +3,7 @@ package lookie.backend.global.config;
 import lookie.backend.global.security.JwtFilter;
 import lookie.backend.global.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -16,6 +17,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -29,6 +31,10 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtProvider jwtProvider; // JWT 토큰 생성 및 검증 객체 주입
+
+    //application.properties에서 CORS 허용 도메인 목록을 주입받음
+    @Value("${cors.allowed-origins}")
+    private String allowedOrigins;
 
     /**
      * [비밀번호 암호화 빈 등록]
@@ -69,7 +75,7 @@ public class SecurityConfig {
 
                 // 5. URL별 접근 권한 설정
                 .authorizeHttpRequests(auth -> auth
-                        // [수정] /api/auth/** 와일드카드 제거하고 필요한 것만 명시 (화이트리스트)
+                        // /api/auth/** 와일드카드 제거하고 필요한 것만 명시 (화이트리스트)
                         .requestMatchers(
                                 "/api/auth/signup",           // 회원가입
                                 "/api/auth/login",            // 로그인
@@ -104,8 +110,9 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        // 허용할 출처 패턴 (모든 도메인 허용) -> 배포 시 특정 도메인으로 제한 권장
-        config.setAllowedOriginPatterns(List.of("*"));
+        // 하드코딩된 "*" 대신 설정 파일 값 사용 (쉼표로 구분된 여러 도메인 지원)
+        // 예: http://localhost:3000,https://mydomain.com
+        config.setAllowedOriginPatterns(Arrays.asList(allowedOrigins.split(",")));
 
         // 허용할 HTTP 메서드 (GET, POST, PUT, DELETE 등)
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
