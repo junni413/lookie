@@ -6,8 +6,9 @@ pipeline {
     DEPLOY_USER   = 'ubuntu'
     DEPLOY_DIR    = '/home/ubuntu/S14P11B105'
     TARGET_BRANCH = 'feat/S14P11B105-28_CICD'
+
     NODE_VERSION  = '24'
-    SSH_CRED_ID = 'ec2-ssh-key'
+    SSH_CRED_ID   = 'ec2-ssh-key'
   }
 
   options {
@@ -19,7 +20,7 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
-        sh '''
+        sh '''#!/usr/bin/env bash
           set -e
           echo "[Checkout] GIT_BRANCH=${GIT_BRANCH}"
           git rev-parse HEAD
@@ -31,8 +32,8 @@ pipeline {
       steps {
         script {
           def b = (env.gitlabBranch ?: env.GIT_BRANCH ?: "")
-          b = b.replaceFirst(/^origin\//, "")
-               .replaceFirst(/^\*\//, "")
+          b = b.replaceFirst(/^origin\\//, "")
+               .replaceFirst(/^\\*\\//, "")
 
           echo "[Guard] detected branch = ${b}"
 
@@ -55,43 +56,43 @@ pipeline {
           # --------------------------
           if [ -f "app/backend/mvnw" ]; then
             echo "[Backend] mvnw test"
-            cd app/backend
+            pushd app/backend >/dev/null
             chmod +x mvnw
             ./mvnw -B test
-            cd ../../
+            popd >/dev/null
           else
             echo "[Backend] skip (no app/backend/mvnw)"
           fi
 
           # --------------------------
           # Frontend (React/Vite)
-          # ✅ Jenkins의 sh는 /bin/sh로 돌 수 있어 nvm 자동 로드가 안 됨
-          # ✅ 그래서 bash -lc + nvm 로드를 강제로 수행
+          # - Jenkins sh는 /bin/sh일 수 있어 nvm 자동 로드가 안 됨
+          # - bash -lc 로 로그인 셸로 실행해서 nvm 환경 로드
           # --------------------------
           if [ -f "app/frontend/package.json" ]; then
             echo "[Frontend] npm install & build (via bash -lc + nvm)"
 
-            bash -lc '
+            bash -lc "
               set -e
-              export NVM_DIR="$HOME/.nvm"
-              [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+              export NVM_DIR=\\\"\\$HOME/.nvm\\\"
+              [ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"
 
-              nvm use "$NODE_VERSION" >/dev/null
-              echo "[Frontend] node=$(node -v), npm=$(npm -v)"
+              nvm use ${NODE_VERSION} >/dev/null
+              echo \\\"[Frontend] node=\\$(node -v), npm=\\$(npm -v)\\\"
 
               cd app/frontend
-              if [ -f "package-lock.json" ]; then
+              if [ -f package-lock.json ]; then
                 npm ci
               else
                 npm install
               fi
 
-              if npm run | grep -q " build"; then
+              if npm run | grep -q ' build'; then
                 npm run build
               else
-                echo "[Frontend] skip build (no build script)"
+                echo '[Frontend] skip build (no build script)'
               fi
-            '
+            "
           else
             echo "[Frontend] skip (no app/frontend/package.json)"
           fi
@@ -107,33 +108,49 @@ pipeline {
           sh '''#!/usr/bin/env bash
             set -e
 
-            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-              set -e
-              echo "=== [Deploy] start ==="
-              cd ${DEPLOY_DIR}
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} /bin/bash -s <<EOF
+set -e
+echo "=== [Deploy] start ==="
+echo "[0] DEPLOY_DIR=${DEPLOY_DIR}"
+echo "[0] TARGET_BRANCH=${TARGET_BRANCH}"
 
-              echo "[1] git sync to ${TARGET_BRANCH}"
-              git fetch --all
-              git checkout ${TARGET_BRANCH} || git checkout -b ${TARGET_BRANCH} origin/${TARGET_BRANCH}
-              git reset --hard origin/${TARGET_BRANCH}
+# 1) 이동
+if [ ! -d "${DEPLOY_DIR}" ]; then
+  echo "ERROR: DEPLOY_DIR not found: ${DEPLOY_DIR}" >&2
+  exit 1
+fi
+cd "${DEPLOY_DIR}"
 
-              echo "[2] .env check"
-              if [ ! -f .env ]; then
-                if [ -f .env.example ]; then
-                  cp .env.example .env
-                  echo "WARN: .env missing -> copied from .env.example (fill real values if needed)"
-                else
-                  echo "WARN: .env missing and no .env.example"
-                fi
-              fi
+# 2) git repo 체크
+if [ ! -d ".git" ]; then
+  echo "ERROR: ${DEPLOY_DIR} is not a git repository (.git not found)" >&2
+  echo "       => 먼저 이 경로에 프로젝트를 git clone 해두거나, DEPLOY_DIR을 실제 repo 경로로 바꿔야 합니다." >&2
+  exit 1
+fi
 
-              echo "[3] docker compose up"
-              docker compose -f docker-compose.yml up -d --build
+echo "[1] git sync to ${TARGET_BRANCH}"
+git fetch --all
+git checkout "${TARGET_BRANCH}" || git checkout -b "${TARGET_BRANCH}" "origin/${TARGET_BRANCH}"
+git reset --hard "origin/${TARGET_BRANCH}"
 
-              echo "[4] docker ps"
-              docker ps
-              echo "=== [Deploy] done ==="
-            '
+echo "[2] .env check"
+if [ ! -f .env ]; then
+  if [ -f .env.example ]; then
+    cp .env.example .env
+    echo "WARN: .env missing -> copied from .env.example (fill real values if needed)"
+  else
+    echo "WARN: .env missing and no .env.example"
+  fi
+fi
+
+echo "[3] docker compose up"
+docker compose -f docker-compose.yml up -d --build
+
+echo "[4] docker ps"
+docker ps
+
+echo "=== [Deploy] done ==="
+EOF
           '''
         }
       }
