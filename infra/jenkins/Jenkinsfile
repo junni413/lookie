@@ -19,7 +19,7 @@ pipeline {
     SSH_CRED_ID    = 'ec2-ssh-key'
     GITLAB_CRED_ID = 'gitlab-deploy-token'
 
-    // repo
+    // repo (토큰은 Jenkins credentials로 처리)
     GIT_REPO_HTTP  = 'lab.ssafy.com/s14-webmobile1-sub1/S14P11B105.git'
   }
 
@@ -27,10 +27,15 @@ pipeline {
     timestamps()
     disableConcurrentBuilds()
     timeout(time: 30, unit: 'MINUTES')
+    // ✅ 정석: default checkout 막고, 우리가 GitSCM으로 1번만 checkout 하게 함
+    skipDefaultCheckout(true)
   }
 
   stages {
 
+    // ==================================================
+    // 1) Context: MR인지 push인지 / 배포 여부 결정
+    // ==================================================
     stage('Detect Context') {
       agent any
       steps {
@@ -45,8 +50,8 @@ pipeline {
           def mrIid = (env.gitlabMergeRequestIid ?: env.gitlabMergeRequestId ?: "").trim()
           def isMR  = (mrIid != "")
 
-          def src = norm(env.gitlabSourceBranch)
-          def tgt = norm(env.gitlabTargetBranch)
+          def src    = norm(env.gitlabSourceBranch)
+          def tgt    = norm(env.gitlabTargetBranch)
           def pushBr = norm(env.gitlabBranch ?: env.GIT_BRANCH)
 
           echo "[Context] isMR=${isMR}"
@@ -54,28 +59,27 @@ pipeline {
           echo "[Context] sourceBranch=${src}"
           echo "[Context] targetBranch=${tgt}"
 
-          boolean shouldBuild = false
+          boolean shouldBuild  = false
           boolean shouldDeploy = false
           String checkoutBranch = ""
 
           if (isMR) {
             // MR: target이 develop일 때만 CI
-            shouldBuild = (tgt == env.CI_TARGET_BRANCH)
+            shouldBuild  = (tgt == env.CI_TARGET_BRANCH)
             shouldDeploy = false
             checkoutBranch = src
           } else {
             // push: develop일 때만 CI+배포
-            shouldBuild = (pushBr == env.DEPLOY_BRANCH)
+            shouldBuild  = (pushBr == env.DEPLOY_BRANCH)
             shouldDeploy = (pushBr == env.DEPLOY_BRANCH)
             checkoutBranch = pushBr
           }
 
-          env.SHOULD_BUILD     = shouldBuild.toString()
-          env.SHOULD_DEPLOY    = shouldDeploy.toString()
-          env.CHECKOUT_BRANCH  = checkoutBranch
+          env.SHOULD_BUILD    = shouldBuild.toString()
+          env.SHOULD_DEPLOY   = shouldDeploy.toString()
+          env.CHECKOUT_BRANCH = checkoutBranch
 
-          // ✅ 추가: 체크아웃 브랜치가 비면(트리거 변수 문제) build 자체를 막아버림
-          if (env.SHOULD_BUILD == 'true' && (env.CHECKOUT_BRANCH == null || env.CHECKOUT_BRANCH.trim() == '')) {
+          if (env.SHOULD_BUILD == 'true' && (!env.CHECKOUT_BRANCH?.trim())) {
             error("[Guard] CHECKOUT_BRANCH is empty. Check GitLab webhook/plugin variables (gitlabSourceBranch/gitlabBranch).")
           }
 
@@ -84,32 +88,37 @@ pipeline {
       }
     }
 
+    // ==================================================
+    // 2) Checkout (정석: GitSCM 1회 + credentials 강제)
+    // ==================================================
     stage('Checkout') {
       agent any
       when { expression { env.SHOULD_BUILD == 'true' } }
       steps {
-        checkout scm
+        checkout([
+          $class: 'GitSCM',
+          branches: [[name: "*/${env.CHECKOUT_BRANCH}"]],
+          userRemoteConfigs: [[
+            url: "https://${env.GIT_REPO_HTTP}",
+            credentialsId: "${env.GITLAB_CRED_ID}"
+          ]],
+          extensions: [
+            [$class: 'WipeWorkspace'],   // 깨끗한 워크스페이스(원하면 제거 가능)
+            [$class: 'CloneOption', noTags: false, shallow: false, timeout: 20]
+          ]
+        ])
+
         sh '''#!/usr/bin/env bash
           set -euo pipefail
-          git fetch --all --prune
-
-          BR="${CHECKOUT_BRANCH}"
-          echo "[Checkout] switch to ${BR}"
-
-          if git show-ref --verify --quiet "refs/remotes/origin/${BR}"; then
-            git checkout "${BR}" 2>/dev/null || git checkout -b "${BR}" "origin/${BR}"
-            git reset --hard "origin/${BR}"
-          else
-            echo "ERROR: origin/${BR} not found"
-            exit 1
-          fi
-
-          echo "[Checkout] now: $(git rev-parse --abbrev-ref HEAD)"
-          git rev-parse HEAD
+          echo "[Checkout] branch=$(git rev-parse --abbrev-ref HEAD)"
+          echo "[Checkout] commit=$(git rev-parse HEAD)"
         '''
       }
     }
 
+    // ==================================================
+    // 3) Backend 최소 테스트 (MR/Develop 공통)
+    // ==================================================
     stage('Backend - Minimal Tests') {
       when { expression { env.SHOULD_BUILD == 'true' } }
       agent {
@@ -126,7 +135,6 @@ pipeline {
 
           if [ -f "app/backend/mvnw" ]; then
             cd app/backend
-
             sed -i 's/\\r$//' mvnw || true
             chmod +x mvnw
 
@@ -154,6 +162,9 @@ pipeline {
       }
     }
 
+    // ==================================================
+    // 4) Frontend 최소 체크 (MR/Develop 공통)
+    // ==================================================
     stage('Frontend - Minimal Checks') {
       when { expression { env.SHOULD_BUILD == 'true' } }
       agent {
@@ -205,6 +216,9 @@ pipeline {
       }
     }
 
+    // ==================================================
+    // 5) Deploy (develop push/merge만)
+    // ==================================================
     stage('Deploy to EC2') {
       agent any
       when { expression { env.SHOULD_DEPLOY == 'true' } }
@@ -239,7 +253,6 @@ git fetch --all --prune
 git checkout "${DEPLOY_BR}" || git checkout -b "${DEPLOY_BR}" "origin/${DEPLOY_BR}"
 git reset --hard "origin/${DEPLOY_BR}"
 
-# ✅ 변경: .env 없으면 배포 중단 (더미 값 배포 사고 방지)
 echo "[Env] checking .env"
 if [ ! -f .env ]; then
   echo "ERROR: .env is missing. Stop deploy."
