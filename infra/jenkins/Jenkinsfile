@@ -1,0 +1,266 @@
+pipeline {
+  agent none
+
+  environment {
+    DEPLOY_HOST = 'i14b105.p.ssafy.io'
+    DEPLOY_USER = 'ubuntu'
+    DEPLOY_DIR  = '/home/ubuntu/lookie/S14P11B105'
+
+    // 정책: MR은 develop 대상이면 CI, develop push면 CI+배포
+    CI_TARGET_BRANCH = 'develop'
+    DEPLOY_BRANCH    = 'develop'
+
+    // 실행환경 고정
+    NODE_VERSION = '24'
+    MAVEN_IMAGE  = 'maven:3.9.9-eclipse-temurin-17'
+    NODE_IMAGE   = "node:${NODE_VERSION}-alpine"
+
+    // Jenkins Credentials
+    SSH_CRED_ID    = 'ec2-ssh-key'
+    GITLAB_CRED_ID = 'gitlab-deploy-token'
+
+    // repo
+    GIT_REPO_HTTP  = 'lab.ssafy.com/s14-webmobile1-sub1/S14P11B105.git'
+  }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    timeout(time: 30, unit: 'MINUTES')
+  }
+
+  stages {
+
+    stage('Detect Context') {
+      agent any
+      steps {
+        script {
+          def norm = { s ->
+            (s ?: "")
+              .replaceFirst(/^origin\//, "")
+              .replaceFirst(/^\*\//, "")
+              .trim()
+          }
+
+          def mrIid = (env.gitlabMergeRequestIid ?: env.gitlabMergeRequestId ?: "").trim()
+          def isMR  = (mrIid != "")
+
+          def src = norm(env.gitlabSourceBranch)
+          def tgt = norm(env.gitlabTargetBranch)
+          def pushBr = norm(env.gitlabBranch ?: env.GIT_BRANCH)
+
+          echo "[Context] isMR=${isMR}"
+          echo "[Context] pushBranch=${pushBr}"
+          echo "[Context] sourceBranch=${src}"
+          echo "[Context] targetBranch=${tgt}"
+
+          boolean shouldBuild = false
+          boolean shouldDeploy = false
+          String checkoutBranch = ""
+
+          if (isMR) {
+            // MR: target이 develop일 때만 CI
+            shouldBuild = (tgt == env.CI_TARGET_BRANCH)
+            shouldDeploy = false
+            checkoutBranch = src
+          } else {
+            // push: develop일 때만 CI+배포
+            shouldBuild = (pushBr == env.DEPLOY_BRANCH)
+            shouldDeploy = (pushBr == env.DEPLOY_BRANCH)
+            checkoutBranch = pushBr
+          }
+
+          env.SHOULD_BUILD     = shouldBuild.toString()
+          env.SHOULD_DEPLOY    = shouldDeploy.toString()
+          env.CHECKOUT_BRANCH  = checkoutBranch
+
+          // ✅ 추가: 체크아웃 브랜치가 비면(트리거 변수 문제) build 자체를 막아버림
+          if (env.SHOULD_BUILD == 'true' && (env.CHECKOUT_BRANCH == null || env.CHECKOUT_BRANCH.trim() == '')) {
+            error("[Guard] CHECKOUT_BRANCH is empty. Check GitLab webhook/plugin variables (gitlabSourceBranch/gitlabBranch).")
+          }
+
+          echo "[Guard] SHOULD_BUILD=${env.SHOULD_BUILD}, SHOULD_DEPLOY=${env.SHOULD_DEPLOY}, CHECKOUT_BRANCH=${env.CHECKOUT_BRANCH}"
+        }
+      }
+    }
+
+    stage('Checkout') {
+      agent any
+      when { expression { env.SHOULD_BUILD == 'true' } }
+      steps {
+        checkout scm
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          git fetch --all --prune
+
+          BR="${CHECKOUT_BRANCH}"
+          echo "[Checkout] switch to ${BR}"
+
+          if git show-ref --verify --quiet "refs/remotes/origin/${BR}"; then
+            git checkout "${BR}" 2>/dev/null || git checkout -b "${BR}" "origin/${BR}"
+            git reset --hard "origin/${BR}"
+          else
+            echo "ERROR: origin/${BR} not found"
+            exit 1
+          fi
+
+          echo "[Checkout] now: $(git rev-parse --abbrev-ref HEAD)"
+          git rev-parse HEAD
+        '''
+      }
+    }
+
+    stage('Backend - Minimal Tests') {
+      when { expression { env.SHOULD_BUILD == 'true' } }
+      agent {
+        docker {
+          image "${MAVEN_IMAGE}"
+          reuseNode true
+          args "-v $HOME/.m2:/root/.m2"
+        }
+      }
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          echo "=== [Backend] start ==="
+
+          if [ -f "app/backend/mvnw" ]; then
+            cd app/backend
+
+            sed -i 's/\\r$//' mvnw || true
+            chmod +x mvnw
+
+            echo "[Backend] ./mvnw -B test"
+            ./mvnw -B test
+
+            if [ "${SHOULD_DEPLOY}" = "true" ]; then
+              echo "[Backend] ./mvnw -B -DskipTests package"
+              ./mvnw -B -DskipTests package
+            else
+              echo "[Backend] MR mode -> skip package"
+            fi
+          else
+            echo "[Backend] skip (no app/backend/mvnw)"
+          fi
+
+          echo "=== [Backend] done ==="
+        '''
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'app/backend/**/target/surefire-reports/*.xml'
+          archiveArtifacts allowEmptyArchive: true, artifacts: 'app/backend/**/target/*.jar'
+        }
+      }
+    }
+
+    stage('Frontend - Minimal Checks') {
+      when { expression { env.SHOULD_BUILD == 'true' } }
+      agent {
+        docker {
+          image "${NODE_IMAGE}"
+          reuseNode true
+          args "-v $HOME/.npm:/root/.npm"
+        }
+      }
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          echo "=== [Frontend] start ==="
+
+          if [ -f "app/frontend/package.json" ]; then
+            cd app/frontend
+            echo "[Frontend] node=$(node -v), npm=$(npm -v)"
+
+            if [ -f package-lock.json ]; then
+              npm ci
+            else
+              npm install
+            fi
+
+            has_script () {
+              node -e "const p=require('./package.json'); process.exit((p.scripts && p.scripts['$1'])?0:1)"
+            }
+
+            if has_script lint; then npm run lint; else echo "[Frontend] skip lint"; fi
+            if has_script test; then npm test; else echo "[Frontend] skip test"; fi
+
+            if [ "${SHOULD_DEPLOY}" = "true" ]; then
+              if has_script build; then npm run build; else echo "[Frontend] skip build"; fi
+            else
+              echo "[Frontend] MR mode -> skip build"
+            fi
+          else
+            echo "[Frontend] skip (no app/frontend/package.json)"
+          fi
+
+          echo "=== [Frontend] done ==="
+        '''
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'app/frontend/**/junit*.xml'
+          archiveArtifacts allowEmptyArchive: true, artifacts: 'app/frontend/dist/**'
+        }
+      }
+    }
+
+    stage('Deploy to EC2') {
+      agent any
+      when { expression { env.SHOULD_DEPLOY == 'true' } }
+      steps {
+        sshagent(credentials: ["${SSH_CRED_ID}"]) {
+          withCredentials([usernamePassword(
+            credentialsId: "${GITLAB_CRED_ID}",
+            usernameVariable: 'GL_USER',
+            passwordVariable: 'GL_TOKEN'
+          )]) {
+            sh '''#!/usr/bin/env bash
+              set -euo pipefail
+
+              REMOTE="${DEPLOY_USER}@${DEPLOY_HOST}"
+              REPO_URL="https://${GL_USER}:${GL_TOKEN}@${GIT_REPO_HTTP}"
+              DEPLOY_BR="${DEPLOY_BRANCH}"
+
+              ssh -o StrictHostKeyChecking=no "$REMOTE" /bin/bash -s <<EOF
+set -euo pipefail
+
+echo "=== [Deploy] start ==="
+mkdir -p "${DEPLOY_DIR}"
+cd "${DEPLOY_DIR}"
+
+if [ ! -d ".git" ]; then
+  git clone "${REPO_URL}" .
+else
+  git remote set-url origin "${REPO_URL}"
+fi
+
+git fetch --all --prune
+git checkout "${DEPLOY_BR}" || git checkout -b "${DEPLOY_BR}" "origin/${DEPLOY_BR}"
+git reset --hard "origin/${DEPLOY_BR}"
+
+# ✅ 변경: .env 없으면 배포 중단 (더미 값 배포 사고 방지)
+echo "[Env] checking .env"
+if [ ! -f .env ]; then
+  echo "ERROR: .env is missing. Stop deploy."
+  echo "       Create ${DEPLOY_DIR}/.env on the server (do NOT commit .env)."
+  exit 1
+fi
+
+docker compose -f docker-compose.yml up -d --build
+docker ps
+echo "=== [Deploy] done ==="
+EOF
+            '''
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo '✅ SUCCESS' }
+    failure { echo '❌ FAILURE - check console log' }
+    aborted { echo '⏭️ SKIPPED/ABORTED' }
+  }
+}
