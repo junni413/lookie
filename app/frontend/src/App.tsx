@@ -1,3 +1,4 @@
+import React from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuthStore, type UserRole } from "./stores/authStore";
 
@@ -5,15 +6,19 @@ import AdminLayout from "./components/layout/AdminLayout";
 import MobileLayout from "./components/layout/MobileLayout";
 
 import Login from "./pages/auth/Login";
-import WorkerHome from "./pages/worker/Home";
+import Signup from "./pages/auth/Signup";
+
+import WorkerAttend from "./pages/worker/Attend";
 import AdminDashboard from "./pages/admin/Dashboard";
 
+// ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   if (!token) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
+// ✅ 역할 가드: role 없으면 /login, role 다르면 해당 role 첫 화면으로
 function RequireRole({
   allow,
   children,
@@ -23,23 +28,33 @@ function RequireRole({
 }) {
   const role = useAuthStore((s) => s.role);
 
-  // role이 아직 없거나 깨진 경우 -> 로그인으로
   if (!role) return <Navigate to="/login" replace />;
 
-  // role 불일치 -> 해당 role 홈으로
   if (role !== allow) {
-    return <Navigate to={role === "WORKER" ? "/worker/home" : "/admin/dashboard"} replace />;
+    return (
+      <Navigate
+        to={role === "WORKER" ? "/worker/attend" : "/admin/dashboard"}
+        replace
+      />
+    );
   }
 
   return <>{children}</>;
 }
 
+// ✅ 루트 진입(/): token/role 있으면 해당 첫 화면으로, 아니면 /login
 function IndexRedirect() {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.role);
 
   if (!token || !role) return <Navigate to="/login" replace />;
-  return <Navigate to={role === "WORKER" ? "/worker/home" : "/admin/dashboard"} replace />;
+
+  return (
+    <Navigate
+      to={role === "WORKER" ? "/worker/attend" : "/admin/dashboard"}
+      replace
+    />
+  );
 }
 
 export default function App() {
@@ -48,8 +63,9 @@ export default function App() {
       {/* 기본 진입 */}
       <Route path="/" element={<IndexRedirect />} />
 
-      {/* 로그인 */}
+      {/* Auth */}
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
 
       {/* WORKER */}
       <Route
@@ -62,11 +78,14 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route path="home" element={<WorkerHome />} />
-        <Route index element={<Navigate to="home" replace />} />
+        {/* ✅ 워커 기본 진입 = 출근하기 */}
+        <Route index element={<Navigate to="/worker/attend" replace />} />
+        <Route path="attend" element={<WorkerAttend />} />
+        {/* 필요하면 여기 아래로 worker 라우트 추가 */}
+        {/* <Route path="issue" element={<WorkerIssue />} /> */}
       </Route>
 
-      {/* ADMIN (AdminLayout + Outlet 구조로 통일) */}
+      {/* ADMIN */}
       <Route
         path="/admin"
         element={
@@ -79,6 +98,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
+        {/* 필요하면 여기 아래로 admin 라우트 추가 */}
       </Route>
 
       {/* 404 */}
