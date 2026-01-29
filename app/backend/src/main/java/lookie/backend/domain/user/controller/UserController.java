@@ -32,17 +32,12 @@ public class UserController {
     @Operation(summary = "회원가입", description = "새로운 사용자를 등록합니다")
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse<Void>> signup(@RequestBody SignupRequest request) {
-        // SignupRequest -> UserVO 변환
-        UserVO userVO = new UserVO();
-        userVO.setPhoneNumber(request.getPhoneNumber());
-        userVO.setPasswordHash(request.getPassword()); // Service에서 암호화됨
-        userVO.setName(request.getName());
-        userVO.setEmail(request.getEmail());
-        userVO.setBirthDate(request.getBirthDate());
-        userVO.setRole(UserRole.WORKER); // 기본 권한
-        userVO.setIsActive(true); // 기본 활성화
+        // SignupRequest -> UserVO 변환 (정적 팩토리 메서드 사용)
+        UserVO userVO = UserVO.from(request);
 
-        userService.signup(userVO);
+        // 평문 비밀번호는 별도로 전달 (Service에서 암호화)
+        userService.signup(userVO, request.getPassword());
+
         return ResponseEntity.ok(ApiResponse.success("회원가입에 성공하였습니다.", null));
     }
 
