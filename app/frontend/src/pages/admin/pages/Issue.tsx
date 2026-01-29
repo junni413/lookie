@@ -14,14 +14,32 @@ export default function Issue() {
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [listSortKey, setListSortKey] = useState<"TIME" | "PRIORITY">("TIME");
 
-    const fetchIssues = async () => {
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadIssues = async () => {
+            try {
+                const data = await issueService.getIssues();
+                if (isMounted) {
+                    setIssues(data);
+                }
+            } catch (error) {
+                console.error("Failed to fetch issues", error);
+            }
+        };
+
+        loadIssues();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    // Helper for manual updates
+    const refreshIssues = async () => {
         const data = await issueService.getIssues();
         setIssues(data);
     };
-
-    useEffect(() => {
-        fetchIssues();
-    }, []);
 
     const openIssues = issues.filter(i => i.status === "OPEN");
     const resolvedIssues = issues.filter(i => i.status === "RESOLVED");
@@ -50,7 +68,7 @@ export default function Issue() {
                     <IssueDetail
                         issue={selectedIssue}
                         onUpdate={() => {
-                            fetchIssues();
+                            refreshIssues();
                         }}
                         onClose={() => setSelectedId(null)}
                     />
@@ -94,7 +112,7 @@ export default function Issue() {
                     <IssueDetail
                         issue={selectedIssue}
                         onUpdate={() => {
-                            fetchIssues();
+                            refreshIssues();
                             setSelectedId(null);
                         }}
                         onClose={() => setSelectedId(null)}
