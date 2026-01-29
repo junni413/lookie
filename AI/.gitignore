@@ -13,7 +13,9 @@ runs/
 # =====================
 # Model weights
 # =====================
-*.pt
+# *.pt
+yolo26n.pt
+yolov8n.pt
 !models/best.pt
 
 # =====================
