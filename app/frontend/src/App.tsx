@@ -9,8 +9,9 @@ import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 
 import WorkerAttend from "./pages/worker/Attend";
-import WorkerHome from "./pages/worker/Home"; // ✅ 추가
-import AdminDashboard from "./pages/admin/Dashboard";
+import WorkerHome from "./pages/worker/Home";
+import AdminDashboard from "./pages/admin/pages/Dashboard";
+import IssuePage from "./pages/admin/pages/Issue";
 
 // ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -105,6 +106,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="issue" element={<IssuePage />} />
         {/* 필요하면 여기 아래로 admin 라우트 추가 */}
       </Route>
 
