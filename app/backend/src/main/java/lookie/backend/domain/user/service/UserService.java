@@ -3,6 +3,7 @@ package lookie.backend.domain.user.service;
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
 import lookie.backend.domain.user.exception.AlreadyExistsPhoneException;
+import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
 import lookie.backend.domain.user.exception.LoginFailedException;
 import lookie.backend.domain.user.exception.UserNotFoundException;
 import lookie.backend.domain.user.mapper.UserMapper;
@@ -18,15 +19,22 @@ public class UserService {
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final MailService mailService;
 
     /**
      * 회원가입 비즈니스 로직
+     * - 이메일 인증 완료 확인 (필수)
      * - 전화번호 및 이메일 중복 체크
      * - 비밀번호 암호화
      * - 기본 권한 WORKER 설정
      */
     @Transactional
     public void signup(UserVO userVO) {
+        // 0. 이메일 인증 완료 여부 확인 (Redis 플래그 체크)
+        if (!mailService.isEmailVerified(userVO.getEmail())) {
+            throw new EmailVerifyRequiredException(userVO.getEmail());
+        }
+
         // 1. 중복 확인 (전화번호)
         if (userMapper.existByPhoneNumber(userVO.getPhoneNumber())) {
             throw new AlreadyExistsPhoneException(userVO.getPhoneNumber());
@@ -48,6 +56,9 @@ public class UserService {
 
         // 5. DB 저장 (MyBatis가 생성된 userId를 userVO에 자동 채움)
         userMapper.insertUser(userVO);
+
+        // 6. 회원가입 완료 후 Redis 데이터 정리
+        mailService.clearEmailVerification(userVO.getEmail());
     }
 
     /**
