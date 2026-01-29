@@ -1,5 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuthStore, type UserRole } from "./stores/authStore";
 
 import AdminLayout from "./components/layout/AdminLayout";
@@ -17,6 +17,12 @@ import IssueListPage from "./pages/worker/IssueList";
 
 import AdminDashboard from "./pages/admin/pages/Dashboard";
 import IssuePage from "./pages/admin/pages/Issue";
+
+// ✅ 작업 흐름 (프론트만)
+import TaskAssignLoading from "./pages/worker/task/TaskAssignLoading";
+import TaskScanStart from "./pages/worker/task/TaskScanStart";
+import ToteScan from "./pages/worker/task/ToteScan";
+import WorkDetail from "./pages/worker/task/WorkDetail";
 
 // ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -93,6 +99,16 @@ export default function App() {
 
         {/* 대시보드 */}
         <Route path="home" element={<WorkerHome />} />
+
+        {/* ✅ 작업 흐름 */}
+        <Route path="task/loading" element={<TaskAssignLoading />} />
+        <Route path="task/scan-start" element={<TaskScanStart />} />
+
+        {/* ✅ 토트 스캔(카메라) */}
+        <Route path="task/tote-scan" element={<ToteScan />} />
+
+        {/* ✅ 작업 상세(상품 정보 화면) */}
+        <Route path="task/work-detail" element={<WorkDetail />} />
 
         {/* 사이드바 연결 페이지들 */}
         <Route path="mypage" element={<MyPage />} />
