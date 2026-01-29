@@ -5,7 +5,6 @@ import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
 import lookie.backend.domain.user.exception.AlreadyExistsPhoneException;
 import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
 import lookie.backend.domain.user.exception.LoginFailedException;
-import lookie.backend.domain.user.exception.UserNotFoundException;
 import lookie.backend.domain.user.mapper.UserMapper;
 import lookie.backend.domain.user.vo.UserRole;
 import lookie.backend.domain.user.vo.UserVO;
@@ -27,9 +26,12 @@ public class UserService {
      * - 전화번호 및 이메일 중복 체크
      * - 비밀번호 암호화
      * - 기본 권한 WORKER 설정
+     * 
+     * @param userVO        사용자 정보 (비밀번호 제외)
+     * @param plainPassword 평문 비밀번호
      */
     @Transactional
-    public void signup(UserVO userVO) {
+    public void signup(UserVO userVO, String plainPassword) {
         // 0. 이메일 인증 완료 여부 확인 (Redis 플래그 체크)
         if (!mailService.isEmailVerified(userVO.getEmail())) {
             throw new EmailVerifyRequiredException(userVO.getEmail());
@@ -46,7 +48,7 @@ public class UserService {
         }
 
         // 3. 비밀번호 암호화 (BCrypt)
-        String encryptedPassword = passwordEncoder.encode(userVO.getPasswordHash());
+        String encryptedPassword = passwordEncoder.encode(plainPassword);
         userVO.setPasswordHash(encryptedPassword);
 
         // 4. 기본 권한 설정 (명세서 기준 가입은 WORKER)
@@ -80,9 +82,9 @@ public class UserService {
             throw new LoginFailedException(phoneNumber);
         }
 
-        // 3. 계정 활성화 상태 확인
+        // 3. 계정 활성화 상태 확인 (보안: 비활성 계정도 로그인 실패로 통일)
         if (user.getIsActive() == null || !user.getIsActive()) {
-            throw new UserNotFoundException(String.valueOf(user.getUserId()));
+            throw new LoginFailedException(phoneNumber);
         }
 
         return user;
