@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
 import lookie.backend.domain.user.exception.EmailAlreadySentException;
 import lookie.backend.domain.user.exception.EmailCodeExpiredException;
+import lookie.backend.domain.user.exception.EmailSendFailedException;
 import lookie.backend.domain.user.mapper.UserMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
@@ -141,7 +142,7 @@ public class MailService {
             log.info("[이메일 발송] 성공: {}", to);
         } catch (Exception e) {
             log.error("[이메일 발송] 실패: {}", to, e);
-            throw new RuntimeException("이메일 발송에 실패했습니다", e);
+            throw new EmailSendFailedException(to);
         }
     }
 }

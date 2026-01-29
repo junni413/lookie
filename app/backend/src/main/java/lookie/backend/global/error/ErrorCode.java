@@ -19,6 +19,9 @@ public enum ErrorCode {
 	AUTH_EMAIL_VERIFY_REQUIRED("AUTH_006", HttpStatus.FORBIDDEN, "이메일 인증이 필요합니다"),
 	AUTH_EMAIL_CODE_EXPIRED("AUTH_007", HttpStatus.BAD_REQUEST, "인증번호가 만료되었거나 일치하지 않습니다"),
 
+	// ===== EMAIL =====
+	EMAIL_SEND_FAILED("EMAIL_001", HttpStatus.SERVICE_UNAVAILABLE, "이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요"),
+
 	// ===== USER =====
 	USER_ALREADY_EXISTS_PHONE("USER_001", HttpStatus.CONFLICT, "이미 가입된 전화번호입니다"),
 	USER_ALREADY_EXISTS_EMAIL("USER_002", HttpStatus.CONFLICT, "이미 가입된 이메일입니다"),
