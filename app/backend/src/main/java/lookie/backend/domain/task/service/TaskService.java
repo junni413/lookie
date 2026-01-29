@@ -3,6 +3,7 @@ package lookie.backend.domain.task.service;
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.task.exception.InvalidTaskStateException;
 import lookie.backend.domain.task.exception.NoAvailableTaskException;
+import lookie.backend.domain.task.exception.TaskAlreadyAssignedException;
 import lookie.backend.domain.task.exception.TaskNotFoundException;
 import lookie.backend.domain.task.mapper.TaskMapper;
 import lookie.backend.domain.task.vo.TaskStatus;
@@ -47,7 +48,7 @@ public class TaskService {
         // 4. 상태 전이
         int updated = taskMapper.updateAssignToInProgress(task.getBatchTaskId(), workerId);
         if (updated == 0) {
-            throw new NoAvailableTaskException(zoneId);
+            throw new TaskAlreadyAssignedException(task.getBatchTaskId());
         }
 
         return taskMapper.findById(task.getBatchTaskId());
