@@ -15,6 +15,9 @@ public enum ErrorCode {
 	AUTH_REQUIRED("AUTH_002", HttpStatus.UNAUTHORIZED, "인증이 필요합니다"),
 	AUTH_INVALID_TOKEN("AUTH_003", HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다"),
 	AUTH_EXPIRED_TOKEN("AUTH_004", HttpStatus.UNAUTHORIZED, "만료된 토큰입니다"),
+	AUTH_EMAIL_ALREADY_SENT("AUTH_005", HttpStatus.TOO_MANY_REQUESTS, "1분 내 재발송이 제한됩니다"),
+	AUTH_EMAIL_VERIFY_REQUIRED("AUTH_006", HttpStatus.FORBIDDEN, "이메일 인증이 필요합니다"),
+	AUTH_EMAIL_CODE_EXPIRED("AUTH_007", HttpStatus.BAD_REQUEST, "인증번호가 만료되었거나 일치하지 않습니다"),
 
 	// ===== USER =====
 	USER_ALREADY_EXISTS_PHONE("USER_001", HttpStatus.CONFLICT, "이미 가입된 전화번호입니다"),
@@ -36,7 +39,7 @@ public enum ErrorCode {
 	ISSUE_RECAPTURE_REQUIRED("ISSUE_001", HttpStatus.BAD_REQUEST, "재촬영이 필요합니다"),
 
 	// ==== SYSTEM =====
-	SYSTEM_TEMPORARY_LOCK_FAILED("SYS_001",HttpStatus.TOO_MANY_REQUESTS,"요청이 많아 잠시 후 다시 시도해주세요");
+	SYSTEM_TEMPORARY_LOCK_FAILED("SYS_001", HttpStatus.TOO_MANY_REQUESTS, "요청이 많아 잠시 후 다시 시도해주세요");
 
 	private final String code; // 프론트 노출용
 	private final HttpStatus status;
