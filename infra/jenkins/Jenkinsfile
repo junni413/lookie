@@ -32,6 +32,13 @@ pipeline {
     BACKEND_LOG  = 'ci_backend.log'
     FRONTEND_LOG = 'ci_frontend.log'
     DEPLOY_LOG   = 'ci_deploy.log'
+
+    // =====================================================================
+    // [CI - Redis for Backend Test]
+    // =====================================================================
+    CI_REDIS_CONTAINER = 'ci-redis'
+    CI_REDIS_IMAGE     = 'redis:7-alpine'
+    CI_REDIS_PORT      = '6379'
   }
 
   stages {
@@ -102,7 +109,6 @@ pipeline {
 
         script {
           // ✅ MR이면 source branch 체크아웃 시도
-          // (단, MR merge 이후 source 브랜치가 삭제되면 origin/<source>가 없을 수 있음 → 그땐 타겟(현재 checkout된 것)으로 진행)
           if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
             sh """
               bash -lc '
@@ -126,7 +132,7 @@ pipeline {
       }
     }
 
-    stage('Backend Test (Maven)') {
+    stage('Backend Test (Maven + Redis)') {
       when {
         expression {
           env.EVENT_KIND == 'merge_request' &&
@@ -148,15 +154,42 @@ pipeline {
               free -m | tee -a ../../${BACKEND_LOG}
               df -h | tee -a ../../${BACKEND_LOG}
 
+              echo "===== [Backend] docker version (for redis) =====" | tee -a ../../${BACKEND_LOG}
+              docker version 2>&1 | tee -a ../../${BACKEND_LOG}
+
+              echo "===== [Backend] start CI redis =====" | tee -a ../../${BACKEND_LOG}
+              docker rm -f ${CI_REDIS_CONTAINER} >/dev/null 2>&1 || true
+              docker run -d --name ${CI_REDIS_CONTAINER} -p ${CI_REDIS_PORT}:6379 ${CI_REDIS_IMAGE} 2>&1 | tee -a ../../${BACKEND_LOG}
+
+              echo "===== [Backend] wait redis ready =====" | tee -a ../../${BACKEND_LOG}
+              for i in \$(seq 1 30); do
+                if docker exec ${CI_REDIS_CONTAINER} redis-cli ping 2>/dev/null | grep -q PONG; then
+                  echo "Redis is ready" | tee -a ../../${BACKEND_LOG}
+                  break
+                fi
+                echo "Waiting Redis... (\$i/30)" | tee -a ../../${BACKEND_LOG}
+                sleep 1
+              done
+
               echo "===== [Backend] mvnw -v =====" | tee -a ../../${BACKEND_LOG}
               chmod +x mvnw || true
               ./mvnw -v 2>&1 | tee -a ../../${BACKEND_LOG}
 
-              echo "===== [Backend] mvnw clean test =====" | tee -a ../../${BACKEND_LOG}
-              ./mvnw clean test 2>&1 | tee -a ../../${BACKEND_LOG}
+              echo "===== [Backend] mvnw clean test (profile=ci) =====" | tee -a ../../${BACKEND_LOG}
+              ./mvnw clean test -Dspring.profiles.active=ci 2>&1 | tee -a ../../${BACKEND_LOG}
 
               END_TS=\$(date +%s)
               echo "===== [Backend] duration: \$((END_TS-START_TS))s =====" | tee -a ../../${BACKEND_LOG}
+            '
+          """
+        }
+      }
+
+      post {
+        always {
+          sh """
+            bash -lc '
+              docker rm -f ${CI_REDIS_CONTAINER} >/dev/null 2>&1 || true
             '
           """
         }
@@ -252,21 +285,14 @@ pipeline {
                 git reset --hard origin/develop
 
                 # -----------------------------------------------------------
-                # 2) (중요) 마이그레이션 포함 배포 순서
-                #    - mysql/redis 먼저 띄움
-                #    - migrate(Flyway CLI) 1회 실행
-                #    - backend/nginx up
-                #
-                # 전제:
-                # - docker-compose.yml에 migrate 서비스 존재
-                # - backend에는 SPRING_FLYWAY_ENABLED=false 설정(중복 방지)
+                # 2) 마이그레이션 포함 배포 순서
                 # -----------------------------------------------------------
                 docker compose build
 
                 # DB/캐시 먼저 기동
                 docker compose up -d mysql redis
 
-                # ✅ 마이그레이션: 실패하면 배포 중단되게(=set -e)
+                # 마이그레이션 (실패하면 배포 중단)
                 docker compose run --rm migrate
 
                 # 앱 기동
