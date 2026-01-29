@@ -46,11 +46,12 @@ pipeline {
     stage('Detect Context') {
       steps {
         script {
-          env.EVENT_KIND  = (env.OBJECT_KIND ?: env.object_kind ?: '').trim()  // merge_request / push
-          env.PUSH_BRANCH = (env.REF ?: env.ref ?: '').replace('refs/heads/', '').trim()
+          // GitLab Webhook env variations
+          env.EVENT_KIND  = ((env.OBJECT_KIND ?: env.object_kind ?: '').trim())
+          env.PUSH_BRANCH = ((env.REF ?: env.ref ?: '').replace('refs/heads/', '').trim())
 
-          env.MR_SOURCE   = (env.MR_SOURCE ?: env.mr_source ?: '').trim()
-          env.MR_TARGET   = (env.MR_TARGET ?: env.mr_target ?: '').trim()
+          env.MR_SOURCE   = ((env.MR_SOURCE ?: env.mr_source ?: '').trim())
+          env.MR_TARGET   = ((env.MR_TARGET ?: env.mr_target ?: '').trim())
 
           env.ACTOR = (
             env.MR_USER_NAME ?: env.MR_USER_USERNAME ?:
@@ -70,7 +71,7 @@ pipeline {
             } else if ((env.MR_SOURCE ?: '').startsWith('feat/fe/')) {
               env.RUN_FRONTEND = "true"
             } else {
-              env.RUN_BACKEND = "true"
+              env.RUN_BACKEND  = "true"
               env.RUN_FRONTEND = "true"
             }
           }
@@ -108,23 +109,27 @@ pipeline {
         checkout scm
 
         script {
-          // ✅ MR이면 source branch 체크아웃 시도
+          // ✅ MR이면 source branch 체크아웃 시도 (삭제된 브랜치면 넘어감)
           if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
             sh """
               bash -lc '
                 set -euo pipefail
                 echo "== Try checkout MR source branch: ${env.MR_SOURCE} =="
 
-                if git rev-parse --verify --quiet origin/${env.MR_SOURCE} >/dev/null; then
-                  git checkout -B ${env.MR_SOURCE} origin/${env.MR_SOURCE}
+                # origin에 해당 브랜치 ref가 없을 수도 있어서 명시 fetch
+                git fetch origin "+refs/heads/${env.MR_SOURCE}:refs/remotes/origin/${env.MR_SOURCE}" >/dev/null 2>&1 || true
+
+                if git rev-parse --verify --quiet "refs/remotes/origin/${env.MR_SOURCE}" >/dev/null; then
+                  git checkout -B "${env.MR_SOURCE}" "origin/${env.MR_SOURCE}"
                   echo "== Checked out source branch =="
+
                 else
                   echo "!! origin/${env.MR_SOURCE} not found (maybe deleted after merge). Continue with current ref."
                 fi
 
                 echo "== Current branch =="
-                git branch --show-current
-                git log -1 --oneline
+                git branch --show-current || true
+                git log -1 --oneline || true
               '
             """
           }
@@ -151,32 +156,47 @@ pipeline {
               START_TS=\$(date +%s)
 
               echo "===== [Backend] env snapshot =====" | tee -a ../../${BACKEND_LOG}
-              free -m | tee -a ../../${BACKEND_LOG}
-              df -h | tee -a ../../${BACKEND_LOG}
+              free -m | tee -a ../../${BACKEND_LOG} || true
+              df -h | tee -a ../../${BACKEND_LOG} || true
 
               echo "===== [Backend] docker version (for redis) =====" | tee -a ../../${BACKEND_LOG}
               docker version 2>&1 | tee -a ../../${BACKEND_LOG}
 
               echo "===== [Backend] start CI redis =====" | tee -a ../../${BACKEND_LOG}
               docker rm -f ${CI_REDIS_CONTAINER} >/dev/null 2>&1 || true
+
+              # 포트 충돌 발생 시 로그로 확인 가능
               docker run -d --name ${CI_REDIS_CONTAINER} -p ${CI_REDIS_PORT}:6379 ${CI_REDIS_IMAGE} 2>&1 | tee -a ../../${BACKEND_LOG}
 
               echo "===== [Backend] wait redis ready =====" | tee -a ../../${BACKEND_LOG}
+              READY=0
               for i in \$(seq 1 30); do
                 if docker exec ${CI_REDIS_CONTAINER} redis-cli ping 2>/dev/null | grep -q PONG; then
                   echo "Redis is ready" | tee -a ../../${BACKEND_LOG}
+                  READY=1
                   break
                 fi
                 echo "Waiting Redis... (\$i/30)" | tee -a ../../${BACKEND_LOG}
                 sleep 1
               done
 
+              if [ "\$READY" -ne 1 ]; then
+                echo "!! Redis not ready. container logs:" | tee -a ../../${BACKEND_LOG}
+                docker logs ${CI_REDIS_CONTAINER} | tail -200 | tee -a ../../${BACKEND_LOG} || true
+                exit 1
+              fi
+
               echo "===== [Backend] mvnw -v =====" | tee -a ../../${BACKEND_LOG}
               chmod +x mvnw || true
               ./mvnw -v 2>&1 | tee -a ../../${BACKEND_LOG}
 
               echo "===== [Backend] mvnw clean test (profile=ci) =====" | tee -a ../../${BACKEND_LOG}
-              ./mvnw clean test -Dspring.profiles.active=ci 2>&1 | tee -a ../../${BACKEND_LOG}
+              # ✅ 핵심: 테스트에서 Redis가 반드시 localhost로 붙도록 강제 주입
+              ./mvnw clean test \\
+                -Dspring.profiles.active=ci \\
+                -Dspring.redis.host=127.0.0.1 \\
+                -Dspring.redis.port=${CI_REDIS_PORT} \\
+                2>&1 | tee -a ../../${BACKEND_LOG}
 
               END_TS=\$(date +%s)
               echo "===== [Backend] duration: \$((END_TS-START_TS))s =====" | tee -a ../../${BACKEND_LOG}
@@ -215,16 +235,16 @@ pipeline {
               START_TS=\$(date +%s)
 
               echo "===== [Frontend] env snapshot =====" | tee -a ../../${FRONTEND_LOG}
-              free -m | tee -a ../../${FRONTEND_LOG}
-              df -h | tee -a ../../${FRONTEND_LOG}
-              docker system df | tee -a ../../${FRONTEND_LOG}
+              free -m | tee -a ../../${FRONTEND_LOG} || true
+              df -h | tee -a ../../${FRONTEND_LOG} || true
+              docker system df | tee -a ../../${FRONTEND_LOG} || true
 
               echo "===== [Frontend] docker version =====" | tee -a ../../${FRONTEND_LOG}
               docker version 2>&1 | tee -a ../../${FRONTEND_LOG}
 
               echo "===== [Frontend] node build (container) =====" | tee -a ../../${FRONTEND_LOG}
-              docker run --rm \
-                -v "\$PWD":/app -w /app \
+              docker run --rm \\
+                -v "\$PWD":/app -w /app \\
                 node:20-alpine sh -lc "
                   set -e
                   node -v
@@ -269,7 +289,7 @@ pipeline {
               echo "===== [Deploy] remote deploy start =====" | tee -a ${DEPLOY_LOG}
 
               ssh ${DEPLOY_USER}@${DEPLOY_HOST} "
-                set -e
+                set -euo pipefail
                 mkdir -p ${DEPLOY_DIR}
                 cd ${DEPLOY_DIR}
 
@@ -318,8 +338,15 @@ pipeline {
         def branch = isMR ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
         def actor  = env.ACTOR ?: 'unknown'
 
-        def commitMsg = sh(script: "git log -1 --pretty=%s", returnStdout: true).trim()
-        def commitSha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+        // checkout 실패/부분 실패 대비
+        def commitMsg = '(unknown)'
+        def commitSha = '(unknown)'
+        try {
+          commitMsg = sh(script: "git log -1 --pretty=%s", returnStdout: true).trim()
+          commitSha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+        } catch (ignored) {
+          // noop
+        }
 
         def ranBE     = (env.RUN_BACKEND == "true")
         def ranFE     = (env.RUN_FRONTEND == "true")
@@ -330,9 +357,19 @@ pipeline {
         def label = isMR ? "CI" : (isPush ? "배포" : "빌드")
         def title = ok ? ":white_check_mark: ${label} 성공" : ":x: ${label} 실패"
 
-        def jobName = env.JOB_NAME ?: ''
-        def buildNo = env.BUILD_NUMBER ?: ''
-        def buildUrlFixed = "${env.PUBLIC_JENKINS_URL}/job/${jobName}/${buildNo}/"
+        // ✅ 폴더/멀티브랜치 jobName 대응: /job/를 세그먼트마다 삽입
+        def jobName = (env.JOB_NAME ?: '').trim()
+        def buildNo = (env.BUILD_NUMBER ?: '').trim()
+
+        def jobPath = jobName ? jobName.split('/').collect { "job/${it}" }.join('/') : ''
+        def buildUrlFixed = (env.BUILD_URL ?: '').trim()
+        if (!buildUrlFixed) {
+          buildUrlFixed = jobPath ? "${env.PUBLIC_JENKINS_URL}/${jobPath}/${buildNo}/" : "${env.PUBLIC_JENKINS_URL}"
+        } else {
+          // BUILD_URL이 내부 주소면 PUBLIC_JENKINS_URL로 교체
+          // (완전 정확한 프록시 설정이 아니어도 링크 접근성을 올려줌)
+          buildUrlFixed = buildUrlFixed.replaceFirst(/^https?:\\/\\/[^\\/]+/, env.PUBLIC_JENKINS_URL)
+        }
 
         mmNotify(ok, [
           title    : title,
@@ -391,8 +428,11 @@ def mmNotify(boolean success, Map info) {
     )
 
     if (rc != 0) {
-      echo "⚠️ Mattermost notify failed (exit code: ${rc}). Marking build as UNSTABLE."
-      currentBuild.result = 'UNSTABLE'
+      echo "⚠️ Mattermost notify failed (exit code: ${rc})."
+      // ✅ 실패 빌드인데 UNSTABLE로 덮지 않도록 보호
+      if (currentBuild.currentResult == 'SUCCESS') {
+        currentBuild.result = 'UNSTABLE'
+      }
     } else {
       echo "✅ Mattermost notify sent."
     }
