@@ -28,6 +28,9 @@ pipeline {
     BACKEND_LOG  = 'ci_backend.log'
     FRONTEND_LOG = 'ci_frontend.log'
     DEPLOY_LOG   = 'ci_deploy.log'
+
+    // How many lines to include in MM summary
+    TAIL_LINES   = '120'
   }
 
   stages {
@@ -56,9 +59,9 @@ pipeline {
           env.RUN_DEPLOY   = "false"
 
           if (env.EVENT_KIND == 'merge_request') {
-            if (env.MR_SOURCE.startsWith('feat/be/')) {
+            if ((env.MR_SOURCE ?: '').startsWith('feat/be/')) {
               env.RUN_BACKEND = "true"
-            } else if (env.MR_SOURCE.startsWith('feat/fe/')) {
+            } else if ((env.MR_SOURCE ?: '').startsWith('feat/fe/')) {
               env.RUN_FRONTEND = "true"
             } else {
               env.RUN_BACKEND = "true"
@@ -90,17 +93,21 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
-
         script {
-          // ✅ MR이면 source 브랜치로 체크아웃
-          // ⚠️ 여기서 git fetch --all 하면 HTTPS origin일 때 인증 이슈가 날 수 있음
-          // -> checkout scm이 이미 fetch 해오므로 fetch 제거
+          // MR이면 source 브랜치로 체크아웃
+          // checkout scm이 이미 fetch 해오므로, 추가 fetch는 하지 않음(HTTPS 인증 이슈 방지)
           if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
             sh """
               bash -lc '
                 set -euo pipefail
+                echo "== Checkout MR source branch: ${env.MR_SOURCE} =="
+
                 git rev-parse --verify origin/${env.MR_SOURCE}
                 git checkout -B ${env.MR_SOURCE} origin/${env.MR_SOURCE}
+
+                echo "== Current branch =="
+                git branch --show-current
+                git log -1 --oneline
               '
             """
           }
@@ -118,11 +125,13 @@ pipeline {
           sh """
             bash -lc '
               set -euo pipefail
-
               : > ../../${BACKEND_LOG}
-              chmod +x mvnw || true
 
+              echo "===== [Backend] mvnw -v =====" | tee -a ../../${BACKEND_LOG}
+              chmod +x mvnw || true
               ./mvnw -v 2>&1 | tee -a ../../${BACKEND_LOG}
+
+              echo "===== [Backend] mvnw clean test =====" | tee -a ../../${BACKEND_LOG}
               ./mvnw clean test 2>&1 | tee -a ../../${BACKEND_LOG}
             '
           """
@@ -140,11 +149,12 @@ pipeline {
           sh """
             bash -lc '
               set -euo pipefail
-
               : > ../../${FRONTEND_LOG}
 
+              echo "===== [Frontend] docker version =====" | tee -a ../../${FRONTEND_LOG}
               docker version 2>&1 | tee -a ../../${FRONTEND_LOG}
 
+              echo "===== [Frontend] node build (container) =====" | tee -a ../../${FRONTEND_LOG}
               docker run --rm \
                 -v "\$PWD":/app -w /app \
                 node:20-alpine sh -lc "
@@ -178,6 +188,8 @@ pipeline {
             bash -lc '
               set -euo pipefail
 
+              echo "===== [Deploy] remote deploy start =====" | tee -a ${DEPLOY_LOG}
+
               ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
                 set -e
                 mkdir -p ${DEPLOY_DIR}
@@ -193,6 +205,8 @@ pipeline {
 
                 docker compose up -d --build
               " 2>&1 | tee -a ${DEPLOY_LOG}
+
+              echo "===== [Deploy] remote deploy done =====" | tee -a ${DEPLOY_LOG}
             '
           """
         }
@@ -209,59 +223,64 @@ pipeline {
         def branch = isMR ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
         def actor  = env.ACTOR ?: 'unknown'
 
-        // commit info (승인 필요 없음)
         def commitMsg = sh(script: "git log -1 --pretty=%s", returnStdout: true).trim()
         def commitSha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
 
-        // what ran
         def ranBE     = (env.RUN_BACKEND == "true")
         def ranFE     = (env.RUN_FRONTEND == "true")
         def ranDeploy = (env.RUN_DEPLOY == "true")
 
-        // result
         def ok = (currentBuild.currentResult == 'SUCCESS')
 
-        // label
         def label = isMR ? "CI" : (isPush ? "배포" : "빌드")
         def title = ok ? ":white_check_mark: ${label} 성공" : ":x: ${label} 실패"
 
         // Jenkins link (9000 고정)
         def jobName = env.JOB_NAME ?: ''
         def buildNo = env.BUILD_NUMBER ?: ''
-        def buildUrlFixed = "${env.PUBLIC_JENKINS_URL}/job/${jobName}/${buildNo}/"
+        def buildUrlFixed   = "${env.PUBLIC_JENKINS_URL}/job/${jobName}/${buildNo}/"
+        def consoleTextUrl  = buildUrlFixed + "consoleText"
 
-        // failure summary (tail)
+        // Failure summary (tail from stage logs)
         def detailsParts = []
-        if (!ok) {
+
+        // ✅ 성공/실패 상관없이 "최근 콘솔 느낌"으로 로그 tail을 붙이고 싶다면 여기서 항상 생성
+        // 다만 메시지 길이 제한 때문에, 성공일 때는 과도하게 붙이지 않는 걸 추천(필요하면 아래 ok 조건 제거)
+        def wantTail = (!ok)  // 실패일 때만 tail 포함. 성공에도 포함하고 싶으면 true로 바꿔도 됨.
+
+        if (wantTail) {
+          def n = (env.TAIL_LINES ?: '120').trim()
+
           if (ranBE) {
-            def beTail = sh(script: "tail -n 80 ${BACKEND_LOG} 2>/dev/null || true", returnStdout: true).trim()
-            if (beTail) detailsParts << "### Backend (last lines)\n${beTail}"
+            def beTail = sh(script: "tail -n ${n} ${BACKEND_LOG} 2>/dev/null || true", returnStdout: true).trim()
+            if (beTail) detailsParts << "### Backend (last ${n} lines)\n${beTail}"
           }
           if (ranFE) {
-            def feTail = sh(script: "tail -n 80 ${FRONTEND_LOG} 2>/dev/null || true", returnStdout: true).trim()
-            if (feTail) detailsParts << "### Frontend (last lines)\n${feTail}"
+            def feTail = sh(script: "tail -n ${n} ${FRONTEND_LOG} 2>/dev/null || true", returnStdout: true).trim()
+            if (feTail) detailsParts << "### Frontend (last ${n} lines)\n${feTail}"
           }
           if (ranDeploy) {
-            def dpTail = sh(script: "tail -n 80 ${DEPLOY_LOG} 2>/dev/null || true", returnStdout: true).trim()
-            if (dpTail) detailsParts << "### Deploy (last lines)\n${dpTail}"
+            def dpTail = sh(script: "tail -n ${n} ${DEPLOY_LOG} 2>/dev/null || true", returnStdout: true).trim()
+            if (dpTail) detailsParts << "### Deploy (last ${n} lines)\n${dpTail}"
           }
           if (detailsParts.isEmpty()) detailsParts << "로그 파일이 없습니다. (스테이지 진입 전 실패했을 수 있음)"
         }
 
         mmNotify(ok, [
-          title    : title,
-          mention  : '@channel',
-          kind     : env.EVENT_KIND,
-          actor    : actor,
-          branch   : branch,
-          target   : (env.MR_TARGET ?: ''),
-          commit   : "${commitSha} - ${commitMsg}",
-          buildUrl : buildUrlFixed,
-          details  : detailsParts.join("\n\n"),
-          credId   : env.MM_WEBHOOK_CRED_ID,
-          ranBE    : ranBE,
-          ranFE    : ranFE,
-          ranDeploy: ranDeploy
+          title     : title,
+          mention   : '@channel',
+          kind      : env.EVENT_KIND,
+          actor     : actor,
+          branch    : branch,
+          target    : (env.MR_TARGET ?: ''),
+          commit    : "${commitSha} - ${commitMsg}",
+          buildUrl  : buildUrlFixed,
+          consoleUrl: consoleTextUrl,                 // ✅ consoleText 링크 추가
+          details   : detailsParts.join("\n\n"),
+          credId    : env.MM_WEBHOOK_CRED_ID,
+          ranBE     : ranBE,
+          ranFE     : ranFE,
+          ranDeploy : ranDeploy
         ])
       }
     }
@@ -276,13 +295,14 @@ def mmNotify(boolean success, Map info) {
   def title = info.title ?: (success ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패")
 
   def lines = []
-  if (info.mention)  lines << "${info.mention}"
-  if (info.kind)     lines << "**이벤트:** `${info.kind}`"
-  if (info.actor)    lines << "**실행자:** `${info.actor}`"
-  if (info.branch)   lines << "**브랜치:** `${info.branch}`"
-  if (info.target)   lines << "**타겟:** `${info.target}`"
-  if (info.commit)   lines << "**커밋:** ${info.commit}"
-  if (info.buildUrl) lines << "**Jenkins:** ${info.buildUrl}"
+  if (info.mention)   lines << "${info.mention}"
+  if (info.kind)      lines << "**이벤트:** `${info.kind}`"
+  if (info.actor)     lines << "**실행자:** `${info.actor}`"
+  if (info.branch)    lines << "**브랜치:** `${info.branch}`"
+  if (info.target)    lines << "**타겟:** `${info.target}`"
+  if (info.commit)    lines << "**커밋:** ${info.commit}"
+  if (info.buildUrl)  lines << "**Jenkins:** ${info.buildUrl}"
+  if (info.consoleUrl) lines << "**ConsoleText:** ${info.consoleUrl}"   // ✅ 콘솔 링크
 
   def ran = []
   if (info.ranBE)     ran << "BE"
@@ -290,8 +310,10 @@ def mmNotify(boolean success, Map info) {
   if (info.ranDeploy) ran << "DEPLOY"
   if (!ran.isEmpty()) lines << "**실행:** `${ran.join(' + ')}`"
 
+  // 실패 요약(로그 tail) - 길이 제한 방지
   if (!success && info.details) {
-    def clipped = info.details.size() > 2800 ? (info.details.take(2800) + "\n...(truncated)") : info.details
+    def max = 2800
+    def clipped = info.details.size() > max ? (info.details.take(max) + "\n...(truncated)") : info.details
     lines << "**실패 요약:**\n```text\n${clipped}\n```"
   }
 
