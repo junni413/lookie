@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lookie.backend.domain.task.infra.TaskLockExecutor;
 import lookie.backend.domain.task.service.TaskService;
 import lookie.backend.domain.task.vo.TaskVO;
 import lookie.backend.global.response.ApiResponse;
@@ -16,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class TaskController {
 
-    private final TaskService taskService;
+    private final TaskLockExecutor taskLockExecutor;
 
     @PostMapping("/start")
     @Operation(summary = "작업 할당(=작업 시작)", description = """
@@ -26,7 +27,7 @@ public class TaskController {
             """)
     public ResponseEntity<ApiResponse<TaskVO>> startTask(
             @RequestParam Long workerId) {
-        TaskVO task = taskService.startTask(workerId);
+        TaskVO task = taskLockExecutor.startTask(workerId);
         return ResponseEntity.ok(ApiResponse.success("작업 배정 성공", task));
     }
 
@@ -37,7 +38,7 @@ public class TaskController {
             (MVP: 요청자(worker) 검증은 추후 인증 도입 시 보완)
             """)
     public ResponseEntity<ApiResponse<Void>> completeTask(@PathVariable Long taskId) {
-        taskService.completeTask(taskId);
+        taskLockExecutor.completeTask(taskId);
         return ResponseEntity.ok(ApiResponse.success("작업 완료 처리 성공", null));
 
     }
