@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { issueService } from "@/services/issueService";
 import type { IssueResponse } from "@/types/db";
 import IssueList from "../components/issue/IssueList";
@@ -14,14 +14,32 @@ export default function Issue() {
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [listSortKey, setListSortKey] = useState<"TIME" | "PRIORITY">("TIME");
 
-    const fetchIssues = async () => {
-        const data = await issueService.getIssues();
-        setIssues(data);
-    };
+    // Track mounted state for async safety
+    const isMountedRef = useRef(false);
 
     useEffect(() => {
-        fetchIssues();
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
     }, []);
+
+    // Consolidated fetch function
+    const fetchIssues = useCallback(async () => {
+        try {
+            const data = await issueService.getIssues();
+            if (isMountedRef.current) {
+                setIssues(data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch issues", error);
+        }
+    }, []);
+
+    // Initial load
+    useEffect(() => {
+        fetchIssues();
+    }, [fetchIssues]);
 
     const openIssues = issues.filter(i => i.status === "OPEN");
     const resolvedIssues = issues.filter(i => i.status === "RESOLVED");

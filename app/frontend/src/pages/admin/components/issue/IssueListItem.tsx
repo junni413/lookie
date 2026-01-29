@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { cva } from "class-variance-authority";
 import { Badge } from "@/components/ui/badge";
 import type { IssueResponse, IssueType } from "@/types/db";
 import { cn } from "@/utils/cn";
@@ -11,25 +12,38 @@ interface IssueListItemProps {
     onClick?: () => void;
 }
 
-function IssueTypeBadge({ type }: { type: IssueType }) {
-    if (type === "OUT_OF_STOCK") {
-        // 재고: Alert 컬러(빨강)
-        return <Badge className="rounded-full bg-destructive px-2 py-0.5 text-xs text-white hover:bg-destructive">재고</Badge>;
+const issueBadgeVariants = cva(
+    "rounded-full px-2 py-0.5 text-xs text-white border-0",
+    {
+        variants: {
+            type: {
+                OUT_OF_STOCK: "bg-destructive hover:bg-destructive",
+                DAMAGED: "bg-primary hover:bg-primary",
+            },
+        },
     }
-    // 파손: Primary 느낌(파랑)
-    return <Badge className="rounded-full bg-primary px-2 py-0.5 text-xs text-white hover:bg-primary">파손</Badge>;
+);
+
+function IssueTypeBadge({ type }: { type: IssueType }) {
+    const label = type === "OUT_OF_STOCK" ? "재고" : "파손";
+
+    return (
+        <Badge className={cn(issueBadgeVariants({ type }))}>
+            {label}
+        </Badge>
+    );
 }
 
 export default function IssueListItem({ issue, selected, onClick }: IssueListItemProps) {
     const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
 
-    // Get worker info safely (fallback if missing)
     const worker = issue.worker || {
+        worker_id: -1, // Dummy ID
         status: "OFF_WORK",
         today_work_count: 0,
-        current_zone_id: null, // "Unknown"
-        name: issue.workerName
-    } as any;
+        current_zone_id: null,
+        name: issue.workerName || "Unknown"
+    };
 
     const getStatusText = (s: string) => {
         if (s === "WORKING") return "🟢 작업중";
