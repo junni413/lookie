@@ -2,8 +2,8 @@ pipeline {
   agent any
 
   options {
-    timestamps()                 // ✅ 콘솔 로그에 시간 표시
-    disableConcurrentBuilds()    // ✅ 같은 Job이 동시에 여러 번 돌지 않게 잠금
+    timestamps()
+    disableConcurrentBuilds()
   }
 
   environment {
@@ -13,21 +13,21 @@ pipeline {
     DEPLOY_HOST  = 'i14b105.p.ssafy.io'
     DEPLOY_USER  = 'ubuntu'
     DEPLOY_DIR   = '/home/ubuntu/lookie/S14P11B105'
-    SSH_CRED_ID  = 'ec2-ssh-key'  // Jenkins Credentials: SSH Private Key
+    SSH_CRED_ID  = 'ec2-ssh-key'
     GIT_REPO_SSH = 'git@lab.ssafy.com:s14-webmobile1-sub1/S14P11B105.git'
 
     // =====================================================================
-    // [NOTIFY] Mattermost 알림 Webhook (Jenkins Credentials: Secret text)
+    // [NOTIFY]
     // =====================================================================
     MM_WEBHOOK_CRED_ID = 'mattermost-webhook'
 
     // =====================================================================
-    // [LINK] 외부에서 접근 가능한 Jenkins URL (Mattermost 메시지 링크용)
+    // [LINK]
     // =====================================================================
     PUBLIC_JENKINS_URL = 'http://i14b105.p.ssafy.io:9000'
 
     // =====================================================================
-    // [LOG] 단계별 로그 파일명 (원하면 artifact/archive로 남길 수 있음)
+    // [LOG]
     // =====================================================================
     BACKEND_LOG  = 'ci_backend.log'
     FRONTEND_LOG = 'ci_frontend.log'
@@ -36,23 +36,15 @@ pipeline {
 
   stages {
 
-    // =====================================================================
-    // 1) Detect Context
-    // - Generic Webhook Trigger로 들어온 변수들을 표준화
-    // - 어떤 이벤트인지(MR/push), 어떤 브랜치인지 확인해서 실행 계획 수립
-    // =====================================================================
     stage('Detect Context') {
       steps {
         script {
-          // Generic Webhook Trigger에서 넘어오는 변수명이 케이스/플러그인마다 달라질 수 있어
-          // 가능한 변수명을 모두 fallback으로 처리
-          env.EVENT_KIND  = (env.OBJECT_KIND ?: env.object_kind ?: '').trim()  // merge_request / push ...
+          env.EVENT_KIND  = (env.OBJECT_KIND ?: env.object_kind ?: '').trim()  // merge_request / push
           env.PUSH_BRANCH = (env.REF ?: env.ref ?: '').replace('refs/heads/', '').trim()
 
           env.MR_SOURCE   = (env.MR_SOURCE ?: env.mr_source ?: '').trim()
           env.MR_TARGET   = (env.MR_TARGET ?: env.mr_target ?: '').trim()
 
-          // 트리거 실행자 (MR/push 케이스 모두 대응)
           env.ACTOR = (
             env.MR_USER_NAME ?: env.MR_USER_USERNAME ?:
             env.PUSH_USER_NAME ?: env.PUSH_USER_USERNAME ?:
@@ -60,15 +52,11 @@ pipeline {
             'unknown'
           ).trim()
 
-          // 기본 실행 계획은 모두 false로 시작
           env.RUN_BACKEND  = "false"
           env.RUN_FRONTEND = "false"
           env.RUN_DEPLOY   = "false"
 
-          // ✅ MR 이벤트일 때: 브랜치 prefix로 어느 파트 실행할지 결정
-          // - feat/be/* : 백엔드 테스트만
-          // - feat/fe/* : 프론트 빌드만
-          // - 그 외    : 둘 다
+          // ✅ MR: source 브랜치 prefix로 CI 범위 결정
           if (env.EVENT_KIND == 'merge_request') {
             if ((env.MR_SOURCE ?: '').startsWith('feat/be/')) {
               env.RUN_BACKEND = "true"
@@ -80,12 +68,17 @@ pipeline {
             }
           }
 
-          // ✅ push 이벤트에서 develop 브랜치면 배포 수행
+          // ✅ push develop: 배포
           if (env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop') {
             env.RUN_DEPLOY = "true"
           }
 
-          // 콘솔에 실행 계획 출력 (디버깅/가독성 ↑)
+          // ✅ 핵심: push는 배포 전용 → CI 절대 실행 안 함
+          if (env.EVENT_KIND == 'push') {
+            env.RUN_BACKEND  = "false"
+            env.RUN_FRONTEND = "false"
+          }
+
           echo """
 [Webhook]
 - kind       = ${env.EVENT_KIND}
@@ -103,26 +96,25 @@ pipeline {
       }
     }
 
-    // =====================================================================
-    // 2) Checkout
-    // - Jenkins 기본 checkout(scm) 수행
-    // - MR이면 "source 브랜치"를 명시적으로 체크아웃해서 빌드 대상 통일
-    // =====================================================================
     stage('Checkout') {
       steps {
         checkout scm
 
         script {
-          // MR 이벤트일 때 source branch를 origin 기준으로 체크아웃
-          // (checkout scm이 이미 fetch를 하므로 추가 fetch는 생략)
+          // ✅ MR이면 source branch 체크아웃 시도
+          // (단, MR merge 이후 source 브랜치가 삭제되면 origin/<source>가 없을 수 있음 → 그땐 타겟(현재 checkout된 것)으로 진행)
           if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
             sh """
               bash -lc '
                 set -euo pipefail
-                echo "== Checkout MR source branch: ${env.MR_SOURCE} =="
+                echo "== Try checkout MR source branch: ${env.MR_SOURCE} =="
 
-                git rev-parse --verify origin/${env.MR_SOURCE}
-                git checkout -B ${env.MR_SOURCE} origin/${env.MR_SOURCE}
+                if git rev-parse --verify --quiet origin/${env.MR_SOURCE} >/dev/null; then
+                  git checkout -B ${env.MR_SOURCE} origin/${env.MR_SOURCE}
+                  echo "== Checked out source branch =="
+                else
+                  echo "!! origin/${env.MR_SOURCE} not found (maybe deleted after merge). Continue with current ref."
+                fi
 
                 echo "== Current branch =="
                 git branch --show-current
@@ -134,21 +126,20 @@ pipeline {
       }
     }
 
-    // =====================================================================
-    // 3) Backend Test (Maven)
-    // - MR 이벤트 + RUN_BACKEND=true 일 때만 실행
-    // - 환경 스냅샷(메모리/디스크) + 수행 시간(duration) 로그에 남김
-    // =====================================================================
     stage('Backend Test (Maven)') {
-      when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_BACKEND == "true" } }
+      when {
+        expression {
+          env.EVENT_KIND == 'merge_request' &&
+          env.RUN_BACKEND == "true" &&
+          env.RUN_DEPLOY != "true"
+        }
+      }
 
       steps {
         dir('app/backend') {
           sh """
             bash -lc '
               set -euo pipefail
-
-              # 로그 파일 초기화
               : > ../../${BACKEND_LOG}
 
               START_TS=\$(date +%s)
@@ -172,22 +163,20 @@ pipeline {
       }
     }
 
-    // =====================================================================
-    // 4) Frontend Build (React)
-    // - MR 이벤트 + RUN_FRONTEND=true 일 때만 실행
-    // - node를 Jenkins에 직접 설치하지 않고 docker run(node:20-alpine)으로 빌드
-    // - 환경 스냅샷/디스크/도커 사용량/수행 시간 로그 남김
-    // =====================================================================
     stage('Frontend Build (React)') {
-      when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_FRONTEND == "true" } }
+      when {
+        expression {
+          env.EVENT_KIND == 'merge_request' &&
+          env.RUN_FRONTEND == "true" &&
+          env.RUN_DEPLOY != "true"
+        }
+      }
 
       steps {
         dir('app/frontend') {
           sh """
             bash -lc '
               set -euo pipefail
-
-              # 로그 파일 초기화
               : > ../../${FRONTEND_LOG}
 
               START_TS=\$(date +%s)
@@ -219,17 +208,10 @@ pipeline {
       }
     }
 
-    // =====================================================================
-    // 5) Deploy (develop push only)
-    // - push 이벤트 + develop 브랜치일 때만 실행
-    // - StrictHostKeyChecking=no 대신 known_hosts에 host key 사전 등록
-    // - docker compose build / up -d 분리하여 캐시 활용
-    // =====================================================================
     stage('Deploy (develop push only)') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' } }
 
       steps {
-        // 로컬(젠킨스 워커)에도 배포 로그 파일 남김
         sh """
           bash -lc '
             set -euo pipefail
@@ -237,7 +219,6 @@ pipeline {
           '
         """
 
-        // Jenkins Credentials의 SSH 키를 ssh-agent에 로드
         sshagent(credentials: [env.SSH_CRED_ID]) {
           sh """
             bash -lc '
@@ -245,33 +226,23 @@ pipeline {
 
               START_TS=\$(date +%s)
 
-              # -------------------------------------------------------------
-              # [보안] known_hosts 준비
-              # - StrictHostKeyChecking=no를 쓰면 MITM 위험이 커짐
-              # - ssh-keyscan으로 대상 호스트 키를 known_hosts에 기록
-              #   (주의: ssh-keyscan도 네트워크가 오염되면 위험할 수 있으니
-              #    가장 안전한 방법은 "정상 키를 직접 등록"하는 것)
-              # -------------------------------------------------------------
               echo "===== [Deploy] prepare known_hosts =====" | tee -a ${DEPLOY_LOG}
               mkdir -p ~/.ssh
               touch ~/.ssh/known_hosts
               chmod 700 ~/.ssh
               chmod 600 ~/.ssh/known_hosts
-
               ssh-keyscan -H ${DEPLOY_HOST} >> ~/.ssh/known_hosts 2>/dev/null || true
 
               echo "===== [Deploy] remote deploy start =====" | tee -a ${DEPLOY_LOG}
 
-              # -------------------------------------------------------------
-              # [원격 배포]
-              # - develop 최신화 후 compose build + up
-              # -------------------------------------------------------------
               ssh ${DEPLOY_USER}@${DEPLOY_HOST} "
                 set -e
                 mkdir -p ${DEPLOY_DIR}
                 cd ${DEPLOY_DIR}
 
-                # 최초 1회 clone
+                # -----------------------------------------------------------
+                # 1) 코드 최신화
+                # -----------------------------------------------------------
                 if [ ! -d .git ]; then
                   git clone ${GIT_REPO_SSH} .
                 fi
@@ -280,9 +251,26 @@ pipeline {
                 git checkout develop
                 git reset --hard origin/develop
 
-                # 캐시 활용을 위해 build/up 분리
+                # -----------------------------------------------------------
+                # 2) (중요) 마이그레이션 포함 배포 순서
+                #    - mysql/redis 먼저 띄움
+                #    - migrate(Flyway CLI) 1회 실행
+                #    - backend/nginx up
+                #
+                # 전제:
+                # - docker-compose.yml에 migrate 서비스 존재
+                # - backend에는 SPRING_FLYWAY_ENABLED=false 설정(중복 방지)
+                # -----------------------------------------------------------
                 docker compose build
-                docker compose up -d
+
+                # DB/캐시 먼저 기동
+                docker compose up -d mysql redis
+
+                # ✅ 마이그레이션: 실패하면 배포 중단되게(=set -e)
+                docker compose run --rm migrate
+
+                # 앱 기동
+                docker compose up -d backend nginx
               " 2>&1 | tee -a ${DEPLOY_LOG}
 
               echo "===== [Deploy] remote deploy done =====" | tee -a ${DEPLOY_LOG}
@@ -295,10 +283,6 @@ pipeline {
     }
   }
 
-  // =====================================================================
-  // post: always
-  // - 파이프라인 결과와 메타정보를 정리해서 Mattermost로 알림
-  // =====================================================================
   post {
     always {
       script {
@@ -308,7 +292,6 @@ pipeline {
         def branch = isMR ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
         def actor  = env.ACTOR ?: 'unknown'
 
-        // checkout 이후 workspace 기준 최신 커밋 정보
         def commitMsg = sh(script: "git log -1 --pretty=%s", returnStdout: true).trim()
         def commitSha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
 
@@ -321,7 +304,6 @@ pipeline {
         def label = isMR ? "CI" : (isPush ? "배포" : "빌드")
         def title = ok ? ":white_check_mark: ${label} 성공" : ":x: ${label} 실패"
 
-        // 외부에서 접근 가능한 Jenkins 링크 생성
         def jobName = env.JOB_NAME ?: ''
         def buildNo = env.BUILD_NUMBER ?: ''
         def buildUrlFixed = "${env.PUBLIC_JENKINS_URL}/job/${jobName}/${buildNo}/"
@@ -345,20 +327,10 @@ pipeline {
   }
 }
 
-/**
- * Mattermost Notify (no script approvals)
- *
- * ✅ 정책:
- * - 실패 요약/consoleText 링크는 제거
- * - 알림 실패가 "조용히" 넘어가면 문제를 놓치기 쉬우므로,
- *   빌드는 실패로 만들지 않되 currentBuild.result를 UNSTABLE로 바꿈
- *   (파이프라인 자체는 통과하지만, 경고 상태로 남김)
- */
 def mmNotify(boolean success, Map info) {
   def icon  = success ? ":jenkins:" : ":warning:"
   def title = info.title ?: (success ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패")
 
-  // Mattermost 메시지 본문 구성
   def lines = []
   if (info.mention)  lines << "${info.mention}"
   if (info.kind)     lines << "**이벤트:** `${info.kind}`"
@@ -368,7 +340,6 @@ def mmNotify(boolean success, Map info) {
   if (info.commit)   lines << "**커밋:** ${info.commit}"
   if (info.buildUrl) lines << "**Jenkins:** ${info.buildUrl}"
 
-  // 어떤 단계가 실행됐는지 표시
   def ran = []
   if (info.ranBE)     ran << "BE"
   if (info.ranFE)     ran << "FE"
@@ -381,15 +352,9 @@ def mmNotify(boolean success, Map info) {
     text      : title + "\n" + lines.join("\n")
   ])
 
-  // payload를 파일로 저장(디버깅/확인 편함)
   writeFile file: 'mm_payload.json', text: payload
 
-  // Webhook은 Jenkins Credentials에서 가져옴(Secret Text)
   withCredentials([string(credentialsId: info.credId, variable: 'MM_WEBHOOK')]) {
-
-    // ✅ 중요: 알림 실패를 "조용히 무시(|| true)" 하지 않고 상태를 확인
-    // - returnStatus로 exit code만 받아서 파이프라인은 계속 진행
-    // - 실패 시 currentBuild.result를 UNSTABLE로 마킹
     def rc = sh(
       script: '''
         curl -sS -X POST -H 'Content-Type: application/json' \
