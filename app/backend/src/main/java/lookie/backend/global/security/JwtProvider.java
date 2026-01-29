@@ -121,4 +121,23 @@ public class JwtProvider {
                 .getPayload()
                 .get("role", String.class);
     }
+
+    /**
+     * 7. 성능 최적화: 토큰 검증 및 클레임 추출을 한 번에 수행
+     * - 기존: validateToken() -> getUserId() -> getRole() (3번 서명 검증)
+     * - 개선: validateAndGetClaims() (1번 서명 검증으로 끝)
+     * - StompHandler에서 사용
+     */
+    public io.jsonwebtoken.Claims validateAndGetClaims(String token) {
+        try {
+            return io.jsonwebtoken.Jwts.parser()
+                    .verifyWith(secretKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+        } catch (io.jsonwebtoken.JwtException | IllegalArgumentException e) {
+            // 유효하지 않은 토큰이면 예외를 던져서 호출부(StompHandler)에서 처리하게 함
+            throw new io.jsonwebtoken.JwtException("Invalid JWT token", e);
+        }
+    }
 }
