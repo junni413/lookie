@@ -1,0 +1,93 @@
+package lookie.backend.domain.user.service;
+
+import lombok.RequiredArgsConstructor;
+import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
+import lookie.backend.domain.user.exception.AlreadyExistsPhoneException;
+import lookie.backend.domain.user.exception.LoginFailedException;
+import lookie.backend.domain.user.exception.UserNotFoundException;
+import lookie.backend.domain.user.mapper.UserMapper;
+import lookie.backend.domain.user.vo.UserRole;
+import lookie.backend.domain.user.vo.UserVO;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class UserService {
+
+    private final UserMapper userMapper;
+    private final PasswordEncoder passwordEncoder;
+
+    /**
+     * 회원가입 비즈니스 로직
+     * - 전화번호 및 이메일 중복 체크
+     * - 비밀번호 암호화
+     * - 기본 권한 WORKER 설정
+     */
+    @Transactional
+    public void signup(UserVO userVO) {
+        // 1. 중복 확인 (전화번호)
+        if (userMapper.existByPhoneNumber(userVO.getPhoneNumber())) {
+            throw new AlreadyExistsPhoneException(userVO.getPhoneNumber());
+        }
+
+        // 2. 중복 확인 (이메일)
+        if (userMapper.existByEmail(userVO.getEmail())) {
+            throw new AlreadyExistsEmailException(userVO.getEmail());
+        }
+
+        // 3. 비밀번호 암호화 (BCrypt)
+        String encryptedPassword = passwordEncoder.encode(userVO.getPasswordHash());
+        userVO.setPasswordHash(encryptedPassword);
+
+        // 4. 기본 권한 설정 (명세서 기준 가입은 WORKER)
+        if (userVO.getRole() == null) {
+            userVO.setRole(UserRole.WORKER);
+        }
+
+        // 5. DB 저장 (MyBatis가 생성된 userId를 userVO에 자동 채움)
+        userMapper.insertUser(userVO);
+    }
+
+    /**
+     * 로그인 비즈니스 로직
+     * - 전화번호로 사용자 조회
+     * - 비밀번호 검증
+     * - 계정 활성화 상태 확인
+     * 
+     * @return 로그인 성공한 사용자 정보
+     */
+    @Transactional(readOnly = true)
+    public UserVO login(String phoneNumber, String rawPassword) {
+        // 1. 전화번호로 사용자 조회
+        UserVO user = userMapper.findByPhoneNumber(phoneNumber)
+                .orElseThrow(() -> new LoginFailedException(phoneNumber));
+
+        // 2. 비밀번호 검증
+        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            throw new LoginFailedException(phoneNumber);
+        }
+
+        // 3. 계정 활성화 상태 확인
+        if (user.getIsActive() == null || !user.getIsActive()) {
+            throw new UserNotFoundException(String.valueOf(user.getUserId()));
+        }
+
+        return user;
+    }
+
+    /**
+     * 전화번호 중복 체크 전용 (API용)
+     */
+    public boolean checkPhoneDuplicate(String phone) {
+        return userMapper.existByPhoneNumber(phone);
+    }
+
+    /**
+     * 이메일 중복 체크 전용 (API용)
+     */
+    public boolean checkEmailDuplicate(String email) {
+        return userMapper.existByEmail(email);
+    }
+}
