@@ -4,7 +4,7 @@ import WorkerDrawer from "@/components/shared/WorkerDrawer";
 import { useUIStore } from "@/stores/uiStore";
 import { Bell, LayoutGrid, ChevronLeft } from "lucide-react";
 
-type Ctx = { setTitle: (t: string) => void };
+export type MobileLayoutContext = { setTitle: (t: string) => void };
 
 export default function MobileLayout() {
   const navigate = useNavigate();
@@ -35,7 +35,6 @@ export default function MobileLayout() {
 
           {/* right icons */}
           <div className="flex items-center gap-1">
-            {/* 알림 */}
             <button
               type="button"
               className="relative rounded-lg p-2 hover:bg-gray-100"
@@ -43,11 +42,9 @@ export default function MobileLayout() {
               onClick={() => alert("TODO: 알림 페이지/모달")}
             >
               <Bell className="h-6 w-6 text-gray-900" />
-              {/* 알림 점 (필요 없으면 이 span 삭제) */}
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-500" />
             </button>
 
-            {/* 사이드바 */}
             <button
               type="button"
               className="rounded-lg p-2 hover:bg-gray-100"
@@ -60,10 +57,9 @@ export default function MobileLayout() {
         </header>
 
         <main className="flex-1 min-h-0 p-4">
-          <Outlet context={{ setTitle } satisfies Ctx} />
+          <Outlet context={{ setTitle }} />
         </main>
 
-        {/* 드로어 */}
         <WorkerDrawer />
       </div>
     </div>
