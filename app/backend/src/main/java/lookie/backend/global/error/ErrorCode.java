@@ -4,7 +4,7 @@ import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
 /**
- * 프론트엔드와 협의된 에러 코드 집합 
+ * 프론트엔드와 협의된 에러 코드 집합
  * 프론트가 화면/플로우를 변경해야 하는 경우에 정의
  */
 @Getter
@@ -33,9 +33,12 @@ public enum ErrorCode {
 	WORKER_ZONE_NOT_ASSIGNED("ZONE_001", HttpStatus.BAD_REQUEST, "작업자에게 배정된 작업 구역이 없습니다"),
 
 	// ===== ISSUE =====
-	ISSUE_RECAPTURE_REQUIRED("ISSUE_001", HttpStatus.BAD_REQUEST, "재촬영이 필요합니다");
+	ISSUE_RECAPTURE_REQUIRED("ISSUE_001", HttpStatus.BAD_REQUEST, "재촬영이 필요합니다"),
 
-	private final String code;              // 프론트 노출용
+	// ==== SYSTEM =====
+	SYSTEM_TEMPORARY_LOCK_FAILED("SYS_001",HttpStatus.TOO_MANY_REQUESTS,"요청이 많아 잠시 후 다시 시도해주세요");
+
+	private final String code; // 프론트 노출용
 	private final HttpStatus status;
 	private final String defaultMessage;
 

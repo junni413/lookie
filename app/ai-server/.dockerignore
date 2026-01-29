@@ -1,0 +1,18 @@
+# Git 관련
+.git
+.gitignore
+
+# 파이썬 캐시
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# 가상환경 (로컬 테스트 흔적)
+venv
+env
+.env
+
+# 모델 원본이나 다른 잡동사니
+*.pt
+*.md

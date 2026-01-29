@@ -1,6 +1,7 @@
 package lookie.backend.domain.task.service;
 
 import lombok.RequiredArgsConstructor;
+import lookie.backend.domain.task.event.TaskCompletedEvent;
 import lookie.backend.domain.task.exception.InvalidTaskStateException;
 import lookie.backend.domain.task.exception.NoAvailableTaskException;
 import lookie.backend.domain.task.exception.TaskAlreadyAssignedException;
@@ -11,6 +12,7 @@ import lookie.backend.domain.task.vo.TaskVO;
 import lookie.backend.domain.zone.exception.WorkerZoneNotAssignedException;
 import lookie.backend.domain.zone.mapper.ZoneAssignmentMapper;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,11 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskService {
     private final TaskMapper taskMapper;
     private final ZoneAssignmentMapper zoneAssignmentMapper;
-
-    // 작업 시작(할당)
+    private final ApplicationEventPublisher publisher;
 
     /**
-     * [핵심] 구역 기준 자동 작업 배정
+     * [작업 시작] 구역 기준 자동 작업 배정
      * - UNASSIGNED 작업 중 1개를 선택
      * - IN_PROGRESS로 상태 전이
      * - worker 할당
@@ -74,6 +75,17 @@ public class TaskService {
             // 업데이트 실패면 상태 불일치 가능성 (동시성/중복요청)
             throw new InvalidTaskStateException(TaskStatus.valueOf(task.getStatus()), TaskStatus.COMPLETED);
         }
+
+        TaskVO updatedTask = taskMapper.findById(taskId);
+
+        // 이벤트 발행
+        publisher.publishEvent(
+                new TaskCompletedEvent(
+                        updatedTask.getBatchTaskId(),
+                        updatedTask.getWorkerId(),
+                        updatedTask.getZoneId()
+                )
+        );
 
     }
 

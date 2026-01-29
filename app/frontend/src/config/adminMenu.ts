@@ -5,7 +5,11 @@ export interface AdminMenuItem {
 
 export const ADMIN_MENU: AdminMenuItem[] = [
   {
-    label: "대시보드",
+    label: "Dashboard",
     path: "/admin/dashboard",
+  },
+  {
+    label: "Issue",
+    path: "/admin/issue",
   },
 ];
