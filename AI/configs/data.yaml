@@ -1,0 +1,12 @@
+names:
+- banana_defect
+nc: 1
+roboflow:
+  license: CC BY 4.0
+  project: my-first-project-sudpc
+  url: https://universe.roboflow.com/lookie/my-first-project-sudpc/dataset/5
+  version: 5
+  workspace: lookie
+test: ../test/images
+train: ../train/images
+val: ../valid/images
