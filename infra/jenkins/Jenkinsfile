@@ -2,40 +2,29 @@ pipeline {
   agent any
 
   options {
-    timestamps()
-    disableConcurrentBuilds()
+    timestamps()              // 콘솔 로그에 시간 표시
+    disableConcurrentBuilds() // 같은 Job이 동시에 중복 실행되는 것 방지
   }
 
   environment {
-    // =====================================================================
+    // ============================================================
     // [DEPLOY] 배포 대상(EC2) 정보
-    // =====================================================================
+    // ============================================================
     DEPLOY_HOST  = 'i14b105.p.ssafy.io'
     DEPLOY_USER  = 'ubuntu'
     DEPLOY_DIR   = '/home/ubuntu/lookie/S14P11B105'
     SSH_CRED_ID  = 'ec2-ssh-key'
     GIT_REPO_SSH = 'git@lab.ssafy.com:s14-webmobile1-sub1/S14P11B105.git'
 
-    // =====================================================================
-    // [NOTIFY]
-    // =====================================================================
+    // ============================================================
+    // [NOTIFY] Mattermost Webhook (Jenkins Credentials: Secret text)
+    // ============================================================
     MM_WEBHOOK_CRED_ID = 'mattermost-webhook'
-
-    // =====================================================================
-    // [LINK]
-    // =====================================================================
     PUBLIC_JENKINS_URL = 'http://i14b105.p.ssafy.io:9000'
 
-    // =====================================================================
-    // [LOG]
-    // =====================================================================
-    BACKEND_LOG  = 'ci_backend.log'
-    FRONTEND_LOG = 'ci_frontend.log'
-    DEPLOY_LOG   = 'ci_deploy.log'
-
-    // =====================================================================
-    // [CI - Redis for Backend Test]
-    // =====================================================================
+    // ============================================================
+    // [CI - Redis] Backend 테스트에서 Redis가 필요하므로 임시 컨테이너 사용
+    // ============================================================
     CI_REDIS_CONTAINER = 'ci-redis'
     CI_REDIS_IMAGE     = 'redis:7-alpine'
     CI_REDIS_PORT      = '6379'
@@ -43,16 +32,22 @@ pipeline {
 
   stages {
 
+    // ============================================================
+    // 1) Detect Context
+    // - GitLab webhook으로 들어오는 이벤트 종류(MR/push)를 확인
+    // - 어떤 스테이지를 실행할지 플래그(RUN_BACKEND, RUN_FRONTEND, RUN_DEPLOY)를 결정
+    // ============================================================
     stage('Detect Context') {
       steps {
         script {
-          // GitLab Webhook env variations
-          env.EVENT_KIND  = ((env.OBJECT_KIND ?: env.object_kind ?: '').trim())
+          // GitLab webhook env 키가 플러그인/설정에 따라 다를 수 있어서 fallback 처리
+          env.EVENT_KIND  = ((env.OBJECT_KIND ?: env.object_kind ?: '').trim()) // merge_request / push
           env.PUSH_BRANCH = ((env.REF ?: env.ref ?: '').replace('refs/heads/', '').trim())
 
           env.MR_SOURCE   = ((env.MR_SOURCE ?: env.mr_source ?: '').trim())
           env.MR_TARGET   = ((env.MR_TARGET ?: env.mr_target ?: '').trim())
 
+          // 실행자 이름 (표시용)
           env.ACTOR = (
             env.MR_USER_NAME ?: env.MR_USER_USERNAME ?:
             env.PUSH_USER_NAME ?: env.PUSH_USER_USERNAME ?:
@@ -60,11 +55,15 @@ pipeline {
             'unknown'
           ).trim()
 
+          // 기본값: 아무것도 안 함
           env.RUN_BACKEND  = "false"
           env.RUN_FRONTEND = "false"
           env.RUN_DEPLOY   = "false"
 
-          // ✅ MR: source 브랜치 prefix로 CI 범위 결정
+          // ✅ MR인 경우: source 브랜치 prefix로 범위를 나눔
+          // - feat/be/*  -> BE 테스트만
+          // - feat/fe/*  -> FE 빌드만
+          // - 그 외      -> 둘 다
           if (env.EVENT_KIND == 'merge_request') {
             if ((env.MR_SOURCE ?: '').startsWith('feat/be/')) {
               env.RUN_BACKEND = "true"
@@ -76,252 +75,155 @@ pipeline {
             }
           }
 
-          // ✅ push develop: 배포
+          // ✅ develop로 push된 경우만 배포 수행
           if (env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop') {
             env.RUN_DEPLOY = "true"
           }
 
-          // ✅ 핵심: push는 배포 전용 → CI 절대 실행 안 함
-          if (env.EVENT_KIND == 'push') {
-            env.RUN_BACKEND  = "false"
-            env.RUN_FRONTEND = "false"
-          }
-
+          // 확인용 출력
           echo """
-[Webhook]
-- kind       = ${env.EVENT_KIND}
-- actor      = ${env.ACTOR}
-- pushBranch = ${env.PUSH_BRANCH}
-- mrSource   = ${env.MR_SOURCE}
-- mrTarget   = ${env.MR_TARGET}
+[kind=${env.EVENT_KIND}]
+actor=${env.ACTOR}
+pushBranch=${env.PUSH_BRANCH}
+mrSource=${env.MR_SOURCE}
+mrTarget=${env.MR_TARGET}
 
-[Plan]
-- backendTest   = ${env.RUN_BACKEND}
-- frontendBuild = ${env.RUN_FRONTEND}
-- deploy        = ${env.RUN_DEPLOY}
+plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, DEPLOY=${env.RUN_DEPLOY}
 """.trim()
         }
       }
     }
 
+    // ============================================================
+    // 2) Checkout
+    // - 실제로 실행할 스테이지가 있을 때만 코드 체크아웃
+    // - MR일 때도 checkout scm 으로 MR 커밋이 받아지는 구성이면 충분
+    // ============================================================
     stage('Checkout') {
+      when {
+        expression { env.RUN_BACKEND == "true" || env.RUN_FRONTEND == "true" || env.RUN_DEPLOY == "true" }
+      }
       steps {
         checkout scm
-
-        script {
-          // ✅ MR이면 source branch 체크아웃 시도 (삭제된 브랜치면 넘어감)
-          if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
-            sh """
-              bash -lc '
-                set -euo pipefail
-                echo "== Try checkout MR source branch: ${env.MR_SOURCE} =="
-
-                # origin에 해당 브랜치 ref가 없을 수도 있어서 명시 fetch
-                git fetch origin "+refs/heads/${env.MR_SOURCE}:refs/remotes/origin/${env.MR_SOURCE}" >/dev/null 2>&1 || true
-
-                if git rev-parse --verify --quiet "refs/remotes/origin/${env.MR_SOURCE}" >/dev/null; then
-                  git checkout -B "${env.MR_SOURCE}" "origin/${env.MR_SOURCE}"
-                  echo "== Checked out source branch =="
-
-                else
-                  echo "!! origin/${env.MR_SOURCE} not found (maybe deleted after merge). Continue with current ref."
-                fi
-
-                echo "== Current branch =="
-                git branch --show-current || true
-                git log -1 --oneline || true
-              '
-            """
-          }
-        }
       }
     }
 
-    stage('Backend Test (Maven + Redis)') {
+    // ============================================================
+    // 3) Backend Test (Redis + Maven)
+    // - MR에서만 실행
+    // - Redis가 필요한 테스트/빈(Redisson 등)이 있어서 CI 중에 Redis 컨테이너를 임시로 띄움
+    // - mvn test 실행 시, redis host/port를 강제로 주입(127.0.0.1:6379)
+    // ============================================================
+    stage('Backend Test (Redis + Maven)') {
       when {
-        expression {
-          env.EVENT_KIND == 'merge_request' &&
-          env.RUN_BACKEND == "true" &&
-          env.RUN_DEPLOY != "true"
-        }
+        expression { env.EVENT_KIND == 'merge_request' && env.RUN_BACKEND == "true" }
       }
-
       steps {
         dir('app/backend') {
           sh """
             bash -lc '
               set -euo pipefail
-              : > ../../${BACKEND_LOG}
 
-              START_TS=\$(date +%s)
-
-              echo "===== [Backend] env snapshot =====" | tee -a ../../${BACKEND_LOG}
-              free -m | tee -a ../../${BACKEND_LOG} || true
-              df -h | tee -a ../../${BACKEND_LOG} || true
-
-              echo "===== [Backend] docker version (for redis) =====" | tee -a ../../${BACKEND_LOG}
-              docker version 2>&1 | tee -a ../../${BACKEND_LOG}
-
-              echo "===== [Backend] start CI redis =====" | tee -a ../../${BACKEND_LOG}
+              # (1) Redis 컨테이너 실행 (기존에 있으면 제거)
               docker rm -f ${CI_REDIS_CONTAINER} >/dev/null 2>&1 || true
+              docker run -d --name ${CI_REDIS_CONTAINER} -p ${CI_REDIS_PORT}:6379 ${CI_REDIS_IMAGE} >/dev/null
 
-              # 포트 충돌 발생 시 로그로 확인 가능
-              docker run -d --name ${CI_REDIS_CONTAINER} -p ${CI_REDIS_PORT}:6379 ${CI_REDIS_IMAGE} 2>&1 | tee -a ../../${BACKEND_LOG}
-
-              echo "===== [Backend] wait redis ready =====" | tee -a ../../${BACKEND_LOG}
-              READY=0
+              # (2) Redis 준비될 때까지 최대 30초 대기 (PING -> PONG)
               for i in \$(seq 1 30); do
                 if docker exec ${CI_REDIS_CONTAINER} redis-cli ping 2>/dev/null | grep -q PONG; then
-                  echo "Redis is ready" | tee -a ../../${BACKEND_LOG}
-                  READY=1
                   break
                 fi
-                echo "Waiting Redis... (\$i/30)" | tee -a ../../${BACKEND_LOG}
                 sleep 1
               done
 
-              if [ "\$READY" -ne 1 ]; then
-                echo "!! Redis not ready. container logs:" | tee -a ../../${BACKEND_LOG}
-                docker logs ${CI_REDIS_CONTAINER} | tail -200 | tee -a ../../${BACKEND_LOG} || true
-                exit 1
-              fi
-
-              echo "===== [Backend] mvnw -v =====" | tee -a ../../${BACKEND_LOG}
+              # (3) Maven 테스트 실행
+              # - profile=ci : 테스트 전용 설정을 쓴다면 여기로 분리
+              # - spring.redis.host/port : Jenkins 환경에서 localhost로 확실히 붙도록 강제
               chmod +x mvnw || true
-              ./mvnw -v 2>&1 | tee -a ../../${BACKEND_LOG}
-
-              echo "===== [Backend] mvnw clean test (profile=ci) =====" | tee -a ../../${BACKEND_LOG}
-              # ✅ 핵심: 테스트에서 Redis가 반드시 localhost로 붙도록 강제 주입
-              ./mvnw clean test \\
-                -Dspring.profiles.active=ci \\
-                -Dspring.redis.host=127.0.0.1 \\
-                -Dspring.redis.port=${CI_REDIS_PORT} \\
-                2>&1 | tee -a ../../${BACKEND_LOG}
-
-              END_TS=\$(date +%s)
-              echo "===== [Backend] duration: \$((END_TS-START_TS))s =====" | tee -a ../../${BACKEND_LOG}
+              ./mvnw -q clean test \
+                -Dspring.profiles.active=ci \
+                -Dspring.redis.host=127.0.0.1 \
+                -Dspring.redis.port=${CI_REDIS_PORT}
             '
           """
         }
       }
-
       post {
         always {
-          sh """
-            bash -lc '
-              docker rm -f ${CI_REDIS_CONTAINER} >/dev/null 2>&1 || true
-            '
-          """
+          // 테스트 성공/실패와 관계없이 Redis 컨테이너 정리
+          sh "bash -lc 'docker rm -f ${CI_REDIS_CONTAINER} >/dev/null 2>&1 || true'"
         }
       }
     }
 
+    // ============================================================
+    // 4) Frontend Build (React)
+    // - MR에서만 실행
+    // - node:20-alpine 컨테이너로 빌드(호스트에 node 설치 불필요)
+    // ============================================================
     stage('Frontend Build (React)') {
       when {
-        expression {
-          env.EVENT_KIND == 'merge_request' &&
-          env.RUN_FRONTEND == "true" &&
-          env.RUN_DEPLOY != "true"
-        }
+        expression { env.EVENT_KIND == 'merge_request' && env.RUN_FRONTEND == "true" }
       }
-
       steps {
         dir('app/frontend') {
           sh """
             bash -lc '
               set -euo pipefail
-              : > ../../${FRONTEND_LOG}
-
-              START_TS=\$(date +%s)
-
-              echo "===== [Frontend] env snapshot =====" | tee -a ../../${FRONTEND_LOG}
-              free -m | tee -a ../../${FRONTEND_LOG} || true
-              df -h | tee -a ../../${FRONTEND_LOG} || true
-              docker system df | tee -a ../../${FRONTEND_LOG} || true
-
-              echo "===== [Frontend] docker version =====" | tee -a ../../${FRONTEND_LOG}
-              docker version 2>&1 | tee -a ../../${FRONTEND_LOG}
-
-              echo "===== [Frontend] node build (container) =====" | tee -a ../../${FRONTEND_LOG}
-              docker run --rm \\
-                -v "\$PWD":/app -w /app \\
+              docker run --rm \
+                -v "\$PWD":/app -w /app \
                 node:20-alpine sh -lc "
                   set -e
-                  node -v
-                  npm -v
                   npm ci
                   npm run build
-                " 2>&1 | tee -a ../../${FRONTEND_LOG}
-
-              END_TS=\$(date +%s)
-              echo "===== [Frontend] duration: \$((END_TS-START_TS))s =====" | tee -a ../../${FRONTEND_LOG}
+                "
             '
           """
         }
       }
     }
 
+    // ============================================================
+    // 5) Deploy (develop push only)
+    // - develop 브랜치로 push 되었을 때만 실행
+    // - EC2에 SSH로 접속해서 최신 develop 코드를 당겨서 docker compose로 배포
+    // ============================================================
     stage('Deploy (develop push only)') {
-      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' } }
-
+      when {
+        expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' }
+      }
       steps {
-        sh """
-          bash -lc '
-            set -euo pipefail
-            : > ${DEPLOY_LOG}
-          '
-        """
-
         sshagent(credentials: [env.SSH_CRED_ID]) {
           sh """
             bash -lc '
               set -euo pipefail
 
-              START_TS=\$(date +%s)
-
-              echo "===== [Deploy] prepare known_hosts =====" | tee -a ${DEPLOY_LOG}
+              # SSH known_hosts 등록(호스트키 확인 프롬프트 방지)
               mkdir -p ~/.ssh
-              touch ~/.ssh/known_hosts
-              chmod 700 ~/.ssh
-              chmod 600 ~/.ssh/known_hosts
               ssh-keyscan -H ${DEPLOY_HOST} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-              echo "===== [Deploy] remote deploy start =====" | tee -a ${DEPLOY_LOG}
-
+              # 원격에서 배포 수행
               ssh ${DEPLOY_USER}@${DEPLOY_HOST} "
                 set -euo pipefail
                 mkdir -p ${DEPLOY_DIR}
                 cd ${DEPLOY_DIR}
 
-                # -----------------------------------------------------------
-                # 1) 코드 최신화
-                # -----------------------------------------------------------
+                # 저장소 없으면 최초 clone
                 if [ ! -d .git ]; then
                   git clone ${GIT_REPO_SSH} .
                 fi
 
+                # develop 최신화(강제로 origin/develop 상태로 맞춤)
                 git fetch --all
                 git checkout develop
                 git reset --hard origin/develop
 
-                # -----------------------------------------------------------
-                # 2) 마이그레이션 포함 배포 순서
-                # -----------------------------------------------------------
+                # 빌드 및 기동 순서
                 docker compose build
-
-                # DB/캐시 먼저 기동
                 docker compose up -d mysql redis
-
-                # 마이그레이션 (실패하면 배포 중단)
                 docker compose run --rm migrate
-
-                # 앱 기동
                 docker compose up -d backend nginx
-              " 2>&1 | tee -a ${DEPLOY_LOG}
-
-              echo "===== [Deploy] remote deploy done =====" | tee -a ${DEPLOY_LOG}
-              END_TS=\$(date +%s)
-              echo "===== [Deploy] duration: \$((END_TS-START_TS))s =====" | tee -a ${DEPLOY_LOG}
+              "
             '
           """
         }
@@ -329,67 +231,42 @@ pipeline {
     }
   }
 
+  // ============================================================
+  // post: 항상 Mattermost 알림
+  // ============================================================
   post {
     always {
       script {
-        def isMR   = (env.EVENT_KIND == 'merge_request')
-        def isPush = (env.EVENT_KIND == 'push')
-
-        def branch = isMR ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
-        def actor  = env.ACTOR ?: 'unknown'
-
-        // checkout 실패/부분 실패 대비
-        def commitMsg = '(unknown)'
-        def commitSha = '(unknown)'
-        try {
-          commitMsg = sh(script: "git log -1 --pretty=%s", returnStdout: true).trim()
-          commitSha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-        } catch (ignored) {
-          // noop
-        }
-
-        def ranBE     = (env.RUN_BACKEND == "true")
-        def ranFE     = (env.RUN_FRONTEND == "true")
-        def ranDeploy = (env.RUN_DEPLOY == "true")
-
         def ok = (currentBuild.currentResult == 'SUCCESS')
+        def kind = env.EVENT_KIND ?: ''
+        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
+        def title = ok ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패"
 
-        def label = isMR ? "CI" : (isPush ? "배포" : "빌드")
-        def title = ok ? ":white_check_mark: ${label} 성공" : ":x: ${label} 실패"
-
-        // ✅ 폴더/멀티브랜치 jobName 대응: /job/를 세그먼트마다 삽입
+        // Jenkins 외부 접근 링크(폴더형 job도 대응)
         def jobName = (env.JOB_NAME ?: '').trim()
         def buildNo = (env.BUILD_NUMBER ?: '').trim()
-
         def jobPath = jobName ? jobName.split('/').collect { "job/${it}" }.join('/') : ''
-        def buildUrlFixed = (env.BUILD_URL ?: '').trim()
-        if (!buildUrlFixed) {
-          buildUrlFixed = jobPath ? "${env.PUBLIC_JENKINS_URL}/${jobPath}/${buildNo}/" : "${env.PUBLIC_JENKINS_URL}"
-        } else {
-          // BUILD_URL이 내부 주소면 PUBLIC_JENKINS_URL로 교체
-          // (완전 정확한 프록시 설정이 아니어도 링크 접근성을 올려줌)
-          buildUrlFixed = buildUrlFixed.replaceFirst(/^https?:\\/\\/[^\\/]+/, env.PUBLIC_JENKINS_URL)
-        }
+        def buildUrl = jobPath ? "${env.PUBLIC_JENKINS_URL}/${jobPath}/${buildNo}/" : env.PUBLIC_JENKINS_URL
 
         mmNotify(ok, [
-          title    : title,
-          mention  : '@channel',
-          kind     : env.EVENT_KIND,
-          actor    : actor,
-          branch   : branch,
-          target   : (env.MR_TARGET ?: ''),
-          commit   : "${commitSha} - ${commitMsg}",
-          buildUrl : buildUrlFixed,
-          credId   : env.MM_WEBHOOK_CRED_ID,
-          ranBE    : ranBE,
-          ranFE    : ranFE,
-          ranDeploy: ranDeploy
+          title   : title,
+          mention : '@channel',
+          kind    : kind,
+          actor   : env.ACTOR ?: 'unknown',
+          branch  : branch,
+          target  : (env.MR_TARGET ?: ''),
+          buildUrl: buildUrl,
+          credId  : env.MM_WEBHOOK_CRED_ID
         ])
       }
     }
   }
 }
 
+// ============================================================
+// Mattermost 알림 함수
+// - Jenkins Credentials에 저장된 Webhook URL로 POST 전송
+// ============================================================
 def mmNotify(boolean success, Map info) {
   def icon  = success ? ":jenkins:" : ":warning:"
   def title = info.title ?: (success ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패")
@@ -400,14 +277,7 @@ def mmNotify(boolean success, Map info) {
   if (info.actor)    lines << "**실행자:** `${info.actor}`"
   if (info.branch)   lines << "**브랜치:** `${info.branch}`"
   if (info.target)   lines << "**타겟:** `${info.target}`"
-  if (info.commit)   lines << "**커밋:** ${info.commit}"
   if (info.buildUrl) lines << "**Jenkins:** ${info.buildUrl}"
-
-  def ran = []
-  if (info.ranBE)     ran << "BE"
-  if (info.ranFE)     ran << "FE"
-  if (info.ranDeploy) ran << "DEPLOY"
-  if (!ran.isEmpty()) lines << "**실행:** `${ran.join(' + ')}`"
 
   def payload = groovy.json.JsonOutput.toJson([
     username  : "Jenkins",
@@ -418,23 +288,10 @@ def mmNotify(boolean success, Map info) {
   writeFile file: 'mm_payload.json', text: payload
 
   withCredentials([string(credentialsId: info.credId, variable: 'MM_WEBHOOK')]) {
-    def rc = sh(
-      script: '''
-        curl -sS -X POST -H 'Content-Type: application/json' \
-          --data-binary @mm_payload.json \
-          "$MM_WEBHOOK"
-      ''',
-      returnStatus: true
-    )
-
-    if (rc != 0) {
-      echo "⚠️ Mattermost notify failed (exit code: ${rc})."
-      // ✅ 실패 빌드인데 UNSTABLE로 덮지 않도록 보호
-      if (currentBuild.currentResult == 'SUCCESS') {
-        currentBuild.result = 'UNSTABLE'
-      }
-    } else {
-      echo "✅ Mattermost notify sent."
-    }
+    sh '''
+      curl -sS -X POST -H 'Content-Type: application/json' \
+        --data-binary @mm_payload.json \
+        "$MM_WEBHOOK" >/dev/null
+    '''
   }
 }
