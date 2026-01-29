@@ -21,9 +21,6 @@ const issueBadgeVariants = cva(
                 DAMAGED: "bg-primary hover:bg-primary",
             },
         },
-        defaultVariants: {
-            type: "DAMAGED",
-        },
     }
 );
 
@@ -40,8 +37,6 @@ function IssueTypeBadge({ type }: { type: IssueType }) {
 export default function IssueListItem({ issue, selected, onClick }: IssueListItemProps) {
     const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
 
-    // Get worker info safely (fallback if missing)
-    // Get worker info safely (fallback if missing)
     const worker = issue.worker || {
         worker_id: -1, // Dummy ID
         status: "OFF_WORK",
