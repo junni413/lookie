@@ -9,6 +9,7 @@ import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 
 import WorkerAttend from "./pages/worker/Attend";
+import WorkerHome from "./pages/worker/Home"; // ✅ 추가
 import AdminDashboard from "./pages/admin/Dashboard";
 
 // ✅ 인증 가드: token 없으면 /login
@@ -80,9 +81,15 @@ export default function App() {
       >
         {/* ✅ 워커 기본 진입 = 출근하기 */}
         <Route index element={<Navigate to="/worker/attend" replace />} />
+
+        {/* ✅ 출근하기 */}
         <Route path="attend" element={<WorkerAttend />} />
+
+        {/* ✅ 작업자 대시보드(Home) */}
+        <Route path="home" element={<WorkerHome />} />
+
         {/* 필요하면 여기 아래로 worker 라우트 추가 */}
-        {/* <Route path="issue" element={<WorkerIssue />} /> */}
+        {/* <Route path="work-info" element={<WorkInfo />} /> */}
       </Route>
 
       {/* ADMIN */}
