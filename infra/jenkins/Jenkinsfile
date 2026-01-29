@@ -143,6 +143,9 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, DEPLOY=${env.RUN_DEPLOY}
       }
     }
 
+    // ============================================================
+    // ✅ A방식: Redis를 6379로 고정해서 띄우고(ci 프로파일 강제)
+    // ============================================================
     stage('Backend Test (Redis + Maven)') {
       when {
         expression { env.EVENT_KIND == 'merge_request' && env.RUN_BACKEND == "true" }
@@ -161,22 +164,14 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, DEPLOY=${env.RUN_DEPLOY}
               # (1) Redis 컨테이너 실행 (기존 있으면 제거)
               docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
 
-              # ✅ 포트 충돌 방지: 랜덤 호스트 포트 할당
-              docker run -d --name "${CI_REDIS_CONTAINER}" -p 0:6379 "${CI_REDIS_IMAGE}" >/dev/null
+              # ✅ A방식: 호스트 포트 6379 고정
+              # (호스트에 이미 6379 사용 중이면 여기서 실패하므로 그땐 B방식으로)
+              docker run -d --name "${CI_REDIS_CONTAINER}" -p 6379:6379 "${CI_REDIS_IMAGE}" >/dev/null
 
-              # (2) 할당된 호스트 포트 조회
-              HOST_PORT="$(docker port "${CI_REDIS_CONTAINER}" 6379/tcp | sed -E "s/.*:([0-9]+)$/\\1/" | tail -n 1)"
-              if [ -z "${HOST_PORT}" ]; then
-                echo "[ERROR] Redis 호스트 포트를 조회하지 못했습니다."
-                docker logs "${CI_REDIS_CONTAINER}" || true
-                exit 1
-              fi
-              echo "[CI] Redis mapped host port: ${HOST_PORT}"
-
-              # (3) Redis 준비될 때까지 최대 30초 대기
+              # (2) Redis 준비될 때까지 최대 30초 대기
               for i in $(seq 1 30); do
                 if docker exec "${CI_REDIS_CONTAINER}" redis-cli ping 2>/dev/null | grep -q PONG; then
-                  echo "[CI] Redis is ready."
+                  echo "[CI] Redis is ready on localhost:6379"
                   break
                 fi
                 sleep 1
@@ -187,23 +182,23 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, DEPLOY=${env.RUN_DEPLOY}
                 fi
               done
 
-              # (4) Maven 테스트
+              # (3) Maven 테스트
               chmod +x mvnw || true
 
-              # ✅ Spring Boot 3.x는 spring.data.redis.* 가 표준이라 둘 다 강제 주입
+              # ✅ 프로파일/redis host/port 강제 (설정 흔들림 방지)
               export SPRING_PROFILES_ACTIVE=ci
               export SPRING_DATA_REDIS_HOST=127.0.0.1
-              export SPRING_DATA_REDIS_PORT="${HOST_PORT}"
+              export SPRING_DATA_REDIS_PORT=6379
               export SPRING_REDIS_HOST=127.0.0.1
-              export SPRING_REDIS_PORT="${HOST_PORT}"
+              export SPRING_REDIS_PORT=6379
 
-              echo "[CI] Maven test with ci profile + redis host/port injected"
+              echo "[CI] Maven test with ci profile + redis=127.0.0.1:6379"
               ./mvnw -q clean test \
                 -Dspring.profiles.active=ci \
                 -Dspring.data.redis.host=127.0.0.1 \
-                -Dspring.data.redis.port="${HOST_PORT}" \
+                -Dspring.data.redis.port=6379 \
                 -Dspring.redis.host=127.0.0.1 \
-                -Dspring.redis.port="${HOST_PORT}"
+                -Dspring.redis.port=6379
             '
           '''
         }
@@ -233,7 +228,6 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, DEPLOY=${env.RUN_DEPLOY}
               echo "[CI] Pre-pull node image (best effort)"
               docker pull node:20-alpine >/dev/null 2>&1 || true
 
-              # npm 캐시(체감 큼)
               mkdir -p "${HOME}/.npm"
 
               docker run --rm \
@@ -274,18 +268,14 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, DEPLOY=${env.RUN_DEPLOY}
 
                 git fetch origin
 
-                # ✅ 로컬 develop을 origin/develop로 강제 동기화
                 git checkout -B develop origin/develop
 
                 has_svc() { docker compose config --services | grep -qx \"\$1\"; }
 
-                # ✅ 이미지 기반 서비스는 미리 pull (특히 migrate(flyway) 첫 pull이 오래 걸리는 문제 방지)
                 if has_svc mysql;   then docker compose pull mysql   || true; fi
                 if has_svc redis;   then docker compose pull redis   || true; fi
                 if has_svc migrate; then docker compose pull migrate || true; fi
 
-                # ✅ build는 build 정의 있는 것만(backend/nginx 등)
-                # (compose build가 문제 없다면 아래 2줄을 docker compose build 로 바꿔도 됨)
                 if has_svc backend; then docker compose build backend; fi
                 if has_svc nginx;   then docker compose build nginx;   fi
 
@@ -349,7 +339,7 @@ def mmNotify(boolean success, Map info) {
   def payload = groovy.json.JsonOutput.toJson([
     username  : "Jenkins",
     icon_emoji: icon,
-    text      : title + "\n" + lines.join("\n")
+    text      : title + "\\n" + lines.join("\\n")
   ])
 
   writeFile file: 'mm_payload.json', text: payload
