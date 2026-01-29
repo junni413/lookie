@@ -97,11 +97,11 @@ pipeline {
           // -> checkout scm이 이미 fetch 해오므로 fetch 제거
           if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
             sh """
-              #!/usr/bin/env bash
-              set -euo pipefail
-
-              git rev-parse --verify origin/${env.MR_SOURCE}
-              git checkout -B ${env.MR_SOURCE} origin/${env.MR_SOURCE}
+              bash -lc '
+                set -euo pipefail
+                git rev-parse --verify origin/${env.MR_SOURCE}
+                git checkout -B ${env.MR_SOURCE} origin/${env.MR_SOURCE}
+              '
             """
           }
         }
@@ -116,14 +116,15 @@ pipeline {
       steps {
         dir('app/backend') {
           sh """
-            #!/usr/bin/env bash
-            set -euo pipefail
+            bash -lc '
+              set -euo pipefail
 
-            : > ../../${BACKEND_LOG}
-            chmod +x mvnw || true
+              : > ../../${BACKEND_LOG}
+              chmod +x mvnw || true
 
-            ./mvnw -v 2>&1 | tee -a ../../${BACKEND_LOG}
-            ./mvnw clean test 2>&1 | tee -a ../../${BACKEND_LOG}
+              ./mvnw -v 2>&1 | tee -a ../../${BACKEND_LOG}
+              ./mvnw clean test 2>&1 | tee -a ../../${BACKEND_LOG}
+            '
           """
         }
       }
@@ -137,22 +138,23 @@ pipeline {
       steps {
         dir('app/frontend') {
           sh """
-            #!/usr/bin/env bash
-            set -euo pipefail
+            bash -lc '
+              set -euo pipefail
 
-            : > ../../${FRONTEND_LOG}
+              : > ../../${FRONTEND_LOG}
 
-            docker version 2>&1 | tee -a ../../${FRONTEND_LOG}
+              docker version 2>&1 | tee -a ../../${FRONTEND_LOG}
 
-            docker run --rm \
-              -v "\$PWD":/app -w /app \
-              node:20-alpine sh -lc '
-                set -e
-                node -v
-                npm -v
-                npm ci
-                npm run build
-              ' 2>&1 | tee -a ../../${FRONTEND_LOG}
+              docker run --rm \
+                -v "\$PWD":/app -w /app \
+                node:20-alpine sh -lc "
+                  set -e
+                  node -v
+                  npm -v
+                  npm ci
+                  npm run build
+                " 2>&1 | tee -a ../../${FRONTEND_LOG}
+            '
           """
         }
       }
@@ -165,31 +167,33 @@ pipeline {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' } }
       steps {
         sh """
-          #!/usr/bin/env bash
-          set -euo pipefail
-          : > ${DEPLOY_LOG}
+          bash -lc '
+            set -euo pipefail
+            : > ${DEPLOY_LOG}
+          '
         """
 
         sshagent(credentials: [env.SSH_CRED_ID]) {
           sh """
-            #!/usr/bin/env bash
-            set -euo pipefail
+            bash -lc '
+              set -euo pipefail
 
-            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-              set -e
-              mkdir -p ${DEPLOY_DIR}
-              cd ${DEPLOY_DIR}
+              ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
+                set -e
+                mkdir -p ${DEPLOY_DIR}
+                cd ${DEPLOY_DIR}
 
-              if [ ! -d .git ]; then
-                git clone ${GIT_REPO_SSH} .
-              fi
+                if [ ! -d .git ]; then
+                  git clone ${GIT_REPO_SSH} .
+                fi
 
-              git fetch --all
-              git checkout develop
-              git reset --hard origin/develop
+                git fetch --all
+                git checkout develop
+                git reset --hard origin/develop
 
-              docker compose up -d --build
-            ' 2>&1 | tee -a ${DEPLOY_LOG}
+                docker compose up -d --build
+              " 2>&1 | tee -a ${DEPLOY_LOG}
+            '
           """
         }
       }
