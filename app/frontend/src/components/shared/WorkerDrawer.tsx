@@ -12,8 +12,8 @@ type MenuItem = {
 
 const MENUS: MenuItem[] = [
   {
-    title: "내 정보 수정",
-    desc: "프로필 및 계정 설정",
+    title: "마이페이지",
+    desc: "내 정보 조회 및 수정",
     to: "/worker/mypage", // ✅ 사이드바는 '마이페이지'로 이동
     emoji: "👤",
   },
