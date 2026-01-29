@@ -18,13 +18,12 @@ pipeline {
     MM_WEBHOOK_CRED_ID = 'mattermost-webhook'
 
     // =========================
-    // Jenkins Public URL (fix 8080 -> 9000)
-    // (Mattermost에 링크로 보여줄 용도)
+    // Jenkins Public URL
     // =========================
     PUBLIC_JENKINS_URL = 'http://i14b105.p.ssafy.io:9000'
 
     // =========================
-    // Logs (파일로도 남기고 싶으면 유지)
+    // Logs
     // =========================
     BACKEND_LOG  = 'ci_backend.log'
     FRONTEND_LOG = 'ci_frontend.log'
@@ -36,14 +35,12 @@ pipeline {
     stage('Detect Context') {
       steps {
         script {
-          // Generic Webhook Trigger 변수명 + fallback
           env.EVENT_KIND  = (env.OBJECT_KIND ?: env.object_kind ?: '').trim()
           env.PUSH_BRANCH = (env.REF ?: env.ref ?: '').replace('refs/heads/', '').trim()
 
           env.MR_SOURCE   = (env.MR_SOURCE ?: env.mr_source ?: '').trim()
           env.MR_TARGET   = (env.MR_TARGET ?: env.mr_target ?: '').trim()
 
-          // 누가 트리거했는지 (MR / push 모두 fallback)
           env.ACTOR = (
             env.MR_USER_NAME ?: env.MR_USER_USERNAME ?:
             env.PUSH_USER_NAME ?: env.PUSH_USER_USERNAME ?:
@@ -51,7 +48,6 @@ pipeline {
             'unknown'
           ).trim()
 
-          // 실행 계획
           env.RUN_BACKEND  = "false"
           env.RUN_FRONTEND = "false"
           env.RUN_DEPLOY   = "false"
@@ -92,7 +88,6 @@ pipeline {
       steps {
         checkout scm
         script {
-          // MR이면 source 브랜치로 체크아웃 (checkout scm이 이미 fetch 해오므로 추가 fetch X)
           if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
             sh """
               bash -lc '
@@ -121,12 +116,20 @@ pipeline {
               set -euo pipefail
               : > ../../${BACKEND_LOG}
 
+              START_TS=\$(date +%s)
+              echo "===== [Backend] env snapshot =====" | tee -a ../../${BACKEND_LOG}
+              free -m | tee -a ../../${BACKEND_LOG}
+              df -h | tee -a ../../${BACKEND_LOG}
+
               echo "===== [Backend] mvnw -v =====" | tee -a ../../${BACKEND_LOG}
               chmod +x mvnw || true
               ./mvnw -v 2>&1 | tee -a ../../${BACKEND_LOG}
 
               echo "===== [Backend] mvnw clean test =====" | tee -a ../../${BACKEND_LOG}
               ./mvnw clean test 2>&1 | tee -a ../../${BACKEND_LOG}
+
+              END_TS=\$(date +%s)
+              echo "===== [Backend] duration: \$((END_TS-START_TS))s =====" | tee -a ../../${BACKEND_LOG}
             '
           """
         }
@@ -142,6 +145,12 @@ pipeline {
               set -euo pipefail
               : > ../../${FRONTEND_LOG}
 
+              START_TS=\$(date +%s)
+              echo "===== [Frontend] env snapshot =====" | tee -a ../../${FRONTEND_LOG}
+              free -m | tee -a ../../${FRONTEND_LOG}
+              df -h | tee -a ../../${FRONTEND_LOG}
+              docker system df | tee -a ../../${FRONTEND_LOG}
+
               echo "===== [Frontend] docker version =====" | tee -a ../../${FRONTEND_LOG}
               docker version 2>&1 | tee -a ../../${FRONTEND_LOG}
 
@@ -155,6 +164,9 @@ pipeline {
                   npm ci
                   npm run build
                 " 2>&1 | tee -a ../../${FRONTEND_LOG}
+
+              END_TS=\$(date +%s)
+              echo "===== [Frontend] duration: \$((END_TS-START_TS))s =====" | tee -a ../../${FRONTEND_LOG}
             '
           """
         }
@@ -175,10 +187,20 @@ pipeline {
           sh """
             bash -lc '
               set -euo pipefail
+              START_TS=\$(date +%s)
+
+              echo "===== [Deploy] prepare known_hosts =====" | tee -a ${DEPLOY_LOG}
+              mkdir -p ~/.ssh
+              touch ~/.ssh/known_hosts
+              chmod 700 ~/.ssh
+              chmod 600 ~/.ssh/known_hosts
+
+              # ✅ StrictHostKeyChecking=no 제거 대신: 호스트키를 미리 등록
+              ssh-keyscan -H ${DEPLOY_HOST} >> ~/.ssh/known_hosts 2>/dev/null || true
 
               echo "===== [Deploy] remote deploy start =====" | tee -a ${DEPLOY_LOG}
 
-              ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
+              ssh ${DEPLOY_USER}@${DEPLOY_HOST} "
                 set -e
                 mkdir -p ${DEPLOY_DIR}
                 cd ${DEPLOY_DIR}
@@ -191,10 +213,17 @@ pipeline {
                 git checkout develop
                 git reset --hard origin/develop
 
-                docker compose up -d --build
+                # ✅ 빌드/업 분리 (캐시 활용)
+                docker compose build
+                docker compose up -d
+
+                # (선택) 사용하지 않는 이미지/캐시 정리(너무 자주 하면 느려질 수 있음)
+                # docker image prune -f
               " 2>&1 | tee -a ${DEPLOY_LOG}
 
               echo "===== [Deploy] remote deploy done =====" | tee -a ${DEPLOY_LOG}
+              END_TS=\$(date +%s)
+              echo "===== [Deploy] duration: \$((END_TS-START_TS))s =====" | tee -a ${DEPLOY_LOG}
             '
           """
         }
@@ -223,7 +252,6 @@ pipeline {
         def label = isMR ? "CI" : (isPush ? "배포" : "빌드")
         def title = ok ? ":white_check_mark: ${label} 성공" : ":x: ${label} 실패"
 
-        // Mattermost에 보여줄 빌드 링크 (외부 9000)
         def jobName = env.JOB_NAME ?: ''
         def buildNo = env.BUILD_NUMBER ?: ''
         def buildUrlFixed = "${env.PUBLIC_JENKINS_URL}/job/${jobName}/${buildNo}/"
