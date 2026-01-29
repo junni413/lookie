@@ -15,7 +15,8 @@ import ProfileEdit from "./pages/worker/ProfileEdit";
 import WorkHistory from "./pages/worker/WorkHistory";
 import IssueListPage from "./pages/worker/IssueList";
 
-import AdminDashboard from "./pages/admin/Dashboard";
+import AdminDashboard from "./pages/admin/pages/Dashboard";
+import IssuePage from "./pages/admin/pages/Issue";
 
 // ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -113,9 +114,9 @@ export default function App() {
       >
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="issue" element={<IssuePage />} />
       </Route>
 
-      {/* 404 */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

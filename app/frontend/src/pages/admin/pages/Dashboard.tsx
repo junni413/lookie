@@ -1,11 +1,24 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import StatusCard from "./components/StatusCard";
-import ZoneGrid from "./components/ZoneGrid";
-import IssueList from "./components/IssueList";
-import { adminDashboardMock, adminIssueMock } from "@/mocks/mockData";
+import StatusCard from "../components/dashboard/StatusCard";
+import ZoneGrid from "../components/dashboard/ZoneGrid";
+import IssueList from "../components/dashboard/DashboardIssueList";
+import { adminDashboardMock } from "@/mocks/mockData";
+import { issueService } from "@/services/issueService";
+import type { IssueResponse } from "@/types/db";
 
 export default function Dashboard() {
   const { summary, zones } = adminDashboardMock;
+  const [issues, setIssues] = useState<IssueResponse[]>([]);
+
+  useEffect(() => {
+    // Fetch initial issues for the list
+    issueService.getIssues().then((data) => {
+      // Filter only unresolved (OPEN) issues
+      const unresolved = data.filter((i) => i.status === "OPEN");
+      setIssues(unresolved);
+    });
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -47,7 +60,7 @@ export default function Dashboard() {
         <section className="col-span-12 lg:col-span-5">
           <Card className="h-full">
             <CardContent className="pt-6">
-              <IssueList items={adminIssueMock} />
+              <IssueList items={issues} />
             </CardContent>
           </Card>
         </section>
