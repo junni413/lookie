@@ -70,8 +70,8 @@ public class SecurityConfig {
                                                                 "/api/auth/check/**", // 중복 확인
                                                                 "/api/auth/email/**", // 이메일 인증
                                                                 "/api/auth/password/**", // 비밀번호 찾기
-                                                                "/api/auth/refresh", // 토큰 재발급
-                                                                "/api/tasks/**" // 작업 관련 API (개발용)
+                                                                // "/api/tasks/**", // 작업 관련 API (개발용)
+                                                                "/api/auth/refresh" // 토큰 재발급
                                                 ).permitAll()
 
                                                 // [공개 리소스] 소켓 통신 및 Swagger 문서
