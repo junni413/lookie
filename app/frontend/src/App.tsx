@@ -1,5 +1,5 @@
-import React from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import type { ReactNode } from "react";
 import { useAuthStore, type UserRole } from "./stores/authStore";
 
 import AdminLayout from "./components/layout/AdminLayout";
@@ -10,11 +10,16 @@ import Signup from "./pages/auth/Signup";
 
 import WorkerAttend from "./pages/worker/Attend";
 import WorkerHome from "./pages/worker/Home";
+import MyPage from "./pages/worker/MyPage";
+import ProfileEdit from "./pages/worker/ProfileEdit";
+import WorkHistory from "./pages/worker/WorkHistory";
+import IssueListPage from "./pages/worker/IssueList";
+
 import AdminDashboard from "./pages/admin/pages/Dashboard";
 import IssuePage from "./pages/admin/pages/Issue";
 
 // ✅ 인증 가드: token 없으면 /login
-function RequireAuth({ children }: { children: React.ReactNode }) {
+function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuthStore((s) => s.token);
   if (!token) return <Navigate to="/login" replace />;
   return <>{children}</>;
@@ -26,7 +31,7 @@ function RequireRole({
   children,
 }: {
   allow: UserRole;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const role = useAuthStore((s) => s.role);
 
@@ -80,17 +85,20 @@ export default function App() {
           </RequireAuth>
         }
       >
-        {/* ✅ 워커 기본 진입 = 출근하기 */}
+        {/* 워커 기본 진입 */}
         <Route index element={<Navigate to="/worker/attend" replace />} />
 
-        {/* ✅ 출근하기 */}
+        {/* 출근 */}
         <Route path="attend" element={<WorkerAttend />} />
 
-        {/* ✅ 작업자 대시보드(Home) */}
+        {/* 대시보드 */}
         <Route path="home" element={<WorkerHome />} />
 
-        {/* 필요하면 여기 아래로 worker 라우트 추가 */}
-        {/* <Route path="work-info" element={<WorkInfo />} /> */}
+        {/* 사이드바 연결 페이지들 */}
+        <Route path="mypage" element={<MyPage />} />
+        <Route path="profile/edit" element={<ProfileEdit />} />
+        <Route path="work-history" element={<WorkHistory />} />
+        <Route path="issues" element={<IssueListPage />} />
       </Route>
 
       {/* ADMIN */}
@@ -107,10 +115,8 @@ export default function App() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
         <Route path="issue" element={<IssuePage />} />
-        {/* 필요하면 여기 아래로 admin 라우트 추가 */}
       </Route>
 
-      {/* 404 */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
