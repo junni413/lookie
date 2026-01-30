@@ -295,4 +295,84 @@ public class UserService {
         }
         return PASSWORD_PATTERN.matcher(password).matches();
     }
+
+    // ==================== 비밀번호 재설정 ====================
+
+    /**
+     * 비밀번호 재설정 인증번호 요청
+     * - 보안: 계정 존재 여부 노출 방지 (존재하지 않아도 성공 응답)
+     */
+    public void requestPasswordResetOtp(String email) {
+        mailService.sendPasswordResetCode(email);
+    }
+
+    /**
+     * 비밀번호 재설정 인증번호 검증 및 resetToken 발급
+     * - 인증번호 검증 성공 시 짧은 TTL의 resetToken 발급 (5분)
+     * - resetToken은 Redis에 저장: reset:token:{token} = userId
+     */
+    public String verifyPasswordResetOtp(String email, String code) {
+        // 1. 인증번호 검증 (MailService 재사용)
+        mailService.verifyCode(email, code);
+
+        // 2. 이메일로 사용자 조회
+        UserVO user = userMapper.findByEmail(email);
+        if (user == null) {
+            throw new LoginFailedException(); // 계정이 존재하지 않음
+        }
+
+        // 3. resetToken 생성 (UUID)
+        String resetToken = java.util.UUID.randomUUID().toString();
+
+        // 4. Redis에 resetToken 저장 (TTL 5분)
+        String resetTokenKey = "reset:token:" + resetToken;
+        redisTemplate.opsForValue().set(resetTokenKey, String.valueOf(user.getUserId()), 5, TimeUnit.MINUTES);
+
+        return resetToken;
+    }
+
+    /**
+     * 비밀번호 재설정 최종 확인
+     * - resetToken 검증
+     * - 비밀번호 일치 확인 (newPassword == confirmPassword)
+     * - 비밀번호 형식 검증 (기존 isValidPassword() 재사용)
+     * - 비밀번호 변경
+     * - 전체 로그아웃 처리 (모든 refreshToken 삭제)
+     * - resetToken 즉시 폐기
+     */
+    @Transactional
+    public void confirmPasswordReset(String resetToken, String newPassword, String confirmPassword) {
+        // 1. resetToken 검증
+        String resetTokenKey = "reset:token:" + resetToken;
+        String userId = redisTemplate.opsForValue().get(resetTokenKey);
+        if (userId == null) {
+            throw new InvalidTokenException();
+        }
+
+        // 2. 비밀번호 일치 확인
+        if (!newPassword.equals(confirmPassword)) {
+            throw new InvalidPasswordFormatException("비밀번호가 일치하지 않습니다");
+        }
+
+        // 3. 비밀번호 형식 검증
+        if (!isValidPassword(newPassword)) {
+            throw new InvalidPasswordFormatException("비밀번호 형식이 올바르지 않습니다");
+        }
+
+        // 4. 비밀번호 암호화
+        String encodedPassword = passwordEncoder.encode(newPassword);
+
+        // 5. DB 업데이트
+        Map<String, Object> params = new HashMap<>();
+        params.put("userId", userId);
+        params.put("passwordHash", encodedPassword);
+        userMapper.updatePassword(params);
+
+        // 6. 전체 로그아웃 처리 (모든 refreshToken 삭제)
+        String refreshTokenKey = "refresh:" + userId;
+        redisTemplate.delete(refreshTokenKey);
+
+        // 7. resetToken 즉시 폐기
+        redisTemplate.delete(resetTokenKey);
+    }
 }
