@@ -105,9 +105,7 @@ export default function Map() {
         )}>
             {/* Main Content Area (Center) */}
             <div className={cn(
-                "flex-1 flex flex-col overflow-y-auto transition-all duration-300",
-                // Restore padding: Default to layout padding, reduce to p-4 when panel opens
-                selectedZoneId !== null ? "p-4" : "p-6 lg:p-8"
+                "flex-1 flex flex-col overflow-y-auto transition-all duration-300 p-4 md:p-6"
             )}>
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-slate-900 mb-2">현장 관제 (Map)</h1>
@@ -117,10 +115,7 @@ export default function Map() {
                 </div>
 
                 {/* Zone Cards Grid */}
-                <div className={cn(
-                    "grid grid-cols-1 md:grid-cols-2 gap-6 w-full transition-all duration-300",
-                    selectedZoneId !== null ? "max-w-full gap-4" : "max-w-5xl mx-auto" // Full width when panel opens, specific max-width when closed
-                )}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-5xl mx-auto">
                     {stats.map(stat => (
                         <ZoneSummaryCard
                             key={stat.zone_id}

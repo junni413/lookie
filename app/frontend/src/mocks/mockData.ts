@@ -7,6 +7,7 @@ import type {
   DB_WorkLogEvent,
   DB_BatchTask,
   DB_Worker,
+  ZoneLayout,
 } from "@/types/db";
 
 // Helper for dates
@@ -44,7 +45,7 @@ export const generateZoneLayout = (zoneId: number, numLines: number, binsPerLine
   };
 };
 
-export const zonesLayoutMock = {
+export const zonesLayoutMock: Record<number, ZoneLayout> = {
   1: generateZoneLayout(1, 4, 8), // Zone A: 4 lines, 8 bins
   2: generateZoneLayout(2, 5, 10), // Zone B: 5 lines, 10 bins
   3: generateZoneLayout(3, 3, 6),  // Zone C: 3 lines, 6 bins
@@ -172,7 +173,6 @@ export function getDerivedWorker(workerId: number): DB_Worker {
 
   if (currentZoneId) {
     // Get Layout Constraints
-    // @ts-ignore
     const layout = zonesLayoutMock[currentZoneId];
     if (layout) {
       const numLines = layout.lines.length;

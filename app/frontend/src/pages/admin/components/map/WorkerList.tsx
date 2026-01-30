@@ -2,7 +2,7 @@ import type { DB_Worker } from "@/types/db";
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/button";
 import { Phone } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getWorkRateColor } from "@/utils/styleHelpers";
 
 interface WorkerListProps {
@@ -19,20 +19,15 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange }
 
     const [activeFilter, setActiveFilter] = useState<number | 'all'>('all');
 
-    // Effect to sync prop change (if parent forces a zone selection)
-    // We'll use a local state initialized by prop, or effect
-    // Let's rely on internal state mostly unless prop changes
-    useState(() => {
-        if (currentZoneId) setActiveFilter(currentZoneId);
-        else setActiveFilter('all');
-    });
+    // Sync activeFilter with currentZoneId prop
+    useEffect(() => {
+        if (currentZoneId) {
+            setActiveFilter(currentZoneId);
+        } else {
+            setActiveFilter('all');
+        }
+    }, [currentZoneId]);
 
-    // Update local filter when prop changes
-    // This allows clicking "Zone Name" on card to switch this filter
-    if (currentZoneId && activeFilter !== currentZoneId && currentZoneId !== activeFilter) {
-        // This is tricky in render body. Better use useEffect in real app, 
-        // but for now let's assume parent passes `currentZoneId` only when selected.
-    }
 
     // Better: Derived state for display, but interactive buttons change it.
     // If we want "Independent" navigation in list, we need local state.
@@ -147,7 +142,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange }
                             {/* WebRTC Call */}
                             <div className="w-10 flex justify-end">
                                 <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-full">
-                                    <Phone size={14} fill="currentColor" className="opacity-90" />
+                                    <Phone size={14} fill="currentColor" />
                                 </Button>
                             </div>
                         </div>
