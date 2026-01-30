@@ -3,11 +3,7 @@ package lookie.backend.domain.user.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import lookie.backend.domain.user.dto.EmailSendRequest;
-import lookie.backend.domain.user.dto.EmailVerifyRequest;
-import lookie.backend.domain.user.dto.LoginRequest;
-import lookie.backend.domain.user.dto.LoginResponse;
-import lookie.backend.domain.user.dto.SignupRequest;
+import lookie.backend.domain.user.dto.*;
 import lookie.backend.domain.user.service.MailService;
 import lookie.backend.domain.user.service.UserService;
 import lookie.backend.domain.user.vo.UserVO;
@@ -37,13 +33,13 @@ public class UserController {
     public ResponseEntity<ApiResponse<TokenResponse>> refresh(@RequestHeader("Refresh-Token") String refreshToken) {
         // 1. 토큰 재발급 처리 (RTR: 기존 토큰 삭제 + 새 토큰 생성)
         Map<String, String> tokens = userService.reissueToken(refreshToken);
-        
+
         // 2. TokenResponse 생성
         TokenResponse response = TokenResponse.builder()
                 .accessToken(tokens.get("accessToken"))
                 .refreshToken(tokens.get("refreshToken"))
                 .build();
-        
+
         return ResponseEntity.ok(ApiResponse.success("토큰이 재발급되었습니다.", response));
     }
 
@@ -93,13 +89,13 @@ public class UserController {
     public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader("Authorization") String authHeader) {
         // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
         String accessToken = authHeader.substring(7);
-        
+
         // 2. 토큰에서 사용자 ID 추출
         String userId = jwtProvider.getUserId(accessToken);
-        
+
         // 3. 로그아웃 처리 (Refresh Token 삭제 + Access Token 블랙리스트 등록)
         userService.logout(accessToken, userId);
-        
+
         return ResponseEntity.ok(ApiResponse.success("로그아웃되었습니다.", null));
     }
 
@@ -123,5 +119,43 @@ public class UserController {
     public ResponseEntity<ApiResponse<Void>> verifyCode(@RequestBody EmailVerifyRequest request) {
         mailService.verifyCode(request.getEmail(), request.getCode());
         return ResponseEntity.ok(ApiResponse.success("이메일 인증에 성공하였습니다.", null));
+    }
+
+    // ==================== 비밀번호 재설정 ====================
+
+    /**
+     * 비밀번호 재설정 인증번호 요청
+     * POST /api/auth/password/reset/otp/request
+     */
+    @Operation(summary = "비밀번호 재설정 인증번호 요청", description = "비밀번호 재설정을 위한 이메일 인증번호를 발송합니다 (5분 유효)")
+    @PostMapping("/password/reset/otp/request")
+    public ResponseEntity<ApiResponse<Void>> requestPasswordResetOtp(@RequestBody PasswordResetOtpRequest request) {
+        userService.requestPasswordResetOtp(request.getEmail());
+        return ResponseEntity.ok(ApiResponse.success("인증번호가 발송되었습니다.", null));
+    }
+
+    /**
+     * 비밀번호 재설정 인증번호 검증
+     * POST /api/auth/password/reset/otp/verify
+     */
+    @Operation(summary = "비밀번호 재설정 인증번호 검증", description = "인증번호를 검증하고 resetToken을 발급합니다 (5분 유효)")
+    @PostMapping("/password/reset/otp/verify")
+    public ResponseEntity<ApiResponse<PasswordResetTokenResponse>> verifyPasswordResetOtp(@RequestBody PasswordResetOtpVerifyRequest request) {
+        String resetToken = userService.verifyPasswordResetOtp(request.getEmail(), request.getCode());
+        PasswordResetTokenResponse response = PasswordResetTokenResponse.builder()
+                .resetToken(resetToken)
+                .build();
+        return ResponseEntity.ok(ApiResponse.success("인증에 성공하였습니다.", response));
+    }
+
+    /**
+     * 비밀번호 재설정 최종 확인
+     * POST /api/auth/password/reset/confirm
+     */
+    @Operation(summary = "비밀번호 재설정 최종 확인", description = "resetToken을 사용하여 비밀번호를 변경합니다")
+    @PostMapping("/password/reset/confirm")
+    public ResponseEntity<ApiResponse<Void>> confirmPasswordReset(@RequestBody PasswordResetConfirmRequest request) {
+        userService.confirmPasswordReset(request.getResetToken(), request.getNewPassword(), request.getConfirmPassword());
+        return ResponseEntity.ok(ApiResponse.success("비밀번호가 변경되었습니다.", null));
     }
 }

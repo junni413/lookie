@@ -33,4 +33,16 @@
     <select id="findById" parameterType="Long" resultType="UserVO">
         SELECT * FROM users WHERE user_id = #{userId}
     </select>
+
+    <!-- 6. 이메일로 사용자 조회 (비밀번호 재설정용) -->
+    <select id="findByEmail" parameterType="String" resultType="UserVO">
+        SELECT * FROM users WHERE email = #{email}
+    </select>
+
+    <!-- 7. 비밀번호 업데이트 (비밀번호 재설정용) -->
+    <update id="updatePassword" parameterType="map">
+        UPDATE users
+        SET password_hash = #{passwordHash}
+        WHERE user_id = #{userId}
+    </update>
 </mapper>
