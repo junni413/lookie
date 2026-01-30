@@ -66,4 +66,16 @@
             batch_task_id = #{batchTaskId}
             AND status = 'IN_PROGRESS'
     </update>
+
+    <!--[수정] 토트 스캔 결과 업데이트 -->
+    <update id="updateToteScanResult">
+        UPDATE batch_tasks
+        SET
+            tote_id = #{toteId},
+            action_status = 'SCAN_LOCATION',
+            tote_scanned_at = NOW()
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
 </mapper>

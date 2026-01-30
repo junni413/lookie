@@ -38,9 +38,13 @@ public enum ErrorCode {
 	TASK_NOT_FOUND("TASK_003", HttpStatus.NOT_FOUND, "작업을 찾을 수 없습니다"),
 	TASK_NO_AVAILABLE("TASK_004", HttpStatus.CONFLICT, "할당 가능한 작업이 없습니다"),
 	TASK_INVALID_STATE("TASK_005", HttpStatus.CONFLICT, "작업 상태 전이가 올바르지 않습니다"),
+	TASK_TOTE_MISMATCH("TASK_006", HttpStatus.BAD_REQUEST, "토트 바코드가 일치하지 않습니다"),
 
 	// ==== ZONE ====
 	WORKER_ZONE_NOT_ASSIGNED("ZONE_001", HttpStatus.BAD_REQUEST, "작업자에게 배정된 작업 구역이 없습니다"),
+
+	// ==== TOTE ====
+	TOTE_ALREADY_IN_USE("TOTE_001", HttpStatus.CONFLICT, "이미 다른 작업에 사용 중인 토트입니다"),
 
 	// ===== ISSUE =====
 	ISSUE_RECAPTURE_REQUIRED("ISSUE_001", HttpStatus.BAD_REQUEST, "재촬영이 필요합니다"),

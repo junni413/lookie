@@ -19,4 +19,7 @@ public interface TaskMapper {
 
     // [수정] 작업 완료 상태 변경
     int updateComplete(@Param("batchTaskId") Long batchTaskId);
+
+    // [수정] 토트 스캔 결과 업데이트 (SCAN_TOTE -> SCAN_LOCATION)
+    int updateToteScanResult(@Param("batchTaskId") Long batchTaskId, @Param("toteId") Long toteId);
 }

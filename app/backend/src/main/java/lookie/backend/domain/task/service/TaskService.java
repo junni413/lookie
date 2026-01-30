@@ -6,9 +6,14 @@ import lookie.backend.domain.task.exception.InvalidTaskStateException;
 import lookie.backend.domain.task.exception.NoAvailableTaskException;
 import lookie.backend.domain.task.exception.TaskAlreadyAssignedException;
 import lookie.backend.domain.task.exception.TaskNotFoundException;
+import lookie.backend.domain.task.exception.InvalidToteBarcodeException;
 import lookie.backend.domain.task.mapper.TaskMapper;
+import lookie.backend.domain.task.vo.TaskActionStatus;
 import lookie.backend.domain.task.vo.TaskStatus;
 import lookie.backend.domain.task.vo.TaskVO;
+import lookie.backend.domain.tote.exception.ToteAlreadyInUseException;
+import lookie.backend.domain.tote.mapper.ToteMapper;
+import lookie.backend.domain.tote.vo.ToteVO;
 import lookie.backend.domain.zone.exception.WorkerZoneNotAssignedException;
 import lookie.backend.domain.zone.mapper.ZoneAssignmentMapper;
 
@@ -20,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class TaskService {
     private final TaskMapper taskMapper;
+    private final ToteMapper toteMapper;
     private final ZoneAssignmentMapper zoneAssignmentMapper;
     private final ApplicationEventPublisher publisher;
 
@@ -83,10 +89,62 @@ public class TaskService {
                 new TaskCompletedEvent(
                         updatedTask.getBatchTaskId(),
                         updatedTask.getWorkerId(),
-                        updatedTask.getZoneId()
-                )
-        );
+                        updatedTask.getZoneId()));
 
+    }
+
+    /**
+     * [토트 스캔]
+     * - 검증: 현재 상태가 SCAN_TOTE인지, 바코드 일치 여부
+     * - 실행: DB 업데이트 (SCAN_LOCATION으로 전이)
+     */
+    @Transactional
+    public TaskVO scanTote(Long taskId, String toteBarcode) {
+        // 1. 작업 조회
+        TaskVO task = taskMapper.findById(taskId);
+        if (task == null) {
+            throw new TaskNotFoundException(taskId);
+        }
+
+        // 2. FSM 검증
+        if (task.getActionStatus() != TaskActionStatus.SCAN_TOTE) {
+            throw new InvalidTaskStateException(TaskStatus.IN_PROGRESS, TaskStatus.IN_PROGRESS);
+        }
+
+        // 3. 바코드 검증 및 할당 로직
+        ToteVO scannedTote = toteMapper.findByBarcode(toteBarcode);
+        if (scannedTote == null) {
+            // 등록되지 않은 토트 바코드
+            throw new InvalidToteBarcodeException();
+        }
+
+        // 이미 할당된 토트가 있는지?
+        if (task.getToteId() != null) {
+            // [검증 모드] 이미 작업에 토트가 할당된 경우 -> 스캔된 토트와 일치하는지 확인
+            if (!task.getToteId().equals(scannedTote.getToteId())) {
+                throw new InvalidToteBarcodeException(); // 또는 ID_MISMATCH
+            }
+        } else {
+            // [할당 모드] 작업에 토트가 없는 경우 -> 스캔된 토트를 이 작업에 할당
+            if (scannedTote.getCurrentBatchTaskId() != null) {
+                // 이미 다른 작업(또는 같은 작업)에 물려있는 토트
+                if (!scannedTote.getCurrentBatchTaskId().equals(taskId)) {
+                    throw new ToteAlreadyInUseException();
+                }
+            }
+        }
+
+        // 4. 상태 업데이트 (양방향)
+        // Task 업데이트 (action_status, tote_scanned_at, tote_id)
+        int updated = taskMapper.updateToteScanResult(taskId, scannedTote.getToteId());
+        if (updated == 0) {
+            throw new InvalidTaskStateException(TaskStatus.IN_PROGRESS, TaskStatus.IN_PROGRESS);
+        }
+
+        // Tote 업데이트 (current_batch_task_id)
+        toteMapper.updateToteMapping(scannedTote.getToteId(), taskId);
+
+        return taskMapper.findById(taskId);
     }
 
     // Task FSM 검증 로직 (상태 전이 규칙 통제)
