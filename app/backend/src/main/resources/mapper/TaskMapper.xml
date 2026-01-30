@@ -13,10 +13,12 @@
             zone_id AS zoneId,
             worker_id AS workerId,
             status,
+            action_status AS actionStatus,
             started_at AS startedAt,
             completed_at AS completedAt,
             tote_id AS toteId,
             tote_scanned_at AS toteScannedAt,
+            location_scanned_at AS locationScannedAt,
             tote_released_at AS toteReleasedAt
         FROM batch_tasks
         WHERE batch_task_id = #{batchTaskId}
@@ -47,6 +49,7 @@
         SET
             worker_id = #{workerId},
             status = 'IN_PROGRESS',
+            action_status = 'SCAN_TOTE',
             started_at = NOW()
         WHERE
             batch_task_id = #{batchTaskId}
