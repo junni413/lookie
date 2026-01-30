@@ -126,7 +126,7 @@ public class UserService {
     @Transactional(readOnly = true)
     public Map<String, Object> login(String phoneNumber, String rawPassword) {
         // 1. 전화번호로 사용자 조회 (is_active 필터링 없이 조회하여 탈퇴 여부 확인)
-        UserVO user = userMapper.findByPhoneNumber(phoneNumber)
+        UserVO user = userMapper.findByPhoneNumberIncludingDeleted(phoneNumber)
                 .orElseThrow(() -> new LoginFailedException(phoneNumber));
 
         // 2. 비밀번호 검증
