@@ -28,7 +28,7 @@ services:
       MYSQL_USER: ${MYSQL_USER}           # 애플리케이션용 계정 생성
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}   # 애플리케이션용 계정 비밀번호
     ports:
-      - "3306:3306"                       # (외부 DB접속/워크벤치 필요 시) 호스트:컨테이너 포트
+      - "3307:3306"                       # (외부 DB접속/워크벤치 필요 시) 호스트:컨테이너 포트
     volumes:
       - mysql_data:/var/lib/mysql         # DB 데이터 영구 저장(컨테이너 삭제해도 유지)
     networks:
@@ -62,13 +62,12 @@ services:
       # - ro: 읽기 전용(컨테이너가 SQL 파일을 수정하지 못하게)
       # - 너희 프로젝트에 migration 폴더가 다르면 경로만 바꾸면 됨
       - ./app/backend/src/main/resources/db/migration:/flyway/sql:ro
-    command: >
-      # Flyway 실행 옵션들
-      -url=jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
-      -user=${MYSQL_USER}
-      -password=${MYSQL_PASSWORD}
-      -connectRetries=60
-      migrate                               # 실제 동작: migrate 실행(버전 테이블 기반으로 변경 적용)
+    command:
+      - -url=jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
+      - -user=${MYSQL_USER}
+      - -password=${MYSQL_PASSWORD}
+      - -connectRetries=60
+      - migrate
     restart: "no"                            # migrate는 1회성 작업이므로 재시작하지 않음
 
   # ============================
