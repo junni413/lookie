@@ -28,7 +28,7 @@ pipeline {
     // ✅ repo 구조에 맞게 Docker build context/Dockerfile 경로 설정
     BACKEND_CONTEXT    = 'app/backend'
     BACKEND_DOCKERFILE = 'app/backend/Dockerfile'
-    NGINX_CONTEXT      = 'infra/nginx'
+    NGINX_CONTEXT      = '.'
     NGINX_DOCKERFILE   = 'infra/nginx/Dockerfile'
 
     // ============================================================
