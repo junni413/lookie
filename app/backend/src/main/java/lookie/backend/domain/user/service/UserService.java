@@ -138,11 +138,13 @@ public class UserService {
         String accessToken = jwtProvider.createAccessToken(userId, user.getRole().name());
         String refreshToken = jwtProvider.createRefreshToken(userId);
 
-        // 5. Refresh Token을 Redis에 저장 (Key: refresh:{userId}, TTL: 14일)
+        // 5. Refresh Token을 암호화하여 Redis에 저장 (Key: refresh:{userId}, TTL: 14일)
+        // 보안: Redis가 탈취되어도 원본 토큰 노출 방지
         String redisKey = "refresh:" + userId;
+        String hashedRefreshToken = passwordEncoder.encode(refreshToken);
         redisTemplate.opsForValue().set(
                 redisKey,
-                refreshToken,
+                hashedRefreshToken,
                 refreshTokenTtl,
                 TimeUnit.MILLISECONDS);
 
@@ -201,15 +203,16 @@ public class UserService {
         // 2. Refresh Token에서 사용자 ID 추출
         String userId = jwtProvider.getUserId(refreshToken);
 
-        // 3. Redis에 저장된 Refresh Token과 비교
+        // 3. Redis에 저장된 암호화된 Refresh Token과 비교
         String redisKey = "refresh:" + userId;
-        String storedToken = redisTemplate.opsForValue().get(redisKey);
+        String hashedStoredToken = redisTemplate.opsForValue().get(redisKey);
 
-        if (storedToken == null) {
+        if (hashedStoredToken == null) {
             throw new InvalidTokenException("저장된 Refresh Token이 없습니다. 다시 로그인해주세요.");
         }
 
-        if (!refreshToken.equals(storedToken)) {
+        // 보안: BCrypt를 사용하여 원본 토큰과 해시 비교
+        if (!passwordEncoder.matches(refreshToken, hashedStoredToken)) {
             throw new InvalidTokenException("Refresh Token이 일치하지 않습니다. 다시 로그인해주세요.");
         }
 
@@ -224,10 +227,11 @@ public class UserService {
         String newAccessToken = jwtProvider.createAccessToken(userId, user.getRole().name());
         String newRefreshToken = jwtProvider.createRefreshToken(userId);
 
-        // 7. 새로운 Refresh Token을 Redis에 저장
+        // 7. 새로운 Refresh Token을 암호화하여 Redis에 저장
+        String hashedNewRefreshToken = passwordEncoder.encode(newRefreshToken);
         redisTemplate.opsForValue().set(
                 redisKey,
-                newRefreshToken,
+                hashedNewRefreshToken,
                 refreshTokenTtl,
                 TimeUnit.MILLISECONDS);
 

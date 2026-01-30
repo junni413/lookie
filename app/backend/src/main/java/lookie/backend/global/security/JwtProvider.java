@@ -66,8 +66,9 @@ public class JwtProvider {
                 .signWith(secretKey); // 비밀키 서명
 
         // 역할(Role)이 있는 경우에만 Payload에 추가 (Refresh Token은 null이라 추가 안 됨)
+        // Spring Security 컨벤션: ROLE_ 접두사 추가
         if (role != null) {
-            builder.claim("role", role);
+            builder.claim("role", "ROLE_" + role);
         }
 
         return builder.compact();
