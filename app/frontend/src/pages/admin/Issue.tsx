@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { issueService } from "@/services/issueService";
 import type { IssueResponse } from "@/types/db";
-import IssueList from "../components/issue/IssueList";
-import IssueDetail from "../components/issue/IssueDetail";
+import IssueList from "./components/issue/IssueList";
+import IssueDetail from "./components/issue/IssueDetail";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/utils/cn";
