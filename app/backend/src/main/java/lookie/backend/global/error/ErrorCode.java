@@ -31,6 +31,8 @@ public enum ErrorCode {
 	INVALID_EMAIL_FORMAT("USER_004", HttpStatus.BAD_REQUEST, "유효하지 않은 이메일 형식입니다"),
 	INVALID_PHONE_FORMAT("USER_005", HttpStatus.BAD_REQUEST, "유효하지 않은 전화번호 형식입니다"),
 	INVALID_PASSWORD_FORMAT("USER_006", HttpStatus.BAD_REQUEST, "비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다"),
+	USER_DELETED("USER_007", HttpStatus.FORBIDDEN, "탈퇴한 계정입니다"),
+	USER_INVALID_PASSWORD("USER_008", HttpStatus.UNAUTHORIZED, "비밀번호가 일치하지 않습니다"),
 
 	// ===== TASK =====
 	TASK_ALREADY_ASSIGNED("TASK_001", HttpStatus.CONFLICT, "이미 할당된 작업입니다"),
