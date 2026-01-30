@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from "react-router-dom";
 import { useState } from "react";
-import WorkerDrawer from "@/components/shared/WorkerDrawer";
+import WorkerDrawer from "@/components/layout/WorkerDrawer";
 import { useUIStore } from "@/stores/uiStore";
 import { Bell, LayoutGrid, ChevronLeft } from "lucide-react";
 

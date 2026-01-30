@@ -26,6 +26,7 @@ public class SecurityConfig {
 
         private final JwtProvider jwtProvider;
         private final CorsConfigurationSource corsConfigurationSource; // CorsConfig에서 등록한 빈을 주입받음
+        private final org.springframework.data.redis.core.StringRedisTemplate redisTemplate; // Redis 블랙리스트 확인용
 
         /**
          * [비밀번호 암호화 빈 등록]
@@ -86,7 +87,7 @@ public class SecurityConfig {
                                 // 6. JWT 인증 필터 추가
                                 // - UsernamePasswordAuthenticationFilter(기본 로그인 필터) 앞에 JwtFilter 배치
                                 // - 요청이 들어오면 스프링 시큐리티가 인증을 확인하기 전에 JWT 토큰 유효성을 먼저 검사
-                                .addFilterBefore(new JwtFilter(jwtProvider),
+                                .addFilterBefore(new JwtFilter(jwtProvider, redisTemplate),
                                                 UsernamePasswordAuthenticationFilter.class);
 
                 return http.build();

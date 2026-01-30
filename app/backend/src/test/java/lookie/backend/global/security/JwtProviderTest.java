@@ -27,7 +27,7 @@ class JwtProviderTest {
     void accessTokenTest() {
         // given
         String userId = "testUser1234";
-        String role = "ROLE_WORKER";
+        String role = "WORKER";
 
         // when
         String token = jwtProvider.createAccessToken(userId, role);
@@ -39,7 +39,7 @@ class JwtProviderTest {
         assertThat(token).isNotNull();
         assertThat(jwtProvider.validateToken(token)).isTrue();
         assertThat(jwtProvider.getUserId(token)).isEqualTo(userId);
-        assertThat(jwtProvider.getRole(token)).isEqualTo(role);
+        assertThat(jwtProvider.getRole(token)).isEqualTo("ROLE_" + role);
     }
 
     @Test

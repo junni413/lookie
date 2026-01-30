@@ -18,6 +18,7 @@ public enum ErrorCode {
 	AUTH_EMAIL_ALREADY_SENT("AUTH_005", HttpStatus.TOO_MANY_REQUESTS, "1분 내 재발송이 제한됩니다"),
 	AUTH_EMAIL_VERIFY_REQUIRED("AUTH_006", HttpStatus.FORBIDDEN, "이메일 인증이 필요합니다"),
 	AUTH_EMAIL_CODE_EXPIRED("AUTH_007", HttpStatus.BAD_REQUEST, "인증번호가 만료되었거나 일치하지 않습니다"),
+	AUTH_LOGOUT_TOKEN("AUTH_008", HttpStatus.UNAUTHORIZED, "이미 로그아웃된 토큰입니다. 다시 로그인해주세요."),
 
 	// ===== EMAIL =====
 	EMAIL_SEND_FAILED("EMAIL_001", HttpStatus.SERVICE_UNAVAILABLE, "이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요"),

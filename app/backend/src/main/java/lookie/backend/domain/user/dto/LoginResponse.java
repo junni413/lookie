@@ -12,6 +12,7 @@ import java.time.LocalDate;
 /**
  * 로그인 응답 DTO
  * - passwordHash를 제외한 안전한 사용자 정보만 반환
+ * - JWT Access Token 및 Refresh Token 포함
  */
 @Getter
 @NoArgsConstructor
@@ -25,11 +26,19 @@ public class LoginResponse {
     private LocalDate birthDate;
     private UserRole role;
     private Boolean isActive;
+    
+    // JWT 토큰 필드
+    private String accessToken;
+    private String refreshToken;
 
     /**
-     * UserVO를 LoginResponse로 변환 (비밀번호 해시 제외)
+     * UserVO와 JWT 토큰을 LoginResponse로 변환 (비밀번호 해시 제외)
+     * 
+     * @param user 사용자 정보
+     * @param accessToken JWT Access Token (1시간 유효)
+     * @param refreshToken JWT Refresh Token (14일 유효)
      */
-    public static LoginResponse from(UserVO user) {
+    public static LoginResponse from(UserVO user, String accessToken, String refreshToken) {
         return LoginResponse.builder()
                 .userId(user.getUserId())
                 .name(user.getName())
@@ -38,6 +47,8 @@ public class LoginResponse {
                 .birthDate(user.getBirthDate())
                 .role(user.getRole())
                 .isActive(user.getIsActive())
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
                 .build();
     }
 }

@@ -20,4 +20,13 @@ public interface UserMapper {
     // 4. 이메일 중복 확인용
     boolean existByEmail(String email);
 
+    // 5. 사용자 ID로 조회 (토큰 재발급 시 Role 정보 필요)
+    Optional<UserVO> findById(Long userId);
+
+    // 6. 이메일로 사용자 조회 (비밀번호 재설정용)
+    UserVO findByEmail(String email);
+
+    // 7. 비밀번호 업데이트 (비밀번호 재설정용)
+    void updatePassword(java.util.Map<String, Object> params);
+
 }
