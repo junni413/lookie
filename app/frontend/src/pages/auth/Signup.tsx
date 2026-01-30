@@ -175,11 +175,9 @@ export default function Signup() {
     }
 
     try {
-      // TODO: 엔드포인트/필드명은 백 스펙에 맞춰 조정
-      // 아이디 = phone
       await postJSON("/api/auth/signup", {
         name,
-        phone: onlyDigits(phone),
+        phoneNumber: onlyDigits(phone),
         email,
         password: pw,
       });
