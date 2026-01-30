@@ -210,10 +210,10 @@ public class MailService {
             message.setTo(to);
             message.setSubject("[Lookie] 비밀번호 재설정 인증번호");
             message.setText(
-                    "안녕하세요, Lookie입니다.\\n\\n" +
-                            "비밀번호 재설정을 위한 인증번호는 다음과 같습니다:\\n\\n" +
-                            "[" + code + "]\\n\\n" +
-                            "이 인증번호는 5분간 유효합니다.\\n" +
+                    "안녕하세요, Lookie입니다.\n\n" +
+                            "비밀번호 재설정을 위한 인증번호는 다음과 같습니다:\n\n" +
+                            "[" + code + "]\n\n" +
+                            "이 인증번호는 5분간 유효합니다.\n" +
                             "본인이 요청하지 않았다면 이 메일을 무시하고 비밀번호를 변경하세요.");
 
             mailSender.send(message);
