@@ -29,4 +29,7 @@ public interface UserMapper {
     // 7. 비밀번호 업데이트 (비밀번호 재설정용)
     void updatePassword(java.util.Map<String, Object> params);
 
+    // 8. 프로필 업데이트 (이름, 이메일, 비밀번호 선택적 수정)
+    void updateUserProfile(java.util.Map<String, Object> params);
+
 }

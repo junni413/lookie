@@ -45,4 +45,21 @@
         SET password_hash = #{passwordHash}
         WHERE user_id = #{userId}
     </update>
+
+    <!-- 8. 프로필 업데이트 (이름, 이메일, 비밀번호 선택적 수정, 전화번호는 수정 불가) -->
+    <update id="updateUserProfile" parameterType="map">
+        UPDATE users
+        <set>
+            <if test="name != null">
+                name = #{name},
+            </if>
+            <if test="email != null">
+                email = #{email},
+            </if>
+            <if test="passwordHash != null">
+                password_hash = #{passwordHash},
+            </if>
+        </set>
+        WHERE user_id = #{userId}
+    </update>
 </mapper>
