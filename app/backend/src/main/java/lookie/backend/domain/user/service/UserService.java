@@ -11,10 +11,16 @@ import lookie.backend.domain.user.exception.LoginFailedException;
 import lookie.backend.domain.user.mapper.UserMapper;
 import lookie.backend.domain.user.vo.UserRole;
 import lookie.backend.domain.user.vo.UserVO;
+import lookie.backend.global.security.JwtProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 @Service
@@ -24,6 +30,12 @@ public class UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
+    private final JwtProvider jwtProvider;
+    private final StringRedisTemplate redisTemplate;
+
+    // Refresh Token TTL (환경변수에서 주입, 기본값: 14일)
+    @Value("${jwt.refresh-expiration}")
+    private long refreshTokenTtl;
 
     // 이메일 형식 검증 정규표현식
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
@@ -97,11 +109,15 @@ public class UserService {
      * - 전화번호로 사용자 조회
      * - 비밀번호 검증
      * - 계정 활성화 상태 확인
+     * - JWT 토큰 생성 (Access Token + Refresh Token)
+     * - Refresh Token을 Redis에 저장 (TTL: 14일)
      * 
-     * @return 로그인 성공한 사용자 정보
+     * @param phoneNumber 사용자 전화번호
+     * @param rawPassword 평문 비밀번호
+     * @return Map {"user": UserVO, "accessToken": String, "refreshToken": String}
      */
     @Transactional(readOnly = true)
-    public UserVO login(String phoneNumber, String rawPassword) {
+    public Map<String, Object> login(String phoneNumber, String rawPassword) {
         // 1. 전화번호로 사용자 조회
         UserVO user = userMapper.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new LoginFailedException(phoneNumber));
@@ -116,7 +132,54 @@ public class UserService {
             throw new LoginFailedException(phoneNumber);
         }
 
-        return user;
+        // 4. JWT 토큰 생성
+        String userId = user.getUserId().toString();
+        String accessToken = jwtProvider.createAccessToken(userId, user.getRole().name());
+        String refreshToken = jwtProvider.createRefreshToken(userId);
+
+        // 5. Refresh Token을 Redis에 저장 (Key: refresh:{userId}, TTL: 14일)
+        String redisKey = "refresh:" + userId;
+        redisTemplate.opsForValue().set(
+                redisKey,
+                refreshToken,
+                refreshTokenTtl,
+                TimeUnit.MILLISECONDS);
+
+        // 6. 사용자 정보와 토큰을 함께 반환
+        Map<String, Object> result = new HashMap<>();
+        result.put("user", user);
+        result.put("accessToken", accessToken);
+        result.put("refreshToken", refreshToken);
+
+        return result;
+    }
+
+    /**
+     * 로그아웃 비즈니스 로직
+     * - Refresh Token 삭제 (Redis에서 refresh:{userId} 제거)
+     * - Access Token 블랙리스트 등록 (Redis에 blacklist:{accessToken} 추가, TTL: 남은 시간)
+     * 
+     * @param accessToken 현재 사용 중인 Access Token
+     * @param userId      사용자 ID
+     */
+    @Transactional
+    public void logout(String accessToken, String userId) {
+        // 1. Refresh Token 삭제 (Redis에서 refresh:{userId} 키 제거)
+        String refreshKey = "refresh:" + userId;
+        redisTemplate.delete(refreshKey);
+
+        // 2. Access Token 블랙리스트 등록
+        // - 남은 유효 시간 동안만 블랙리스트에 보관 (메모리 효율)
+        long remainingTime = jwtProvider.getRemainingTime(accessToken);
+
+        if (remainingTime > 0) {
+            String blacklistKey = "blacklist:" + accessToken;
+            redisTemplate.opsForValue().set(
+                    blacklistKey,
+                    "logout",
+                    remainingTime,
+                    TimeUnit.MILLISECONDS);
+        }
     }
 
     /**
