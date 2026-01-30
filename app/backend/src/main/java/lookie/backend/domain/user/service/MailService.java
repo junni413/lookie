@@ -6,6 +6,7 @@ import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
 import lookie.backend.domain.user.exception.EmailAlreadySentException;
 import lookie.backend.domain.user.exception.EmailCodeExpiredException;
 import lookie.backend.domain.user.exception.EmailSendFailedException;
+import lookie.backend.domain.user.exception.InvalidEmailFormatException;
 import lookie.backend.domain.user.mapper.UserMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -34,14 +36,23 @@ public class MailService {
     private static final long VERIFIED_TTL = 600L; // 10분
     private static final long LIMIT_TTL = 60L; // 1분
 
+    // 이메일 형식 검증 정규표현식
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
+
     /**
      * 이메일 인증번호 발송
+     * - 이메일 형식 검증
      * - DB 중복 체크
      * - 재발송 제한 (1분)
      * - 6자리 난수 생성 및 발송
      * - Redis 저장 (TTL 5분)
      */
     public void sendVerificationCode(String email) {
+        // 0. 이메일 형식 검증
+        if (!isValidEmail(email)) {
+            throw new InvalidEmailFormatException(email);
+        }
+
         // 1. DB에서 이메일 중복 체크 (발송 전 체크)
         if (userMapper.existByEmail(email)) {
             throw new AlreadyExistsEmailException(email);
@@ -144,5 +155,18 @@ public class MailService {
             log.error("[이메일 발송] 실패: {}", to, e);
             throw new EmailSendFailedException(to);
         }
+    }
+
+    /**
+     * 이메일 형식 검증
+     * 
+     * @param email 검증할 이메일
+     * @return 유효하면 true, 아니면 false
+     */
+    private boolean isValidEmail(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            return false;
+        }
+        return EMAIL_PATTERN.matcher(email).matches();
     }
 }

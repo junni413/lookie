@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
 import lookie.backend.domain.user.exception.AlreadyExistsPhoneException;
 import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
+import lookie.backend.domain.user.exception.InvalidEmailFormatException;
+import lookie.backend.domain.user.exception.InvalidPhoneFormatException;
 import lookie.backend.domain.user.exception.LoginFailedException;
 import lookie.backend.domain.user.mapper.UserMapper;
 import lookie.backend.domain.user.vo.UserRole;
@@ -11,6 +13,8 @@ import lookie.backend.domain.user.vo.UserVO;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -20,8 +24,14 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
 
+    // 이메일 형식 검증 정규표현식
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
+    // 전화번호 형식 검증 정규표현식 (하이픈 없이 010으로 시작하는 11자리)
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^010\\d{8}$");
+
     /**
      * 회원가입 비즈니스 로직
+     * - 이메일 및 전화번호 형식 검증
      * - 이메일 인증 완료 확인 (필수)
      * - 전화번호 및 이메일 중복 체크
      * - 비밀번호 암호화
@@ -32,7 +42,17 @@ public class UserService {
      */
     @Transactional
     public void signup(UserVO userVO, String plainPassword) {
-        // 0. 이메일 인증 완료 여부 확인 (Redis 플래그 체크)
+        // 0-1. 이메일 형식 검증
+        if (!isValidEmail(userVO.getEmail())) {
+            throw new InvalidEmailFormatException(userVO.getEmail());
+        }
+
+        // 0-2. 전화번호 형식 검증 (하이픈 없이 숫자만 11자리)
+        if (!isValidPhoneNumber(userVO.getPhoneNumber())) {
+            throw new InvalidPhoneFormatException(userVO.getPhoneNumber());
+        }
+
+        // 0-3. 이메일 인증 완료 여부 확인 (Redis 플래그 체크)
         if (!mailService.isEmailVerified(userVO.getEmail())) {
             throw new EmailVerifyRequiredException(userVO.getEmail());
         }
@@ -102,5 +122,31 @@ public class UserService {
      */
     public boolean checkEmailDuplicate(String email) {
         return userMapper.existByEmail(email);
+    }
+
+    /**
+     * 이메일 형식 검증
+     * 
+     * @param email 검증할 이메일
+     * @return 유효하면 true, 아니면 false
+     */
+    private boolean isValidEmail(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            return false;
+        }
+        return EMAIL_PATTERN.matcher(email).matches();
+    }
+
+    /**
+     * 전화번호 형식 검증 (하이픈 없이 010으로 시작하는 11자리)
+     * 
+     * @param phoneNumber 검증할 전화번호
+     * @return 유효하면 true, 아니면 false
+     */
+    private boolean isValidPhoneNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
+            return false;
+        }
+        return PHONE_PATTERN.matcher(phoneNumber).matches();
     }
 }
