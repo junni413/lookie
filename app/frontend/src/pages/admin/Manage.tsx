@@ -12,7 +12,6 @@ export default function Manage() {
     const [workers, setWorkers] = useState<DB_Worker[]>([]);
 
     // History State
-    // History State
     const [lastAppliedWorkers, setLastAppliedWorkers] = useState<DB_Worker[]>([]);
     const [prevAppliedWorkers, setPrevAppliedWorkers] = useState<DB_Worker[] | null>(null);
 

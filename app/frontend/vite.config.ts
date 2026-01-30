@@ -9,4 +9,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080", // ✅ 백엔드 포트에 맞게
+        changeOrigin: true,
+      },
+    },
+  },
 });

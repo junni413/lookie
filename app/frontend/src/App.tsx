@@ -8,22 +8,27 @@ import MobileLayout from "./components/layout/MobileLayout";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 
+// WORKER pages
 import WorkerAttend from "./pages/worker/Attend";
 import WorkerHome from "./pages/worker/Home";
 import MyPage from "./pages/worker/MyPage";
 import ProfileEdit from "./pages/worker/ProfileEdit";
 import WorkHistory from "./pages/worker/WorkHistory";
-import IssueListPage from "./pages/worker/IssueList";
+import IssueListPage from "./pages/worker/issue/IssueList";
+import IssueReportPage from "./pages/worker/issue/IssueReport";
+import IssueResultPage from "./pages/worker/issue/IssueResult";
 
 import AdminDashboard from "./pages/admin/Dashboard";
 import IssuePage from "./pages/admin/Issue";
 import ManagePage from "./pages/admin/Manage";
+import MapPage from "./pages/admin/Map";
 
 // ✅ 작업 흐름 (프론트만)
 import TaskAssignLoading from "./pages/worker/task/TaskAssignLoading";
 import TaskScanStart from "./pages/worker/task/TaskScanStart";
 import ToteScan from "./pages/worker/task/ToteScan";
 import WorkDetail from "./pages/worker/task/WorkDetail";
+
 
 // ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -98,24 +103,33 @@ export default function App() {
         {/* 출근 */}
         <Route path="attend" element={<WorkerAttend />} />
 
-        {/* 대시보드 */}
+        {/* 홈 */}
         <Route path="home" element={<WorkerHome />} />
 
-        {/* ✅ 작업 흐름 */}
+        {/* 작업 흐름 */}
         <Route path="task/loading" element={<TaskAssignLoading />} />
         <Route path="task/scan-start" element={<TaskScanStart />} />
-
-        {/* ✅ 토트 스캔(카메라) */}
         <Route path="task/tote-scan" element={<ToteScan />} />
-
-        {/* ✅ 작업 상세(상품 정보 화면) */}
         <Route path="task/work-detail" element={<WorkDetail />} />
+
+        {/* ✅ 이슈(목록/신고촬영) */}
+        {/* (A안) 단수: /worker/issue, /worker/issue/report */}
+        <Route path="issue" element={<IssueListPage />} />
+        <Route path="issue/report" element={<IssueReportPage />} />
+        <Route path="issue/result" element={<IssueResultPage />} />
+
+        {/* (B안) 복수 유지하고 싶으면 위 2줄 대신 아래 2줄 사용
+            <Route path="issues" element={<IssueListPage />} />
+            <Route path="issues/report" element={<IssueReportPage />} />
+        */}
 
         {/* 사이드바 연결 페이지들 */}
         <Route path="mypage" element={<MyPage />} />
         <Route path="profile/edit" element={<ProfileEdit />} />
         <Route path="work-history" element={<WorkHistory />} />
-        <Route path="issues" element={<IssueListPage />} />
+
+        {/* ✅ 기존 /worker/issues를 이미 쓰고 있으면 호환 리다이렉트 */}
+        <Route path="issues" element={<Navigate to="/worker/issue" replace />} />
       </Route>
 
       {/* ADMIN */}
@@ -132,6 +146,7 @@ export default function App() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
         <Route path="manage" element={<ManagePage />} />
+        <Route path="map" element={<MapPage />} />
         <Route path="issue" element={<IssuePage />} />
       </Route>
 

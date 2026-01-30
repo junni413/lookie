@@ -90,4 +90,24 @@ export interface DB_Worker {
     status: WorkerStatus;
     current_zone_id: number | null;
     today_work_count: number;
+    work_rate?: number; // 0-100 for visualization
+    // Extended for Frontend Visualization
+    line_number?: number;
+    bin_number?: number;
+}
+
+// 3) 관제(Map) 시각화 관련 타입
+export interface ZoneLayout {
+    zone_id: number;
+    lines: LayoutLine[];
+}
+
+export interface LayoutLine {
+    line_number: number;
+    bins: LayoutBin[];
+}
+
+export interface LayoutBin {
+    bin_number: number;
+    capacity?: number;
 }

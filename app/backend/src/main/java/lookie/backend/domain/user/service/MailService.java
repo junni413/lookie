@@ -81,6 +81,50 @@ public class MailService {
     }
 
     /**
+     * 비밀번호 재설정용 인증번호 발송
+     * - 이메일 형식 검증
+     * - DB 존재 체크 (기존 이메일만 발송)
+     * - 보안: 계정 존재 여부 노출 방지 (존재하지 않아도 성공 응답)
+     * - 재발송 제한 (1분)
+     * - 6자리 난수 생성 및 발송
+     * - Redis 저장 (TTL 5분)
+     */
+    public void sendPasswordResetCode(String email) {
+        // 0. 이메일 형식 검증
+        if (!isValidEmail(email)) {
+            throw new InvalidEmailFormatException(email);
+        }
+
+        // 1. DB에서 이메일 존재 체크 (비밀번호 재설정은 기존 계정만)
+        // 보안: 계정이 존재하지 않아도 예외를 던지지 않고 조용히 종료 (계정 열거 공격 방지)
+        if (!userMapper.existByEmail(email)) {
+            log.warn("[비밀번호 재설정] 존재하지 않는 이메일 요청 (보안상 성공 응답): {}", email);
+            return; // 조용히 종료 (계정 존재 여부 노출 방지)
+        }
+
+        // 2. 재발송 제한 체크 (1분 내 중복 발송 방지)
+        String limitKey = EMAIL_LIMIT_PREFIX + email;
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(limitKey))) {
+            throw new EmailAlreadySentException(email);
+        }
+
+        // 3. 6자리 인증번호 생성
+        String code = generateVerificationCode();
+
+        // 4. 이메일 발송
+        sendPasswordResetEmail(email, code);
+
+        // 5. Redis에 인증번호 저장 (TTL 5분)
+        String codeKey = EMAIL_CODE_PREFIX + email;
+        redisTemplate.opsForValue().set(codeKey, code, CODE_TTL, TimeUnit.SECONDS);
+
+        // 6. 재발송 제한 플래그 설정 (TTL 1분)
+        redisTemplate.opsForValue().set(limitKey, "sent", LIMIT_TTL, TimeUnit.SECONDS);
+
+        log.info("[비밀번호 재설정] 인증번호 발송 완료: {}", email);
+    }
+
+    /**
      * 이메일 인증번호 검증
      * - Redis에서 번호 대조
      * - 검증 성공 시 verified 플래그 저장 (TTL 10분)
@@ -153,6 +197,29 @@ public class MailService {
             log.info("[이메일 발송] 성공: {}", to);
         } catch (Exception e) {
             log.error("[이메일 발송] 실패: {}", to, e);
+            throw new EmailSendFailedException(to);
+        }
+    }
+
+    /**
+     * 비밀번호 재설정 이메일 발송
+     */
+    private void sendPasswordResetEmail(String to, String code) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(to);
+            message.setSubject("[Lookie] 비밀번호 재설정 인증번호");
+            message.setText(
+                    "안녕하세요, Lookie입니다.\n\n" +
+                            "비밀번호 재설정을 위한 인증번호는 다음과 같습니다:\n\n" +
+                            "[" + code + "]\n\n" +
+                            "이 인증번호는 5분간 유효합니다.\n" +
+                            "본인이 요청하지 않았다면 이 메일을 무시하고 비밀번호를 변경하세요.");
+
+            mailSender.send(message);
+            log.info("[비밀번호 재설정 이메일 발송] 성공: {}", to);
+        } catch (Exception e) {
+            log.error("[비밀번호 재설정 이메일 발송] 실패: {}", to, e);
             throw new EmailSendFailedException(to);
         }
     }

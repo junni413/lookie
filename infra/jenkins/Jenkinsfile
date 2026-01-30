@@ -2,408 +2,509 @@ pipeline {
   agent any
 
   options {
-    timestamps()                 // ✅ 콘솔 로그에 시간 표시
-    disableConcurrentBuilds()    // ✅ 같은 Job이 동시에 여러 번 돌지 않게 잠금
+    timestamps()                 // 콘솔 로그에 시간 출력
+    disableConcurrentBuilds()    // 동일 Job 동시 실행 방지(배포 충돌 방지)
+    skipDefaultCheckout(true)    // Declarative 기본 checkout 비활성화 → Checkout 스테이지에서만 수행
   }
 
   environment {
-    // =====================================================================
-    // [DEPLOY] 배포 대상(EC2) 정보
-    // =====================================================================
-    DEPLOY_HOST  = 'i14b105.p.ssafy.io'
-    DEPLOY_USER  = 'ubuntu'
-    DEPLOY_DIR   = '/home/ubuntu/lookie/S14P11B105'
-    SSH_CRED_ID  = 'ec2-ssh-key'  // Jenkins Credentials: SSH Private Key
-    GIT_REPO_SSH = 'git@lab.ssafy.com:s14-webmobile1-sub1/S14P11B105.git'
+    // ============================================================
+    // [DEPLOY] EC2 배포 대상 정보
+    // ============================================================
+    DEPLOY_HOST  = 'i14b105.p.ssafy.io'                 // 배포 서버 Host
+    DEPLOY_USER  = 'ubuntu'                             // 배포 서버 User
+    DEPLOY_DIR   = '/home/ubuntu/lookie/S14P11B105'     // 배포 디렉토리(EC2)
+    SSH_CRED_ID  = 'ec2-ssh-key'                        // Jenkins SSH credential ID
+    GIT_REPO_SSH = 'git@lab.ssafy.com:s14-webmobile1-sub1/S14P11B105.git' // EC2에서 git pull용 SSH URL
+    COMPOSE_PROD_FILE = 'docker-compose.prod.yml'       // 배포용 compose 파일
 
-    // =====================================================================
-    // [NOTIFY] Mattermost 알림 Webhook (Jenkins Credentials: Secret text)
-    // =====================================================================
-    MM_WEBHOOK_CRED_ID = 'mattermost-webhook'
+    // ============================================================
+    // [REGISTRY] DockerHub 이미지 정보
+    // ============================================================
+    DOCKERHUB_CRED_ID      = 'dockerhub-cred'           // Jenkins에 등록된 DockerHub credential ID
+    REGISTRY_IMAGE_BACKEND = 'sheonj/lookie-backend'    // 백엔드 이미지 저장소(레포)
+    REGISTRY_IMAGE_NGINX   = 'sheonj/lookie-nginx'      // nginx 이미지 저장소(레포)
 
-    // =====================================================================
-    // [LINK] 외부에서 접근 가능한 Jenkins URL (Mattermost 메시지 링크용)
-    // =====================================================================
-    PUBLIC_JENKINS_URL = 'http://i14b105.p.ssafy.io:9000'
+    // ✅ repo 구조에 맞게 Docker build context/Dockerfile 경로 설정
+    BACKEND_CONTEXT    = 'app/backend'
+    BACKEND_DOCKERFILE = 'app/backend/Dockerfile'
+    NGINX_CONTEXT      = '.'
+    NGINX_DOCKERFILE   = 'infra/nginx/Dockerfile'
 
-    // =====================================================================
-    // [LOG] 단계별 로그 파일명 (원하면 artifact/archive로 남길 수 있음)
-    // =====================================================================
+    // ============================================================
+    // [NOTIFY] Mattermost 알림
+    // ============================================================
+    MM_WEBHOOK_CRED_ID = 'mattermost-webhook'           // Mattermost webhook credential ID
+    PUBLIC_JENKINS_URL = 'http://i14b105.p.ssafy.io:9000' // 외부에서 접근 가능한 Jenkins base URL
+
+    // ============================================================
+    // [LOG] 빌드 로그 파일명(워크스페이스에 생성)
+    // ============================================================
     BACKEND_LOG  = 'ci_backend.log'
     FRONTEND_LOG = 'ci_frontend.log'
     DEPLOY_LOG   = 'ci_deploy.log'
+
+    // ============================================================
+    // [CI - Redis/MySQL] MR 테스트용(호스트 포트 충돌 방지 위해 랜덤 포트 사용)
+    // ============================================================
+    CI_REDIS_CONTAINER = 'ci-redis'
+    CI_REDIS_IMAGE     = 'redis:7-alpine'
+
+    CI_MYSQL_CONTAINER = 'ci-mysql'
+    CI_MYSQL_IMAGE     = 'mysql:8.0'
+    CI_MYSQL_DB        = 'lookie'
+    CI_MYSQL_USER      = 'lookie'
+    CI_MYSQL_PASSWORD  = 'lookiepass'
+    CI_MYSQL_ROOTPW    = 'rootpass'
+
+    // Docker build 성능 옵션
+    DOCKER_BUILDKIT = '1'
+    COMPOSE_DOCKER_CLI_BUILD = '1'
   }
 
   stages {
 
-    // =====================================================================
-    // 1) Detect Context
-    // - Generic Webhook Trigger로 들어온 변수들을 표준화
-    // - 어떤 이벤트인지(MR/push), 어떤 브랜치인지 확인해서 실행 계획 수립
-    // =====================================================================
+    // ============================================================
+    // 1) Webhook 환경변수에서 이벤트 종류(MR/push), 브랜치 정보 등을 감지
+    // ============================================================
     stage('Detect Context') {
       steps {
         script {
-          // Generic Webhook Trigger에서 넘어오는 변수명이 케이스/플러그인마다 달라질 수 있어
-          // 가능한 변수명을 모두 fallback으로 처리
-          env.EVENT_KIND  = (env.OBJECT_KIND ?: env.object_kind ?: '').trim()  // merge_request / push ...
-          env.PUSH_BRANCH = (env.REF ?: env.ref ?: '').replace('refs/heads/', '').trim()
+          // 여러 webhook 변수를 받아도 동작하도록 "첫 번째로 값 있는 키"를 선택
+          def pick = { List<String> keys ->
+            for (k in keys) {
+              def v = env."${k}"
+              if (v != null && v.toString().trim()) return v.toString().trim()
+            }
+            return ''
+          }
 
-          env.MR_SOURCE   = (env.MR_SOURCE ?: env.mr_source ?: '').trim()
-          env.MR_TARGET   = (env.MR_TARGET ?: env.mr_target ?: '').trim()
+          // 이벤트 종류 감지(GitLab/Generic webhook 변수 차이 흡수)
+          env.EVENT_KIND = pick(['OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type'])
+          env.EVENT_KIND = (env.EVENT_KIND ?: '').trim()
+          if (env.EVENT_KIND.toLowerCase().contains('merge')) env.EVENT_KIND = 'merge_request'
+          if (env.EVENT_KIND.toLowerCase().contains('push'))  env.EVENT_KIND = 'push'
 
-          // 트리거 실행자 (MR/push 케이스 모두 대응)
-          env.ACTOR = (
-            env.MR_USER_NAME ?: env.MR_USER_USERNAME ?:
-            env.PUSH_USER_NAME ?: env.PUSH_USER_USERNAME ?:
-            env.user_name ?: env.user_username ?:
-            'unknown'
-          ).trim()
+          // push 이벤트일 때 브랜치명 추출(refs/heads/xxx → xxx)
+          def refRaw = pick(['REF','ref','GIT_REF','gitRef','refChanges_0_refId'])
+          env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').trim()
 
-          // 기본 실행 계획은 모두 false로 시작
+          // MR 이벤트일 때 source/target 브랜치 추출
+          env.MR_SOURCE = pick(['MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch','gitlabSourceBranch']).trim()
+          env.MR_TARGET = pick(['MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch','gitlabTargetBranch']).trim()
+
+          // 실행자 정보(가능한 필드들을 모두 커버)
+          env.ACTOR = pick([
+            'MR_USER_NAME','MR_USER_USERNAME',
+            'PUSH_USER_NAME','PUSH_USER_USERNAME',
+            'user_name','user_username',
+            'GITLAB_USER_NAME','GITLAB_USER_USERNAME',
+            'gitlabUserName','gitlabUserUsername'
+          ]).trim()
+          if (!env.ACTOR) env.ACTOR = 'unknown'
+
+          // ======================================================
+          // ✅ 추천 운영 방식 플래그
+          //  - MR: 테스트/빌드만 수행(이미지 push / 배포 금지)
+          //  - develop push: 이미지 build+push 후 배포(pull 기반)
+          // ======================================================
           env.RUN_BACKEND  = "false"
           env.RUN_FRONTEND = "false"
+          env.RUN_BUILDIMG = "false"
           env.RUN_DEPLOY   = "false"
 
-          // ✅ MR 이벤트일 때: 브랜치 prefix로 어느 파트 실행할지 결정
-          // - feat/be/* : 백엔드 테스트만
-          // - feat/fe/* : 프론트 빌드만
-          // - 그 외    : 둘 다
+          // MR이면 백/프 테스트·빌드 수행
           if (env.EVENT_KIND == 'merge_request') {
-            if ((env.MR_SOURCE ?: '').startsWith('feat/be/')) {
-              env.RUN_BACKEND = "true"
-            } else if ((env.MR_SOURCE ?: '').startsWith('feat/fe/')) {
-              env.RUN_FRONTEND = "true"
-            } else {
-              env.RUN_BACKEND = "true"
-              env.RUN_FRONTEND = "true"
-            }
+            env.RUN_BACKEND  = "true"
+            env.RUN_FRONTEND = "true"
           }
 
-          // ✅ push 이벤트에서 develop 브랜치면 배포 수행
+          // develop push(머지 후 push)면 이미지 build/push + 배포
           if (env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop') {
-            env.RUN_DEPLOY = "true"
+            env.RUN_BUILDIMG = "true"
+            env.RUN_DEPLOY   = "true"
           }
 
-          // 콘솔에 실행 계획 출력 (디버깅/가독성 ↑)
-          echo """
-[Webhook]
-- kind       = ${env.EVENT_KIND}
-- actor      = ${env.ACTOR}
-- pushBranch = ${env.PUSH_BRANCH}
-- mrSource   = ${env.MR_SOURCE}
-- mrTarget   = ${env.MR_TARGET}
+          // Checkout 대상 브랜치 결정(MR은 source, push는 push branch)
+          env.CHECKOUT_BRANCH = ''
+          if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
+            env.CHECKOUT_BRANCH = env.MR_SOURCE
+          } else if (env.EVENT_KIND == 'push' && env.PUSH_BRANCH) {
+            env.CHECKOUT_BRANCH = env.PUSH_BRANCH
+          }
 
-[Plan]
-- backendTest   = ${env.RUN_BACKEND}
-- frontendBuild = ${env.RUN_FRONTEND}
-- deploy        = ${env.RUN_DEPLOY}
+          // 콘솔에 컨텍스트 출력(디버깅)
+          echo """
+[kind=${env.EVENT_KIND}]
+actor=${env.ACTOR}
+pushBranch=${env.PUSH_BRANCH}
+mrSource=${env.MR_SOURCE}
+mrTarget=${env.MR_TARGET}
+checkoutBranch=${env.CHECKOUT_BRANCH}
+plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG}, DEPLOY=${env.RUN_DEPLOY}
 """.trim()
         }
       }
     }
 
-    // =====================================================================
+    // ============================================================
     // 2) Checkout
-    // - Jenkins 기본 checkout(scm) 수행
-    // - MR이면 "source 브랜치"를 명시적으로 체크아웃해서 빌드 대상 통일
-    // =====================================================================
+    //  - checkout scm은 Jenkins가 credential(GIT_ASKPASS)을 주입해서 fetch/checkout 수행
+    //  - shell에서 git fetch를 다시 치면 인증 프롬프트/실패 가능 → 여기서는 fetch 없이 브랜치만 맞춤
+    // ============================================================
     stage('Checkout') {
+      when {
+        expression { env.RUN_BACKEND == "true" || env.RUN_FRONTEND == "true" || env.RUN_BUILDIMG == "true" || env.RUN_DEPLOY == "true" }
+      }
       steps {
         checkout scm
 
-        script {
-          // MR 이벤트일 때 source branch를 origin 기준으로 체크아웃
-          // (checkout scm이 이미 fetch를 하므로 추가 fetch는 생략)
-          if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
-            sh """
-              bash -lc '
-                set -euo pipefail
-                echo "== Checkout MR source branch: ${env.MR_SOURCE} =="
+        sh '''
+          bash -lc '
+            set -euo pipefail
 
-                git rev-parse --verify origin/${env.MR_SOURCE}
-                git checkout -B ${env.MR_SOURCE} origin/${env.MR_SOURCE}
+            # CHECKOUT_BRANCH가 있으면 origin/<branch> 기준으로 로컬 브랜치를 강제 맞춤
+            if [ -n "${CHECKOUT_BRANCH:-}" ]; then
+              git rev-parse --verify "refs/remotes/origin/${CHECKOUT_BRANCH}" >/dev/null 2>&1 || {
+                echo "[ERROR] origin/${CHECKOUT_BRANCH} not found"
+                git branch -r || true
+                exit 1
+              }
+              git checkout -B "${CHECKOUT_BRANCH}" "refs/remotes/origin/${CHECKOUT_BRANCH}"
+            fi
 
-                echo "== Current branch =="
-                git branch --show-current
-                git log -1 --oneline
-              '
-            """
-          }
-        }
+            # 현재 브랜치/커밋 확인
+            git branch --show-current
+            git log -1 --oneline
+          '
+        '''
       }
     }
 
-    // =====================================================================
-    // 3) Backend Test (Maven)
-    // - MR 이벤트 + RUN_BACKEND=true 일 때만 실행
-    // - 환경 스냅샷(메모리/디스크) + 수행 시간(duration) 로그에 남김
-    // =====================================================================
-    stage('Backend Test (Maven)') {
+    // ============================================================
+    // 3) MR: Backend Test
+    //  - Jenkins 노드 로컬에 설치된 DB/Redis를 쓰지 않게
+    //    MySQL/Redis를 모두 컨테이너로 띄우고 "랜덤 호스트 포트"를 매핑
+    //  - docker port로 실제 호스트 포트를 읽어 spring 설정을 mvn 옵션으로 강제 주입
+    // ============================================================
+    stage('Backend Test (MR only)') {
       when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_BACKEND == "true" } }
-
       steps {
         dir('app/backend') {
-          sh """
+          sh '''
             bash -lc '
               set -euo pipefail
-
-              # 로그 파일 초기화
               : > ../../${BACKEND_LOG}
 
-              START_TS=\$(date +%s)
+              # docker 사용 가능 확인
+              docker version >/dev/null 2>&1 || {
+                echo "[ERROR] docker not available" | tee -a ../../${BACKEND_LOG}
+                exit 1
+              }
 
-              echo "===== [Backend] env snapshot =====" | tee -a ../../${BACKEND_LOG}
-              free -m | tee -a ../../${BACKEND_LOG}
-              df -h | tee -a ../../${BACKEND_LOG}
+              # 이전 컨테이너 제거(충돌 방지)
+              docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
+              docker rm -f "${CI_MYSQL_CONTAINER}" >/dev/null 2>&1 || true
 
-              echo "===== [Backend] mvnw -v =====" | tee -a ../../${BACKEND_LOG}
+              # ---------------------------
+              # (1) MySQL 컨테이너 실행
+              #   -p 0:3306 → 호스트 포트를 랜덤으로 할당(포트 충돌 방지)
+              # ---------------------------
+              docker pull "${CI_MYSQL_IMAGE}" >/dev/null 2>&1 || true
+              docker run -d --name "${CI_MYSQL_CONTAINER}" \
+                -e MYSQL_ROOT_PASSWORD="${CI_MYSQL_ROOTPW}" \
+                -e MYSQL_DATABASE="${CI_MYSQL_DB}" \
+                -e MYSQL_USER="${CI_MYSQL_USER}" \
+                -e MYSQL_PASSWORD="${CI_MYSQL_PASSWORD}" \
+                -p 0:3306 \
+                "${CI_MYSQL_IMAGE}" >/dev/null
+
+              # docker port로 실제 할당된 호스트 포트 조회
+              MYSQL_HOST_PORT="$(docker port "${CI_MYSQL_CONTAINER}" 3306/tcp | sed -E "s/.*:([0-9]+)$/\\1/" | tail -n 1)"
+              [ -n "${MYSQL_HOST_PORT}" ] || {
+                echo "[ERROR] mysql port detect failed" | tee -a ../../${BACKEND_LOG}
+                exit 1
+              }
+
+              # MySQL readiness 확인(ping + select)
+              for i in $(seq 1 90); do
+                if docker exec "${CI_MYSQL_CONTAINER}" mysqladmin ping -uroot -p"${CI_MYSQL_ROOTPW}" --silent >/dev/null 2>&1; then
+                  if docker exec "${CI_MYSQL_CONTAINER}" mysql -uroot -p"${CI_MYSQL_ROOTPW}" -e "SELECT 1" >/dev/null 2>&1; then
+                    break
+                  fi
+                fi
+                sleep 1
+                [ "$i" -eq 90 ] && { echo "[ERROR] mysql readiness timeout" | tee -a ../../${BACKEND_LOG}; exit 1; }
+              done
+
+              # ---------------------------
+              # (2) Redis 컨테이너 실행
+              #   -p 0:6379 → 호스트 포트를 랜덤으로 할당
+              # ---------------------------
+              docker pull "${CI_REDIS_IMAGE}" >/dev/null 2>&1 || true
+              docker run -d --name "${CI_REDIS_CONTAINER}" -p 0:6379 "${CI_REDIS_IMAGE}" >/dev/null
+
+              # 실제 할당된 Redis 호스트 포트 조회
+              REDIS_HOST_PORT="$(docker port "${CI_REDIS_CONTAINER}" 6379/tcp | sed -E "s/.*:([0-9]+)$/\\1/" | tail -n 1)"
+              [ -n "${REDIS_HOST_PORT}" ] || {
+                echo "[ERROR] redis port detect failed" | tee -a ../../${BACKEND_LOG}
+                exit 1
+              }
+
+              # Redis readiness 확인(PONG)
+              for i in $(seq 1 30); do
+                if docker exec "${CI_REDIS_CONTAINER}" redis-cli ping 2>/dev/null | grep -q PONG; then
+                  break
+                fi
+                sleep 1
+                [ "$i" -eq 30 ] && { echo "[ERROR] redis readiness timeout" | tee -a ../../${BACKEND_LOG}; exit 1; }
+              done
+
+              # ---------------------------
+              # (3) Maven test 실행
+              #  - spring.datasource / redis host/port를 "이번 CI 컨테이너"로 강제 주입
+              # ---------------------------
               chmod +x mvnw || true
-              ./mvnw -v 2>&1 | tee -a ../../${BACKEND_LOG}
-
-              echo "===== [Backend] mvnw clean test =====" | tee -a ../../${BACKEND_LOG}
-              ./mvnw clean test 2>&1 | tee -a ../../${BACKEND_LOG}
-
-              END_TS=\$(date +%s)
-              echo "===== [Backend] duration: \$((END_TS-START_TS))s =====" | tee -a ../../${BACKEND_LOG}
+              ./mvnw -q clean test \
+                -Dspring.profiles.active=ci \
+                -Dspring.datasource.url="jdbc:mysql://127.0.0.1:${MYSQL_HOST_PORT}/${CI_MYSQL_DB}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
+                -Dspring.datasource.username="${CI_MYSQL_USER}" \
+                -Dspring.datasource.password="${CI_MYSQL_PASSWORD}" \
+                -Dspring.data.redis.host=127.0.0.1 \
+                -Dspring.data.redis.port="${REDIS_HOST_PORT}" \
+                -Dspring.redis.host=127.0.0.1 \
+                -Dspring.redis.port="${REDIS_HOST_PORT}" \
+                2>&1 | tee -a ../../${BACKEND_LOG}
             '
-          """
+          '''
+        }
+      }
+      post {
+        always {
+          // 테스트 성공/실패와 무관하게 컨테이너 정리
+          sh '''
+            bash -lc '
+              docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
+              docker rm -f "${CI_MYSQL_CONTAINER}" >/dev/null 2>&1 || true
+            '
+          '''
         }
       }
     }
 
-    // =====================================================================
-    // 4) Frontend Build (React)
-    // - MR 이벤트 + RUN_FRONTEND=true 일 때만 실행
-    // - node를 Jenkins에 직접 설치하지 않고 docker run(node:20-alpine)으로 빌드
-    // - 환경 스냅샷/디스크/도커 사용량/수행 시간 로그 남김
-    // =====================================================================
-    stage('Frontend Build (React)') {
+    // ============================================================
+    // 4) MR: Frontend Build
+    //  - node 컨테이너로 npm ci / build 수행(로컬 node 환경 의존 제거)
+    // ============================================================
+    stage('Frontend Build (MR only)') {
       when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_FRONTEND == "true" } }
-
       steps {
         dir('app/frontend') {
-          sh """
+          sh '''
             bash -lc '
               set -euo pipefail
-
-              # 로그 파일 초기화
               : > ../../${FRONTEND_LOG}
 
-              START_TS=\$(date +%s)
+              # docker 사용 가능 확인
+              docker version >/dev/null 2>&1 || {
+                echo "[ERROR] docker not available" | tee -a ../../${FRONTEND_LOG}
+                exit 1
+              }
 
-              echo "===== [Frontend] env snapshot =====" | tee -a ../../${FRONTEND_LOG}
-              free -m | tee -a ../../${FRONTEND_LOG}
-              df -h | tee -a ../../${FRONTEND_LOG}
-              docker system df | tee -a ../../${FRONTEND_LOG}
+              # node 이미지 pull(최초/캐시 미스 시)
+              docker pull node:20-alpine >/dev/null 2>&1 || true
 
-              echo "===== [Frontend] docker version =====" | tee -a ../../${FRONTEND_LOG}
-              docker version 2>&1 | tee -a ../../${FRONTEND_LOG}
+              # npm 캐시 볼륨(빌드 속도 개선)
+              mkdir -p "${HOME}/.npm"
 
-              echo "===== [Frontend] node build (container) =====" | tee -a ../../${FRONTEND_LOG}
               docker run --rm \
-                -v "\$PWD":/app -w /app \
+                -v "$PWD":/app -w /app \
+                -v "${HOME}/.npm":/root/.npm \
                 node:20-alpine sh -lc "
-                  set -e
-                  node -v
-                  npm -v
+                  set -euo pipefail
                   npm ci
                   npm run build
                 " 2>&1 | tee -a ../../${FRONTEND_LOG}
-
-              END_TS=\$(date +%s)
-              echo "===== [Frontend] duration: \$((END_TS-START_TS))s =====" | tee -a ../../${FRONTEND_LOG}
             '
-          """
+          '''
         }
       }
     }
 
-    // =====================================================================
-    // 5) Deploy (develop push only)
-    // - push 이벤트 + develop 브랜치일 때만 실행
-    // - StrictHostKeyChecking=no 대신 known_hosts에 host key 사전 등록
-    // - docker compose build / up -d 분리하여 캐시 활용
-    // =====================================================================
-    stage('Deploy (develop push only)') {
-      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' } }
-
+    // ============================================================
+    // 5) develop push: Build & Push Images
+    //  - develop 브랜치에 push(=머지 후) 되었을 때만 이미지 빌드/푸시
+    //  - IMAGE_TAG는 커밋 sha(short)로 고정 → 배포 재현성/롤백 용이
+    // ============================================================
+    stage('Build & Push Images (develop push only)') {
+      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
-        // 로컬(젠킨스 워커)에도 배포 로그 파일 남김
-        sh """
-          bash -lc '
-            set -euo pipefail
-            : > ${DEPLOY_LOG}
-          '
-        """
+        script {
+          // 현재 커밋을 태그로 사용(예: a1b2c3d)
+          env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+          echo "IMAGE_TAG=${env.IMAGE_TAG}"
+        }
 
-        // Jenkins Credentials의 SSH 키를 ssh-agent에 로드
-        sshagent(credentials: [env.SSH_CRED_ID]) {
-          sh """
+        // DockerHub 로그인 정보 주입(username/password 또는 token)
+        withCredentials([usernamePassword(
+          credentialsId: env.DOCKERHUB_CRED_ID,
+          usernameVariable: 'DH_USER',
+          passwordVariable: 'DH_PASS'
+        )]) {
+          sh '''
             bash -lc '
               set -euo pipefail
 
-              START_TS=\$(date +%s)
+              # docker hub login
+              echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
-              # -------------------------------------------------------------
-              # [보안] known_hosts 준비
-              # - StrictHostKeyChecking=no를 쓰면 MITM 위험이 커짐
-              # - ssh-keyscan으로 대상 호스트 키를 known_hosts에 기록
-              #   (주의: ssh-keyscan도 네트워크가 오염되면 위험할 수 있으니
-              #    가장 안전한 방법은 "정상 키를 직접 등록"하는 것)
-              # -------------------------------------------------------------
-              echo "===== [Deploy] prepare known_hosts =====" | tee -a ${DEPLOY_LOG}
-              mkdir -p ~/.ssh
-              touch ~/.ssh/known_hosts
-              chmod 700 ~/.ssh
-              chmod 600 ~/.ssh/known_hosts
+              # backend 이미지 빌드/푸시
+              docker build -f "${BACKEND_DOCKERFILE}" -t "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}" "${BACKEND_CONTEXT}"
+              docker push "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}"
 
-              ssh-keyscan -H ${DEPLOY_HOST} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-              echo "===== [Deploy] remote deploy start =====" | tee -a ${DEPLOY_LOG}
-
-              # -------------------------------------------------------------
-              # [원격 배포]
-              # - develop 최신화 후 compose build + up
-              # -------------------------------------------------------------
-              ssh ${DEPLOY_USER}@${DEPLOY_HOST} "
-                set -e
-                mkdir -p ${DEPLOY_DIR}
-                cd ${DEPLOY_DIR}
-
-                # 최초 1회 clone
-                if [ ! -d .git ]; then
-                  git clone ${GIT_REPO_SSH} .
-                fi
-
-                git fetch --all
-                git checkout develop
-                git reset --hard origin/develop
-
-                # 캐시 활용을 위해 build/up 분리
-                docker compose build
-                docker compose up -d
-              " 2>&1 | tee -a ${DEPLOY_LOG}
-
-              echo "===== [Deploy] remote deploy done =====" | tee -a ${DEPLOY_LOG}
-              END_TS=\$(date +%s)
-              echo "===== [Deploy] duration: \$((END_TS-START_TS))s =====" | tee -a ${DEPLOY_LOG}
+              # nginx 이미지 빌드/푸시
+              docker build -f "${NGINX_DOCKERFILE}" -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" "${NGINX_CONTEXT}"
+              docker push "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}"
             '
-          """
+          '''
+        }
+      }
+    }
+
+    // ============================================================
+    // 6) develop push: Deploy (pull 기반)
+    //  - EC2에서 docker compose pull → up -d 로 이미지 기반 배포
+    //  - compose에서 사용하는 변수(REGISTRY_IMAGE_*, IMAGE_TAG)를 export로 주입
+    // ============================================================
+    stage('Deploy (develop push only, pull based)') {
+      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_DEPLOY == "true" } }
+      steps {
+        script {
+          // Build&Push에서 IMAGE_TAG가 넘어오지 않았을 때도 안전하게 세팅
+          if (!env.IMAGE_TAG?.trim()) {
+            env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+          }
+          echo "Deploy IMAGE_TAG=${env.IMAGE_TAG}"
+        }
+
+        withCredentials([usernamePassword(
+          credentialsId: env.DOCKERHUB_CRED_ID,
+          usernameVariable: 'DH_USER',
+          passwordVariable: 'DH_PASS'
+        )]) {
+          sshagent(credentials: [env.SSH_CRED_ID]) {
+            sh '''
+              bash -lc '
+                set -euo pipefail
+                : > ${DEPLOY_LOG}
+
+                # 배포 서버 known_hosts 등록(첫 접속 시 SSH host key prompt 방지)
+                mkdir -p ~/.ssh
+                ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+                ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "
+                  set -euo pipefail
+
+                  # 배포 디렉토리 준비
+                  mkdir -p '${DEPLOY_DIR}'
+                  cd '${DEPLOY_DIR}'
+
+                  # migrate가 migration SQL을 volume mount 하므로 repo가 필요(그래서 clone 유지)
+                  if [ ! -d .git ]; then
+                    git clone '${GIT_REPO_SSH}' .
+                  fi
+
+                  # develop 브랜치 최신화
+                  git fetch origin
+                  git checkout -B develop origin/develop
+
+                  # docker-compose.prod.yml 에서 사용하는 변수 주입
+                  export REGISTRY_IMAGE_BACKEND='${REGISTRY_IMAGE_BACKEND}'
+                  export REGISTRY_IMAGE_NGINX='${REGISTRY_IMAGE_NGINX}'
+                  export IMAGE_TAG='${IMAGE_TAG}'
+
+                  # EC2에서 docker hub login(이미지 pull 권한)
+                  echo '${DH_PASS}' | docker login -u '${DH_USER}' --password-stdin >/dev/null
+
+                  # 최신 이미지 pull 후 재기동
+                  docker compose -f '${COMPOSE_PROD_FILE}' pull
+                  docker compose -f '${COMPOSE_PROD_FILE}' up -d
+
+                  # 사용하지 않는 이미지 정리(디스크 절약)
+                  docker image prune -f >/dev/null 2>&1 || true
+                " 2>&1 | tee -a ${DEPLOY_LOG}
+              '
+            '''
+          }
         }
       }
     }
   }
 
-  // =====================================================================
-  // post: always
-  // - 파이프라인 결과와 메타정보를 정리해서 Mattermost로 알림
-  // =====================================================================
+  // ============================================================
+  // post: 항상 Mattermost 알림 전송
+  // ============================================================
   post {
     always {
       script {
-        def isMR   = (env.EVENT_KIND == 'merge_request')
-        def isPush = (env.EVENT_KIND == 'push')
-
-        def branch = isMR ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
-        def actor  = env.ACTOR ?: 'unknown'
-
-        // checkout 이후 workspace 기준 최신 커밋 정보
-        def commitMsg = sh(script: "git log -1 --pretty=%s", returnStdout: true).trim()
-        def commitSha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-
-        def ranBE     = (env.RUN_BACKEND == "true")
-        def ranFE     = (env.RUN_FRONTEND == "true")
-        def ranDeploy = (env.RUN_DEPLOY == "true")
-
         def ok = (currentBuild.currentResult == 'SUCCESS')
+        def kind = env.EVENT_KIND ?: ''
+        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
+        def title = ok ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패"
 
-        def label = isMR ? "CI" : (isPush ? "배포" : "빌드")
-        def title = ok ? ":white_check_mark: ${label} 성공" : ":x: ${label} 실패"
-
-        // 외부에서 접근 가능한 Jenkins 링크 생성
-        def jobName = env.JOB_NAME ?: ''
-        def buildNo = env.BUILD_NUMBER ?: ''
-        def buildUrlFixed = "${env.PUBLIC_JENKINS_URL}/job/${jobName}/${buildNo}/"
+        // 폴더형 job에서도 정상 링크가 되도록 URL 구성
+        def jobName = (env.JOB_NAME ?: '').trim()
+        def buildNo = (env.BUILD_NUMBER ?: '').trim()
+        def jobPath = jobName ? jobName.split('/').collect { "job/${it}" }.join('/') : ''
+        def buildUrl = jobPath ? "${env.PUBLIC_JENKINS_URL}/${jobPath}/${buildNo}/" : env.PUBLIC_JENKINS_URL
 
         mmNotify(ok, [
-          title    : title,
-          mention  : '@channel',
-          kind     : env.EVENT_KIND,
-          actor    : actor,
-          branch   : branch,
-          target   : (env.MR_TARGET ?: ''),
-          commit   : "${commitSha} - ${commitMsg}",
-          buildUrl : buildUrlFixed,
-          credId   : env.MM_WEBHOOK_CRED_ID,
-          ranBE    : ranBE,
-          ranFE    : ranFE,
-          ranDeploy: ranDeploy
+          title   : title,
+          mention : '@channel',
+          kind    : kind,
+          actor   : env.ACTOR ?: 'unknown',
+          branch  : branch,
+          target  : (env.MR_TARGET ?: ''),
+          buildUrl: buildUrl,
+          credId  : env.MM_WEBHOOK_CRED_ID
         ])
       }
     }
   }
 }
 
-/**
- * Mattermost Notify (no script approvals)
- *
- * ✅ 정책:
- * - 실패 요약/consoleText 링크는 제거
- * - 알림 실패가 "조용히" 넘어가면 문제를 놓치기 쉬우므로,
- *   빌드는 실패로 만들지 않되 currentBuild.result를 UNSTABLE로 바꿈
- *   (파이프라인 자체는 통과하지만, 경고 상태로 남김)
- */
+// ============================================================
+// Mattermost 알림 함수
+// ============================================================
 def mmNotify(boolean success, Map info) {
   def icon  = success ? ":jenkins:" : ":warning:"
   def title = info.title ?: (success ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패")
 
-  // Mattermost 메시지 본문 구성
+  // 메시지 본문 구성
   def lines = []
   if (info.mention)  lines << "${info.mention}"
   if (info.kind)     lines << "**이벤트:** `${info.kind}`"
   if (info.actor)    lines << "**실행자:** `${info.actor}`"
   if (info.branch)   lines << "**브랜치:** `${info.branch}`"
   if (info.target)   lines << "**타겟:** `${info.target}`"
-  if (info.commit)   lines << "**커밋:** ${info.commit}"
   if (info.buildUrl) lines << "**Jenkins:** ${info.buildUrl}"
 
-  // 어떤 단계가 실행됐는지 표시
-  def ran = []
-  if (info.ranBE)     ran << "BE"
-  if (info.ranFE)     ran << "FE"
-  if (info.ranDeploy) ran << "DEPLOY"
-  if (!ran.isEmpty()) lines << "**실행:** `${ran.join(' + ')}`"
-
+  // Mattermost Incoming Webhook payload
   def payload = groovy.json.JsonOutput.toJson([
     username  : "Jenkins",
     icon_emoji: icon,
     text      : title + "\n" + lines.join("\n")
   ])
 
-  // payload를 파일로 저장(디버깅/확인 편함)
   writeFile file: 'mm_payload.json', text: payload
 
-  // Webhook은 Jenkins Credentials에서 가져옴(Secret Text)
+  // webhook URL은 credentials에서 가져와 curl로 전송
   withCredentials([string(credentialsId: info.credId, variable: 'MM_WEBHOOK')]) {
-
-    // ✅ 중요: 알림 실패를 "조용히 무시(|| true)" 하지 않고 상태를 확인
-    // - returnStatus로 exit code만 받아서 파이프라인은 계속 진행
-    // - 실패 시 currentBuild.result를 UNSTABLE로 마킹
-    def rc = sh(
-      script: '''
-        curl -sS -X POST -H 'Content-Type: application/json' \
-          --data-binary @mm_payload.json \
-          "$MM_WEBHOOK"
-      ''',
-      returnStatus: true
-    )
-
-    if (rc != 0) {
-      echo "⚠️ Mattermost notify failed (exit code: ${rc}). Marking build as UNSTABLE."
-      currentBuild.result = 'UNSTABLE'
-    } else {
-      echo "✅ Mattermost notify sent."
-    }
+    sh '''
+      curl -sS -X POST -H 'Content-Type: application/json' \
+        --data-binary @mm_payload.json \
+        "$MM_WEBHOOK" >/dev/null
+    '''
   }
 }
+
