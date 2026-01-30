@@ -52,6 +52,26 @@ public class JwtProvider {
     }
 
     /**
+     * 역할(Role) 정규화: ROLE_ 접두사를 항상 단일하게 유지
+     * - WORKER -> ROLE_WORKER
+     * - ROLE_WORKER -> ROLE_WORKER (중복 방지)
+     * - ROLE_ROLE_WORKER -> ROLE_WORKER (중복 제거)
+     */
+    public String normalizeRole(String role) {
+        if (role == null || role.trim().isEmpty()) {
+            return null;
+        }
+
+        // ROLE_ 접두사가 이미 있으면 그대로 반환 (중복 방지)
+        if (role.startsWith("ROLE_")) {
+            return role;
+        }
+
+        // ROLE_ 접두사가 없으면 추가
+        return "ROLE_" + role;
+    }
+
+    /**
      * (내부용) 실제 토큰 생성 로직
      * 중복 코드를 방지하기 위해 분리한 Private 메서드
      */
@@ -66,9 +86,9 @@ public class JwtProvider {
                 .signWith(secretKey); // 비밀키 서명
 
         // 역할(Role)이 있는 경우에만 Payload에 추가 (Refresh Token은 null이라 추가 안 됨)
-        // Spring Security 컨벤션: ROLE_ 접두사 추가
+        // normalizeRole을 통해 ROLE_ 접두사 중복 방지
         if (role != null) {
-            builder.claim("role", "ROLE_" + role);
+            builder.claim("role", normalizeRole(role));
         }
 
         return builder.compact();

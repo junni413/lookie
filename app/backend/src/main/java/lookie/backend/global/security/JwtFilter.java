@@ -60,12 +60,14 @@ public class JwtFilter extends OncePerRequestFilter {
             String role = jwtProvider.getRole(token);
 
             // [수정] role이 null이 아닐 때만 인증 처리 (NPE 방지)
+            // normalizeRole을 통해 ROLE_ 접두사 중복 방지
             if (userId != null && role != null) {
+                String normalizedRole = jwtProvider.normalizeRole(role);
                 Authentication authentication = new UsernamePasswordAuthenticationToken(userId, null,
-                        List.of(new SimpleGrantedAuthority(role)));
+                        List.of(new SimpleGrantedAuthority(normalizedRole)));
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-                log.debug("Security Context에 '{}' 인증 정보를 저장했습니다. 권한: {}", userId, role);
+                log.debug("Security Context에 '{}' 인증 정보를 저장했습니다. 권한: {}", userId, normalizedRole);
             } else {
                 log.warn("유효한 토큰이지만 Role 정보가 없습니다. (Refresh Token일 가능성) User: {}", userId);
             }
