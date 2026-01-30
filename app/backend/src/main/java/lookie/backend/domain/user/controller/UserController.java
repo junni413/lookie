@@ -164,6 +164,29 @@ public class UserController {
     // ==================== 내 정보 수정 ====================
 
     /**
+     * 마이페이지 조회
+     * GET /api/users/me
+     */
+    @Operation(summary = "마이페이지 조회", description = "현재 로그인된 사용자의 프로필 정보를 조회합니다 (이름, 전화번호, 생년월일, 이메일)")
+    @GetMapping("/users/me")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> getMyProfile(
+            @RequestHeader("Authorization") String authHeader) {
+        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
+        String accessToken = authHeader.substring(7);
+
+        // 2. 토큰에서 사용자 ID 추출
+        String userId = jwtProvider.getUserId(accessToken);
+
+        // 3. 사용자 정보 조회
+        UserVO user = userService.getMyProfile(Long.parseLong(userId));
+
+        // 4. UserProfileResponse로 변환
+        UserProfileResponse response = UserProfileResponse.from(user);
+
+        return ResponseEntity.ok(ApiResponse.success("프로필 조회에 성공하였습니다.", response));
+    }
+
+    /**
      * 이메일 변경 인증번호 요청
      * POST /api/users/me/email/otp/request
      */
@@ -199,7 +222,7 @@ public class UserController {
      * 프로필 수정
      * PATCH /api/users/me
      */
-    @Operation(summary = "프로필 수정", description = "이름, 이메일, 비밀번호를 선택적으로 수정합니다 (이메일 변경 시 사전 인증 필수)")
+    @Operation(summary = "프로필 수정", description = "이름, 이메일, 비밀번호, 생년월일을 선택적으로 수정합니다 (이메일 변경 시 사전 인증 필수, 전화번호는 수정 불가)")
     @PatchMapping("/users/me")
     public ResponseEntity<ApiResponse<Void>> updateProfile(
             @RequestHeader("Authorization") String authHeader,
@@ -215,8 +238,8 @@ public class UserController {
                 Long.parseLong(userId),
                 request.getName(),
                 request.getEmail(),
-                request.getPassword()
-        );
+                request.getPassword(),
+                request.getBirthDate());
 
         return ResponseEntity.ok(ApiResponse.success("프로필이 수정되었습니다.", null));
     }

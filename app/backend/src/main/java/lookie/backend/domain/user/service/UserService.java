@@ -405,19 +405,33 @@ public class UserService {
     }
 
     /**
+     * 마이페이지 조회
+     * - 현재 로그인된 사용자의 프로필 정보 조회
+     * 
+     * @param userId 현재 로그인된 사용자 ID (SecurityContext에서 추출)
+     * @return UserVO 사용자 정보
+     */
+    @Transactional(readOnly = true)
+    public UserVO getMyProfile(Long userId) {
+        return userMapper.findById(userId)
+                .orElseThrow(() -> new lookie.backend.domain.user.exception.UserNotFoundException());
+    }
+
+    /**
      * 프로필 업데이트
-     * - 이름, 이메일, 비밀번호 선택적 수정
+     * - 이름, 이메일, 비밀번호, 생년월일 선택적 수정
      * - 이메일 변경 시 emailChangeToken 검증 필수
      * - 비밀번호 변경 시 형식 검증 및 암호화
      * - 전화번호는 수정 불가 (파라미터에서 제외)
      * 
-     * @param userId   현재 로그인된 사용자 ID (SecurityContext에서 추출)
-     * @param name     변경할 이름 (null이면 수정 안 함)
-     * @param email    변경할 이메일 (null이면 수정 안 함)
-     * @param password 변경할 비밀번호 (null이면 수정 안 함)
+     * @param userId    현재 로그인된 사용자 ID (SecurityContext에서 추출)
+     * @param name      변경할 이름 (null이면 수정 안 함)
+     * @param email     변경할 이메일 (null이면 수정 안 함)
+     * @param password  변경할 비밀번호 (null이면 수정 안 함)
+     * @param birthDate 변경할 생년월일 (null이면 수정 안 함)
      */
     @Transactional
-    public void updateProfile(Long userId, String name, String email, String password) {
+    public void updateProfile(Long userId, String name, String email, String password, java.time.LocalDate birthDate) {
         Map<String, Object> params = new HashMap<>();
         params.put("userId", userId);
 
@@ -464,7 +478,12 @@ public class UserService {
             params.put("passwordHash", encodedPassword);
         }
 
-        // 4. DB 업데이트 (전화번호는 절대 업데이트하지 않음)
+        // 4. 생년월일 수정
+        if (birthDate != null) {
+            params.put("birthDate", birthDate);
+        }
+
+        // 5. DB 업데이트 (전화번호는 절대 업데이트하지 않음)
         // params에 userId만 있으면 업데이트할 내용이 없으므로 아무것도 하지 않음
         if (params.size() > 1) {
             userMapper.updateUserProfile(params);
