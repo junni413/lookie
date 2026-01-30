@@ -1,5 +1,6 @@
-import { workersMock, zonesMock, getDerivedWorker } from "@/mocks/mockData";
-import type { DB_Worker } from "@/types/db";
+import { workersMock, zonesMock, getDerivedWorker, zonesLayoutMock } from "@/mocks/mockData";
+import type { DB_Worker, ZoneLayout } from "@/types/db";
+// 2nd import line removed
 
 export interface ZoneStat {
     zone_id: number;
@@ -52,5 +53,13 @@ export const manageService = {
         await new Promise((resolve) => setTimeout(resolve, 500));
         console.log(`[Mock API] Batch updating ${workers.length} workers...`);
         // In real backend, we would send the full list or diff
+    },
+
+    // Get Zone Layout (Mock)
+    getZoneLayout: async (zoneId: number): Promise<ZoneLayout | null> => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        // @ts-ignore
+        const layout = zonesLayoutMock[zoneId];
+        return layout || null;
     }
 };

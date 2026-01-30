@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import type { ZoneStatus } from "@/mocks/mockData";
 
 export interface ZoneItem {
-  id: string;
+  id: number;
   name: string;
   status: ZoneStatus;
   working: number;
