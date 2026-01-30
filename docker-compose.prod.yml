@@ -5,8 +5,14 @@ services:
   redis:
     image: redis:7-alpine                # ✅ 사용할 Redis 이미지(가벼운 alpine)
     container_name: redis                # ✅ 컨테이너 이름 고정(관리/디버깅 편함)
+    restart: always
+    # ✅ [추가] Redis 데이터를 디스크에 저장하여 재부팅 후에도 유지 (AOF 방식)
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"                      # (선택) 호스트에서 Redis 접속 필요할 때만 오픈
+    volumes:
+      # ✅ [변경] EC2의 ./data/redis 폴더에 데이터 저장
+      - ./data/redis:/data
     networks:
       - lookie                           # ✅ 같은 네트워크로 묶어서 서비스명(redis)으로 접근 가능
 
@@ -24,10 +30,15 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} # ✅ root 비밀번호
       MYSQL_USER: ${MYSQL_USER}          # ✅ 앱용 계정 생성
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}  # ✅ 앱용 계정 비밀번호
+      TZ: Asia/Seoul  # ✅ [추천] DB 로그 시간대 한국 설정
     ports:
       - "3306:3306"                      # (선택) 외부/로컬에서 DB 접속이 필요할 때만 오픈
     volumes:
-      - mysql_data:/var/lib/mysql        # ✅ DB 데이터 영구 저장(컨테이너 삭제해도 유지)
+      # - mysql_data:/var/lib/mysql        # ✅ DB 데이터 영구 저장(컨테이너 삭제해도 유지)
+      # ✅ [변경] EC2의 ./data/mysql 폴더에 데이터 영구 저장
+      - ./data/mysql:/var/lib/mysql
+      # (선택) 설정 파일 커스터마이징 필요 시 주석 해제
+      # - ./data/config/mysql:/etc/mysql/conf.d
     networks:
       - lookie
     healthcheck:
@@ -79,6 +90,10 @@ services:
       - .env                              # ✅ DB/Redis/JWT 등 런타임 환경변수 주입
     ports:
       - "8080:8080"                       # ✅ 외부에 API 공개 포트
+    volumes:
+      # ✅ [추가] 서버 로그를 EC2에서 직접 확인하기 위해 연결
+      - ./data/logs/backend:/var/log/app
+      # (참고) Spring Boot의 logback 설정에서 /var/log/app 경로로 로그를 쏘도록 설정해야 함
     networks:
       - lookie
     depends_on:
@@ -93,6 +108,9 @@ services:
     container_name: nginx
     ports:
       - "80:80"                           # ✅ 외부 공개 포트(브라우저 접속)
+    volumes:
+      # ✅ [추가] Nginx 접근/에러 로그를 EC2에서 확인
+      - ./data/logs/nginx:/var/log/nginx
     networks:
       - lookie
     depends_on:
@@ -101,8 +119,8 @@ services:
 # ============================
 # Volume: MySQL 데이터 영구 저장
 # ============================
-volumes:
-  mysql_data:                              # ✅ 실제 데이터는 도커 볼륨에 유지됨
+# volumes:
+#   mysql_data:                              # ✅ 실제 데이터는 도커 볼륨에 유지됨
 
 # ============================
 # Network: 서비스 간 통신용 브리지 네트워크
