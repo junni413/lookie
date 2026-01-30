@@ -14,15 +14,54 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
-@Tag(name = "Auth", description = "회원가입, 로그인, 이메일 인증 API")
+@Tag(name = "Auth", description = "인증 관련 API (로그인, 회원가입, 토큰 재발급, 이메일 인증, 비밀번호 재설정)")
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-public class UserController {
+public class AuthController {
 
     private final UserService userService;
     private final MailService mailService;
     private final JwtProvider jwtProvider;
+
+    /**
+     * 로그인
+     * POST /api/auth/login
+     */
+    @Operation(summary = "로그인", description = "전화번호와 비밀번호로 로그인합니다")
+    @PostMapping("/login")
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest request) {
+        Map<String, Object> loginResult = userService.login(request.getPhoneNumber(), request.getPassword());
+
+        // Map에서 데이터 추출
+        UserVO user = (UserVO) loginResult.get("user");
+        String accessToken = (String) loginResult.get("accessToken");
+        String refreshToken = (String) loginResult.get("refreshToken");
+
+        // UserVO + 토큰 -> LoginResponse 변환 (passwordHash 제외)
+        LoginResponse response = LoginResponse.from(user, accessToken, refreshToken);
+
+        return ResponseEntity.ok(ApiResponse.success("로그인에 성공하였습니다.", response));
+    }
+
+    /**
+     * 로그아웃
+     * POST /api/auth/logout
+     */
+    @Operation(summary = "로그아웃", description = "현재 사용자를 로그아웃하고 토큰을 무효화합니다")
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader("Authorization") String authHeader) {
+        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
+        String accessToken = authHeader.substring(7);
+
+        // 2. 토큰에서 사용자 ID 추출
+        String userId = jwtProvider.getUserId(accessToken);
+
+        // 3. 로그아웃 처리 (Refresh Token 삭제 + Access Token 블랙리스트 등록)
+        userService.logout(accessToken, userId);
+
+        return ResponseEntity.ok(ApiResponse.success("로그아웃되었습니다.", null));
+    }
 
     /**
      * 토큰 재발급 (RTR 방식)
@@ -57,46 +96,6 @@ public class UserController {
         userService.signup(userVO, request.getPassword());
 
         return ResponseEntity.ok(ApiResponse.success("회원가입에 성공하였습니다.", null));
-    }
-
-    /**
-     * 로그인
-     * POST /api/auth/login
-     */
-    @Operation(summary = "로그인", description = "전화번호와 비밀번호로 로그인합니다")
-    @PostMapping("/login")
-    public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest request) {
-
-        Map<String, Object> loginResult = userService.login(request.getPhoneNumber(), request.getPassword());
-
-        // Map에서 데이터 추출
-        UserVO user = (UserVO) loginResult.get("user");
-        String accessToken = (String) loginResult.get("accessToken");
-        String refreshToken = (String) loginResult.get("refreshToken");
-
-        // UserVO + 토큰 -> LoginResponse 변환 (passwordHash 제외)
-        LoginResponse response = LoginResponse.from(user, accessToken, refreshToken);
-
-        return ResponseEntity.ok(ApiResponse.success("로그인에 성공하였습니다.", response));
-    }
-
-    /**
-     * 로그아웃
-     * POST /api/auth/logout
-     */
-    @Operation(summary = "로그아웃", description = "현재 사용자를 로그아웃하고 토큰을 무효화합니다")
-    @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader("Authorization") String authHeader) {
-        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
-        String accessToken = authHeader.substring(7);
-
-        // 2. 토큰에서 사용자 ID 추출
-        String userId = jwtProvider.getUserId(accessToken);
-
-        // 3. 로그아웃 처리 (Refresh Token 삭제 + Access Token 블랙리스트 등록)
-        userService.logout(accessToken, userId);
-
-        return ResponseEntity.ok(ApiResponse.success("로그아웃되었습니다.", null));
     }
 
     /**
@@ -140,7 +139,8 @@ public class UserController {
      */
     @Operation(summary = "비밀번호 재설정 인증번호 검증", description = "인증번호를 검증하고 resetToken을 발급합니다 (5분 유효)")
     @PostMapping("/password/reset/otp/verify")
-    public ResponseEntity<ApiResponse<PasswordResetTokenResponse>> verifyPasswordResetOtp(@RequestBody PasswordResetOtpVerifyRequest request) {
+    public ResponseEntity<ApiResponse<PasswordResetTokenResponse>> verifyPasswordResetOtp(
+            @RequestBody PasswordResetOtpVerifyRequest request) {
         String resetToken = userService.verifyPasswordResetOtp(request.getEmail(), request.getCode());
         PasswordResetTokenResponse response = PasswordResetTokenResponse.builder()
                 .resetToken(resetToken)
@@ -155,7 +155,8 @@ public class UserController {
     @Operation(summary = "비밀번호 재설정 최종 확인", description = "resetToken을 사용하여 비밀번호를 변경합니다")
     @PostMapping("/password/reset/confirm")
     public ResponseEntity<ApiResponse<Void>> confirmPasswordReset(@RequestBody PasswordResetConfirmRequest request) {
-        userService.confirmPasswordReset(request.getResetToken(), request.getNewPassword(), request.getConfirmPassword());
+        userService.confirmPasswordReset(request.getResetToken(), request.getNewPassword(),
+                request.getConfirmPassword());
         return ResponseEntity.ok(ApiResponse.success("비밀번호가 변경되었습니다.", null));
     }
 }

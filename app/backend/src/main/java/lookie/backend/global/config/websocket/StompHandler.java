@@ -57,11 +57,12 @@ public class StompHandler implements ChannelInterceptor {
                 String role = claims.get("role", String.class);
 
                 if (userId != null && role != null) {
+                    // normalizeRole을 통해 ROLE_ 접두사 중복 방지
+                    String normalizedRole = jwtProvider.normalizeRole(role);
                     Authentication auth = new UsernamePasswordAuthenticationToken(
-                            userId, null, List.of(new SimpleGrantedAuthority(role))
-                    );
+                            userId, null, List.of(new SimpleGrantedAuthority(normalizedRole)));
                     accessor.setUser(auth);
-                    log.info("✅ WebSocket 인증 성공 (CONNECT): userId={}", userId);
+                    log.info("✅ WebSocket 인증 성공 (CONNECT): userId={}, role={}", userId, normalizedRole);
                 }
             } catch (JwtException e) {
                 log.warn("WebSocket 연결 실패: 유효하지 않은 토큰");

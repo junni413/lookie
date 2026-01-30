@@ -236,4 +236,95 @@ public class MailService {
         }
         return EMAIL_PATTERN.matcher(email).matches();
     }
+
+    /**
+     * 이메일 변경용 인증번호 발송
+     * - 이메일 형식 검증
+     * - DB 중복 체크 (새 이메일이 이미 사용 중인지)
+     * - 재발송 제한 (1분)
+     * - 6자리 난수 생성 및 발송
+     * - Redis 저장 (TTL 5분)
+     */
+    public void sendEmailChangeCode(String newEmail) {
+        // 0. 이메일 형식 검증
+        if (!isValidEmail(newEmail)) {
+            throw new InvalidEmailFormatException(newEmail);
+        }
+
+        // 1. DB에서 이메일 중복 체크 (새 이메일이 이미 다른 사용자에 의해 사용 중인지)
+        if (userMapper.existByEmail(newEmail)) {
+            throw new AlreadyExistsEmailException(newEmail);
+        }
+
+        // 2. 재발송 제한 체크 (1분 내 중복 발송 방지)
+        String limitKey = EMAIL_LIMIT_PREFIX + newEmail;
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(limitKey))) {
+            throw new EmailAlreadySentException(newEmail);
+        }
+
+        // 3. 6자리 인증번호 생성
+        String code = generateVerificationCode();
+
+        // 4. 이메일 발송
+        sendEmailChangeEmail(newEmail, code);
+
+        // 5. Redis에 인증번호 저장 (TTL 5분)
+        String codeKey = EMAIL_CODE_PREFIX + newEmail;
+        redisTemplate.opsForValue().set(codeKey, code, CODE_TTL, TimeUnit.SECONDS);
+
+        // 6. 재발송 제한 플래그 설정 (TTL 1분)
+        redisTemplate.opsForValue().set(limitKey, "sent", LIMIT_TTL, TimeUnit.SECONDS);
+
+        log.info("[이메일 변경] 인증번호 발송 완료: {}", newEmail);
+    }
+
+    /**
+     * 이메일 변경용 인증번호 검증
+     * - Redis에서 번호 대조
+     * - 검증 성공 시 verified 플래그 저장 (TTL 10분)
+     * - 인증번호 삭제 (재사용 방지)
+     */
+    public void verifyEmailChangeCode(String newEmail, String inputCode) {
+        // 1. Redis에서 저장된 인증번호 조회
+        String codeKey = EMAIL_CODE_PREFIX + newEmail;
+        String savedCode = redisTemplate.opsForValue().get(codeKey);
+
+        // 2. 인증번호 검증 (없거나 불일치 시 예외)
+        if (savedCode == null || !savedCode.equals(inputCode)) {
+            throw new EmailCodeExpiredException(newEmail);
+        }
+
+        // 3. 검증 성공 - verified 플래그 저장 (TTL 10분)
+        String verifiedKey = EMAIL_VERIFIED_PREFIX + newEmail;
+        redisTemplate.opsForValue().set(verifiedKey, "true", VERIFIED_TTL, TimeUnit.SECONDS);
+
+        // 4. 인증번호 삭제 (재사용 방지)
+        redisTemplate.delete(codeKey);
+
+        log.info("[이메일 변경] 인증 성공: {}", newEmail);
+    }
+
+    /**
+     * 이메일 변경 인증 이메일 발송
+     */
+    private void sendEmailChangeEmail(String to, String code) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(to);
+            message.setSubject("[Lookie] 이메일 변경 인증번호");
+            message.setText(
+                    "안녕하세요, Lookie입니다.\n\n" +
+                            "이메일 변경을 위한 인증번호는 다음과 같습니다:\n\n" +
+                            "[" + code + "]\n\n" +
+                            "이 인증번호는 5분간 유효합니다.\n" +
+                            "본인이 요청하지 않았다면 이 메일을 무시하세요.");
+
+            mailSender.send(message);
+            log.info("[이메일 변경 발송] 성공: {}", to);
+        } catch (Exception e) {
+            log.error("[이메일 변경 발송] 실패: {}", to, e);
+            throw new EmailSendFailedException(to);
+        }
+    }
 }
+
