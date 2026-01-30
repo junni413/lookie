@@ -5,6 +5,7 @@ import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
 import lookie.backend.domain.user.exception.AlreadyExistsPhoneException;
 import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
 import lookie.backend.domain.user.exception.InvalidEmailFormatException;
+import lookie.backend.domain.user.exception.InvalidPasswordFormatException;
 import lookie.backend.domain.user.exception.InvalidPhoneFormatException;
 import lookie.backend.domain.user.exception.LoginFailedException;
 import lookie.backend.domain.user.mapper.UserMapper;
@@ -28,10 +29,13 @@ public class UserService {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
     // 전화번호 형식 검증 정규표현식 (하이픈 없이 010으로 시작하는 11자리)
     private static final Pattern PHONE_PATTERN = Pattern.compile("^010\\d{8}$");
+    // 비밀번호 형식 검증 정규표현식 (7~15자, 영문+숫자 필수, 특수문자 선택)
+    private static final Pattern PASSWORD_PATTERN = Pattern
+            .compile("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d@$!%*#?&]{7,15}$");
 
     /**
      * 회원가입 비즈니스 로직
-     * - 이메일 및 전화번호 형식 검증
+     * - 이메일, 전화번호, 비밀번호 형식 검증
      * - 이메일 인증 완료 확인 (필수)
      * - 전화번호 및 이메일 중복 체크
      * - 비밀번호 암호화
@@ -67,19 +71,24 @@ public class UserService {
             throw new AlreadyExistsEmailException(userVO.getEmail());
         }
 
-        // 3. 비밀번호 암호화 (BCrypt)
+        // 3. 비밀번호 형식 검증 (7~15자, 영문+숫자 필수)
+        if (!isValidPassword(plainPassword)) {
+            throw new InvalidPasswordFormatException("비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다");
+        }
+
+        // 4. 비밀번호 암호화 (BCrypt)
         String encryptedPassword = passwordEncoder.encode(plainPassword);
         userVO.setPasswordHash(encryptedPassword);
 
-        // 4. 기본 권한 설정 (명세서 기준 가입은 WORKER)
+        // 5. 기본 권한 설정 (명세서 기준 가입은 WORKER)
         if (userVO.getRole() == null) {
             userVO.setRole(UserRole.WORKER);
         }
 
-        // 5. DB 저장 (MyBatis가 생성된 userId를 userVO에 자동 채움)
+        // 6. DB 저장 (MyBatis가 생성된 userId를 userVO에 자동 채움)
         userMapper.insertUser(userVO);
 
-        // 6. 회원가입 완료 후 Redis 데이터 정리
+        // 7. 회원가입 완료 후 Redis 데이터 정리
         mailService.clearEmailVerification(userVO.getEmail());
     }
 
@@ -148,5 +157,18 @@ public class UserService {
             return false;
         }
         return PHONE_PATTERN.matcher(phoneNumber).matches();
+    }
+
+    /**
+     * 비밀번호 형식 검증 (7~15자, 영문+숫자 필수, 특수문자 선택)
+     * 
+     * @param password 검증할 비밀번호
+     * @return 유효하면 true, 아니면 false
+     */
+    private boolean isValidPassword(String password) {
+        if (password == null || password.trim().isEmpty()) {
+            return false;
+        }
+        return PASSWORD_PATTERN.matcher(password).matches();
     }
 }
