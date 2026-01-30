@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
 import { useToast } from "@/components/ui/use-toast";
