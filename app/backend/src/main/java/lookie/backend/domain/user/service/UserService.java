@@ -1,6 +1,7 @@
 package lookie.backend.domain.user.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
 import lookie.backend.domain.user.exception.AlreadyExistsPhoneException;
 import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -374,5 +376,99 @@ public class UserService {
 
         // 7. resetToken 즉시 폐기
         redisTemplate.delete(resetTokenKey);
+    }
+
+    // ==================== 내 정보 수정 ====================
+
+    /**
+     * 이메일 변경 인증번호 요청
+     * - 새 이메일로 인증번호 발송
+     */
+    public void requestEmailChangeOtp(String newEmail) {
+        mailService.sendEmailChangeCode(newEmail);
+    }
+
+    /**
+     * 이메일 변경 인증번호 검증 및 토큰 발급
+     * - 인증번호 검증 성공 시 짧은 TTL의 emailChangeToken 발급 (10분)
+     * - emailChangeToken은 Redis에 저장: email:change:token:{userId} = {newEmail}
+     */
+    public void verifyEmailChangeOtp(Long userId, String newEmail, String code) {
+        // 1. 인증번호 검증 (MailService 재사용)
+        mailService.verifyEmailChangeCode(newEmail, code);
+
+        // 2. Redis에 emailChangeToken 저장 (TTL 10분)
+        String emailChangeTokenKey = "email:change:token:" + userId;
+        redisTemplate.opsForValue().set(emailChangeTokenKey, newEmail, 10, TimeUnit.MINUTES);
+
+        log.info("[이메일 변경] 토큰 발급 완료: userId={}, newEmail={}", userId, newEmail);
+    }
+
+    /**
+     * 프로필 업데이트
+     * - 이름, 이메일, 비밀번호 선택적 수정
+     * - 이메일 변경 시 emailChangeToken 검증 필수
+     * - 비밀번호 변경 시 형식 검증 및 암호화
+     * - 전화번호는 수정 불가 (파라미터에서 제외)
+     * 
+     * @param userId   현재 로그인된 사용자 ID (SecurityContext에서 추출)
+     * @param name     변경할 이름 (null이면 수정 안 함)
+     * @param email    변경할 이메일 (null이면 수정 안 함)
+     * @param password 변경할 비밀번호 (null이면 수정 안 함)
+     */
+    @Transactional
+    public void updateProfile(Long userId, String name, String email, String password) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("userId", userId);
+
+        // 1. 이름 수정
+        if (name != null && !name.trim().isEmpty()) {
+            params.put("name", name);
+        }
+
+        // 2. 이메일 수정
+        if (email != null && !email.trim().isEmpty()) {
+            // 2-1. 이메일 형식 검증
+            if (!isValidEmail(email)) {
+                throw new InvalidEmailFormatException(email);
+            }
+
+            // 2-2. emailChangeToken 검증 (Redis에서 조회)
+            String emailChangeTokenKey = "email:change:token:" + userId;
+            String verifiedEmail = redisTemplate.opsForValue().get(emailChangeTokenKey);
+
+            if (verifiedEmail == null || !verifiedEmail.equals(email)) {
+                throw new lookie.backend.domain.user.exception.EmailChangeTokenRequiredException(email);
+            }
+
+            // 2-3. 이메일 중복 체크 (다른 사용자가 이미 사용 중인지)
+            if (userMapper.existByEmail(email)) {
+                throw new AlreadyExistsEmailException(email);
+            }
+
+            params.put("email", email);
+
+            // 2-4. emailChangeToken 삭제 (재사용 방지)
+            redisTemplate.delete(emailChangeTokenKey);
+        }
+
+        // 3. 비밀번호 수정
+        if (password != null && !password.trim().isEmpty()) {
+            // 3-1. 비밀번호 형식 검증 (기존 isValidPassword() 재사용)
+            if (!isValidPassword(password)) {
+                throw new InvalidPasswordFormatException("비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다");
+            }
+
+            // 3-2. 비밀번호 암호화
+            String encodedPassword = passwordEncoder.encode(password);
+            params.put("passwordHash", encodedPassword);
+        }
+
+        // 4. DB 업데이트 (전화번호는 절대 업데이트하지 않음)
+        // params에 userId만 있으면 업데이트할 내용이 없으므로 아무것도 하지 않음
+        if (params.size() > 1) {
+            userMapper.updateUserProfile(params);
+            log.info("[프로필 수정] 완료: userId={}", userId);
+        }
     }
 }
