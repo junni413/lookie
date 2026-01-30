@@ -18,8 +18,9 @@ import IssueListPage from "./pages/worker/issue/IssueList";
 import IssueReportPage from "./pages/worker/issue/IssueReport";
 import IssueResultPage from "./pages/worker/issue/IssueResult";
 
-import AdminDashboard from "./pages/admin/pages/Dashboard";
-import IssuePage from "./pages/admin/pages/Issue";
+import AdminDashboard from "./pages/admin/Dashboard";
+import IssuePage from "./pages/admin/Issue";
+import ManagePage from "./pages/admin/Manage";
 
 // ✅ 작업 흐름 (프론트만)
 import TaskAssignLoading from "./pages/worker/task/TaskAssignLoading";
@@ -27,9 +28,6 @@ import TaskScanStart from "./pages/worker/task/TaskScanStart";
 import ToteScan from "./pages/worker/task/ToteScan";
 import WorkDetail from "./pages/worker/task/WorkDetail";
 
-// ADMIN pages (현재 구조 유지)
-import AdminDashboard from "./pages/admin/pages/Dashboard";
-import IssuePage from "./pages/admin/pages/Issue";
 
 // ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: ReactNode }) {
