@@ -26,6 +26,8 @@ public enum ErrorCode {
 	USER_ALREADY_EXISTS_PHONE("USER_001", HttpStatus.CONFLICT, "이미 가입된 전화번호입니다"),
 	USER_ALREADY_EXISTS_EMAIL("USER_002", HttpStatus.CONFLICT, "이미 가입된 이메일입니다"),
 	USER_NOT_FOUND("USER_003", HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다"),
+	INVALID_EMAIL_FORMAT("USER_004", HttpStatus.BAD_REQUEST, "유효하지 않은 이메일 형식입니다"),
+	INVALID_PHONE_FORMAT("USER_005", HttpStatus.BAD_REQUEST, "유효하지 않은 전화번호 형식입니다"),
 
 	// ===== TASK =====
 	TASK_ALREADY_ASSIGNED("TASK_001", HttpStatus.CONFLICT, "이미 할당된 작업입니다"),
