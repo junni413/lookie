@@ -455,8 +455,13 @@ public class UserService {
                 throw new lookie.backend.domain.user.exception.EmailChangeTokenRequiredException(email);
             }
 
-            // 2-3. 이메일 중복 체크 (다른 사용자가 이미 사용 중인지)
-            if (userMapper.existByEmail(email)) {
+            // 2-3. 이메일 중복 체크 개선
+            // 현재 사용자의 기존 이메일 조회
+            UserVO currentUser = userMapper.findById(userId)
+                    .orElseThrow(() -> new lookie.backend.domain.user.exception.UserNotFoundException());
+
+            // 기존 이메일과 다른 경우에만 중복 체크 수행
+            if (!email.equals(currentUser.getEmail()) && userMapper.existByEmail(email)) {
                 throw new AlreadyExistsEmailException(email);
             }
 
@@ -487,7 +492,14 @@ public class UserService {
         // params에 userId만 있으면 업데이트할 내용이 없으므로 아무것도 하지 않음
         if (params.size() > 1) {
             userMapper.updateUserProfile(params);
-            log.info("[프로필 수정] 완료: userId={}", userId);
+            // 수정된 필드 목록 로깅
+            String updatedFields = params.keySet().stream()
+                    .filter(k -> !k.equals("userId"))
+                    .map(k -> k.equals("passwordHash") ? "password" : k)
+                    .collect(java.util.stream.Collectors.joining(", "));
+            log.info("[프로필 수정] 완료: userId={}, 수정된 필드: {}", userId, updatedFields);
+        } else {
+            log.info("[프로필 수정] 요청: userId={}, 수정할 내용 없음", userId);
         }
     }
 }
