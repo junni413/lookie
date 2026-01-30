@@ -243,4 +243,26 @@ public class UserController {
 
         return ResponseEntity.ok(ApiResponse.success("프로필이 수정되었습니다.", null));
     }
+
+    /**
+     * 회원 탈퇴 (Soft Delete)
+     * DELETE /api/users/me
+     */
+    @Operation(summary = "회원 탈퇴", description = "현재 로그인한 사용자의 계정을 탈퇴합니다 (Soft Delete)")
+    @DeleteMapping("/users/me")
+    public ResponseEntity<ApiResponse<Void>> deleteAccount(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody DeleteAccountRequest request) {
+
+        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
+        String accessToken = authHeader.substring(7);
+
+        // 2. 토큰에서 사용자 ID 추출
+        String userId = jwtProvider.getUserId(accessToken);
+
+        // 3. 서비스 호출 (비밀번호 검증 포함)
+        userService.deleteAccount(Long.parseLong(userId), request.getPassword());
+
+        return ResponseEntity.ok(ApiResponse.success("회원 탈퇴가 완료되었습니다.", null));
+    }
 }
