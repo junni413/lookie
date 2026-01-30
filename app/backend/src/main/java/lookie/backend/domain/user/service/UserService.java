@@ -7,14 +7,21 @@ import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
 import lookie.backend.domain.user.exception.InvalidEmailFormatException;
 import lookie.backend.domain.user.exception.InvalidPasswordFormatException;
 import lookie.backend.domain.user.exception.InvalidPhoneFormatException;
+import lookie.backend.domain.user.exception.InvalidTokenException;
 import lookie.backend.domain.user.exception.LoginFailedException;
 import lookie.backend.domain.user.mapper.UserMapper;
 import lookie.backend.domain.user.vo.UserRole;
 import lookie.backend.domain.user.vo.UserVO;
+import lookie.backend.global.security.JwtProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 @Service
@@ -24,6 +31,12 @@ public class UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
+    private final JwtProvider jwtProvider;
+    private final StringRedisTemplate redisTemplate;
+
+    // Refresh Token TTL (환경변수에서 주입, 기본값: 14일)
+    @Value("${jwt.refresh-expiration}")
+    private long refreshTokenTtl;
 
     // 이메일 형식 검증 정규표현식
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
@@ -97,11 +110,15 @@ public class UserService {
      * - 전화번호로 사용자 조회
      * - 비밀번호 검증
      * - 계정 활성화 상태 확인
+     * - JWT 토큰 생성 (Access Token + Refresh Token)
+     * - Refresh Token을 Redis에 저장 (TTL: 14일)
      * 
-     * @return 로그인 성공한 사용자 정보
+     * @param phoneNumber 사용자 전화번호
+     * @param rawPassword 평문 비밀번호
+     * @return Map {"user": UserVO, "accessToken": String, "refreshToken": String}
      */
     @Transactional(readOnly = true)
-    public UserVO login(String phoneNumber, String rawPassword) {
+    public Map<String, Object> login(String phoneNumber, String rawPassword) {
         // 1. 전화번호로 사용자 조회
         UserVO user = userMapper.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new LoginFailedException(phoneNumber));
@@ -116,7 +133,114 @@ public class UserService {
             throw new LoginFailedException(phoneNumber);
         }
 
-        return user;
+        // 4. JWT 토큰 생성
+        String userId = user.getUserId().toString();
+        String accessToken = jwtProvider.createAccessToken(userId, user.getRole().name());
+        String refreshToken = jwtProvider.createRefreshToken(userId);
+
+        // 5. Refresh Token을 암호화하여 Redis에 저장 (Key: refresh:{userId}, TTL: 14일)
+        // 보안: Redis가 탈취되어도 원본 토큰 노출 방지
+        String redisKey = "refresh:" + userId;
+        String hashedRefreshToken = passwordEncoder.encode(refreshToken);
+        redisTemplate.opsForValue().set(
+                redisKey,
+                hashedRefreshToken,
+                refreshTokenTtl,
+                TimeUnit.MILLISECONDS);
+
+        // 6. 사용자 정보와 토큰을 함께 반환
+        Map<String, Object> result = new HashMap<>();
+        result.put("user", user);
+        result.put("accessToken", accessToken);
+        result.put("refreshToken", refreshToken);
+
+        return result;
+    }
+
+    /**
+     * 로그아웃 비즈니스 로직
+     * - Refresh Token 삭제 (Redis에서 refresh:{userId} 제거)
+     * - Access Token 블랙리스트 등록 (Redis에 blacklist:{accessToken} 추가, TTL: 남은 시간)
+     * 
+     * @param accessToken 현재 사용 중인 Access Token
+     * @param userId      사용자 ID
+     */
+    @Transactional
+    public void logout(String accessToken, String userId) {
+        // 1. Refresh Token 삭제 (Redis에서 refresh:{userId} 키 제거)
+        String refreshKey = "refresh:" + userId;
+        redisTemplate.delete(refreshKey);
+
+        // 2. Access Token 블랙리스트 등록
+        // - 남은 유효 시간 동안만 블랙리스트에 보관 (메모리 효율)
+        long remainingTime = jwtProvider.getRemainingTime(accessToken);
+
+        if (remainingTime > 0) {
+            String blacklistKey = "blacklist:" + accessToken;
+            redisTemplate.opsForValue().set(
+                    blacklistKey,
+                    "logout",
+                    remainingTime,
+                    TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * 토큰 재발급 비즈니스 로직 (RTR 방식)
+     * - Refresh Token Rotation: 재발급 시마다 새로운 Refresh Token 생성
+     * - 보안 강화: 기존 Refresh Token 무효화 및 새 토큰으로 교체
+     * 
+     * @param refreshToken 클라이언트가 보낸 Refresh Token
+     * @return Map {\"accessToken\": String, \"refreshToken\": String}
+     */
+    @Transactional
+    public Map<String, String> reissueToken(String refreshToken) {
+        // 1. Refresh Token 유효성 검증
+        if (!jwtProvider.validateToken(refreshToken)) {
+            throw new InvalidTokenException("유효하지 않은 Refresh Token입니다.");
+        }
+
+        // 2. Refresh Token에서 사용자 ID 추출
+        String userId = jwtProvider.getUserId(refreshToken);
+
+        // 3. Redis에 저장된 암호화된 Refresh Token과 비교
+        String redisKey = "refresh:" + userId;
+        String hashedStoredToken = redisTemplate.opsForValue().get(redisKey);
+
+        if (hashedStoredToken == null) {
+            throw new InvalidTokenException("저장된 Refresh Token이 없습니다. 다시 로그인해주세요.");
+        }
+
+        // 보안: BCrypt를 사용하여 원본 토큰과 해시 비교
+        if (!passwordEncoder.matches(refreshToken, hashedStoredToken)) {
+            throw new InvalidTokenException("Refresh Token이 일치하지 않습니다. 다시 로그인해주세요.");
+        }
+
+        // 4. RTR 적용: 기존 Refresh Token 삭제
+        redisTemplate.delete(redisKey);
+
+        // 5. 사용자 정보 조회 (Role 정보 필요)
+        UserVO user = userMapper.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new InvalidTokenException("사용자를 찾을 수 없습니다."));
+
+        // 6. 새로운 Access Token 및 Refresh Token 생성
+        String newAccessToken = jwtProvider.createAccessToken(userId, user.getRole().name());
+        String newRefreshToken = jwtProvider.createRefreshToken(userId);
+
+        // 7. 새로운 Refresh Token을 암호화하여 Redis에 저장
+        String hashedNewRefreshToken = passwordEncoder.encode(newRefreshToken);
+        redisTemplate.opsForValue().set(
+                redisKey,
+                hashedNewRefreshToken,
+                refreshTokenTtl,
+                TimeUnit.MILLISECONDS);
+
+        // 8. 새로운 토큰 세트 반환
+        Map<String, String> tokens = new HashMap<>();
+        tokens.put("accessToken", newAccessToken);
+        tokens.put("refreshToken", newRefreshToken);
+
+        return tokens;
     }
 
     /**

@@ -20,4 +20,7 @@ public interface UserMapper {
     // 4. 이메일 중복 확인용
     boolean existByEmail(String email);
 
+    // 5. 사용자 ID로 조회 (토큰 재발급 시 Role 정보 필요)
+    Optional<UserVO> findById(Long userId);
+
 }

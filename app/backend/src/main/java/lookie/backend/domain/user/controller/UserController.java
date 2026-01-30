@@ -10,11 +10,13 @@ import lookie.backend.domain.user.dto.LoginResponse;
 import lookie.backend.domain.user.dto.SignupRequest;
 import lookie.backend.domain.user.service.MailService;
 import lookie.backend.domain.user.service.UserService;
-import lookie.backend.domain.user.vo.UserRole;
 import lookie.backend.domain.user.vo.UserVO;
 import lookie.backend.global.response.ApiResponse;
+import lookie.backend.global.security.JwtProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @Tag(name = "Auth", description = "회원가입, 로그인, 이메일 인증 API")
 @RestController
@@ -24,6 +26,26 @@ public class UserController {
 
     private final UserService userService;
     private final MailService mailService;
+    private final JwtProvider jwtProvider;
+
+    /**
+     * 토큰 재발급 (RTR 방식)
+     * POST /api/auth/refresh
+     */
+    @Operation(summary = "토큰 재발급", description = "Refresh Token을 사용하여 새로운 Access Token과 Refresh Token을 발급합니다 (RTR 방식)")
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<TokenResponse>> refresh(@RequestHeader("Refresh-Token") String refreshToken) {
+        // 1. 토큰 재발급 처리 (RTR: 기존 토큰 삭제 + 새 토큰 생성)
+        Map<String, String> tokens = userService.reissueToken(refreshToken);
+        
+        // 2. TokenResponse 생성
+        TokenResponse response = TokenResponse.builder()
+                .accessToken(tokens.get("accessToken"))
+                .refreshToken(tokens.get("refreshToken"))
+                .build();
+        
+        return ResponseEntity.ok(ApiResponse.success("토큰이 재발급되었습니다.", response));
+    }
 
     /**
      * 회원가입
@@ -48,12 +70,37 @@ public class UserController {
     @Operation(summary = "로그인", description = "전화번호와 비밀번호로 로그인합니다")
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest request) {
-        UserVO user = userService.login(request.getPhoneNumber(), request.getPassword());
 
-        // UserVO -> LoginResponse 변환 (passwordHash 제외)
-        LoginResponse response = LoginResponse.from(user);
+        Map<String, Object> loginResult = userService.login(request.getPhoneNumber(), request.getPassword());
+
+        // Map에서 데이터 추출
+        UserVO user = (UserVO) loginResult.get("user");
+        String accessToken = (String) loginResult.get("accessToken");
+        String refreshToken = (String) loginResult.get("refreshToken");
+
+        // UserVO + 토큰 -> LoginResponse 변환 (passwordHash 제외)
+        LoginResponse response = LoginResponse.from(user, accessToken, refreshToken);
 
         return ResponseEntity.ok(ApiResponse.success("로그인에 성공하였습니다.", response));
+    }
+
+    /**
+     * 로그아웃
+     * POST /api/auth/logout
+     */
+    @Operation(summary = "로그아웃", description = "현재 사용자를 로그아웃하고 토큰을 무효화합니다")
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader("Authorization") String authHeader) {
+        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
+        String accessToken = authHeader.substring(7);
+        
+        // 2. 토큰에서 사용자 ID 추출
+        String userId = jwtProvider.getUserId(accessToken);
+        
+        // 3. 로그아웃 처리 (Refresh Token 삭제 + Access Token 블랙리스트 등록)
+        userService.logout(accessToken, userId);
+        
+        return ResponseEntity.ok(ApiResponse.success("로그아웃되었습니다.", null));
     }
 
     /**
