@@ -24,12 +24,13 @@ public class JwtProvider {
      */
     // [수정] 생성자에서 refreshExpiration 주입 받음
     public JwtProvider(@Value("${jwt.secret}") String secret,
-                       @Value("${jwt.expiration}") long accessExpiration,
-                       @Value("${jwt.refresh-expiration}") long refreshExpiration) {
+            @Value("${jwt.expiration}") long accessExpiration,
+            @Value("${jwt.refresh-expiration}") long refreshExpiration) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessExpiration = accessExpiration;
         this.refreshExpiration = refreshExpiration;
     }
+
     /**
      * 2. Access Token 생성 (단기용)
      * - 용도: API 요청 시 인증용
@@ -59,10 +60,10 @@ public class JwtProvider {
         Date validity = new Date(now.getTime() + expiration);
 
         JwtBuilder builder = Jwts.builder()
-                .subject(userId)            // 토큰 주인 (ID)
-                .issuedAt(now)              // 발급 시간
-                .expiration(validity)       // 만료 시간
-                .signWith(secretKey);       // 비밀키 서명
+                .subject(userId) // 토큰 주인 (ID)
+                .issuedAt(now) // 발급 시간
+                .expiration(validity) // 만료 시간
+                .signWith(secretKey); // 비밀키 서명
 
         // 역할(Role)이 있는 경우에만 Payload에 추가 (Refresh Token은 null이라 추가 안 됨)
         if (role != null) {
@@ -138,6 +139,31 @@ public class JwtProvider {
         } catch (io.jsonwebtoken.JwtException | IllegalArgumentException e) {
             // 유효하지 않은 토큰이면 예외를 던져서 호출부(StompHandler)에서 처리하게 함
             throw new io.jsonwebtoken.JwtException("Invalid JWT token", e);
+        }
+    }
+
+    /**
+     * 8. 토큰의 남은 유효 시간 계산 (밀리초 단위)
+     * - 용도: 로그아웃 시 블랙리스트에 등록할 때 TTL 설정용
+     * - 만료된 토큰의 경우 0을 반환
+     * 
+     * @param token JWT 토큰
+     * @return 남은 유효 시간 (밀리초), 만료된 경우 0
+     */
+    public long getRemainingTime(String token) {
+        try {
+            Date expiration = Jwts.parser()
+                    .verifyWith(secretKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload()
+                    .getExpiration();
+
+            long remainingTime = expiration.getTime() - System.currentTimeMillis();
+            return Math.max(0, remainingTime); // 음수 방지
+        } catch (JwtException | IllegalArgumentException e) {
+            log.error("토큰 만료 시간 추출 실패: {}", e.getMessage());
+            return 0;
         }
     }
 }
