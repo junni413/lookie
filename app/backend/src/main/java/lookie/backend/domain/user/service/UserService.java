@@ -7,6 +7,7 @@ import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
 import lookie.backend.domain.user.exception.InvalidEmailFormatException;
 import lookie.backend.domain.user.exception.InvalidPasswordFormatException;
 import lookie.backend.domain.user.exception.InvalidPhoneFormatException;
+import lookie.backend.domain.user.exception.InvalidTokenException;
 import lookie.backend.domain.user.exception.LoginFailedException;
 import lookie.backend.domain.user.mapper.UserMapper;
 import lookie.backend.domain.user.vo.UserRole;
@@ -180,6 +181,62 @@ public class UserService {
                     remainingTime,
                     TimeUnit.MILLISECONDS);
         }
+    }
+
+    /**
+     * 토큰 재발급 비즈니스 로직 (RTR 방식)
+     * - Refresh Token Rotation: 재발급 시마다 새로운 Refresh Token 생성
+     * - 보안 강화: 기존 Refresh Token 무효화 및 새 토큰으로 교체
+     * 
+     * @param refreshToken 클라이언트가 보낸 Refresh Token
+     * @return Map {\"accessToken\": String, \"refreshToken\": String}
+     */
+    @Transactional
+    public Map<String, String> reissueToken(String refreshToken) {
+        // 1. Refresh Token 유효성 검증
+        if (!jwtProvider.validateToken(refreshToken)) {
+            throw new InvalidTokenException("유효하지 않은 Refresh Token입니다.");
+        }
+
+        // 2. Refresh Token에서 사용자 ID 추출
+        String userId = jwtProvider.getUserId(refreshToken);
+
+        // 3. Redis에 저장된 Refresh Token과 비교
+        String redisKey = "refresh:" + userId;
+        String storedToken = redisTemplate.opsForValue().get(redisKey);
+
+        if (storedToken == null) {
+            throw new InvalidTokenException("저장된 Refresh Token이 없습니다. 다시 로그인해주세요.");
+        }
+
+        if (!refreshToken.equals(storedToken)) {
+            throw new InvalidTokenException("Refresh Token이 일치하지 않습니다. 다시 로그인해주세요.");
+        }
+
+        // 4. RTR 적용: 기존 Refresh Token 삭제
+        redisTemplate.delete(redisKey);
+
+        // 5. 사용자 정보 조회 (Role 정보 필요)
+        UserVO user = userMapper.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new InvalidTokenException("사용자를 찾을 수 없습니다."));
+
+        // 6. 새로운 Access Token 및 Refresh Token 생성
+        String newAccessToken = jwtProvider.createAccessToken(userId, user.getRole().name());
+        String newRefreshToken = jwtProvider.createRefreshToken(userId);
+
+        // 7. 새로운 Refresh Token을 Redis에 저장
+        redisTemplate.opsForValue().set(
+                redisKey,
+                newRefreshToken,
+                refreshTokenTtl,
+                TimeUnit.MILLISECONDS);
+
+        // 8. 새로운 토큰 세트 반환
+        Map<String, String> tokens = new HashMap<>();
+        tokens.put("accessToken", newAccessToken);
+        tokens.put("refreshToken", newRefreshToken);
+
+        return tokens;
     }
 
     /**
