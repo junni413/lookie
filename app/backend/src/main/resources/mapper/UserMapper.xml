@@ -82,7 +82,8 @@
     <update id="softDeleteUser" parameterType="map">
         UPDATE users
         SET is_active = FALSE,
-            phone_number = #{phoneNumber}
+            phone_number = CONCAT('DEL_', user_id),
+            updated_at = NOW()
         WHERE user_id = #{userId}
     </update>
 </mapper>

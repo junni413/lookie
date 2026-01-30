@@ -519,32 +519,50 @@ public class UserService {
      */
     @Transactional
     public void deleteAccount(Long userId, String password) {
-        // 1. 사용자 조회
-        UserVO user = userMapper.findById(userId)
-                .orElseThrow(() -> new lookie.backend.domain.user.exception.UserNotFoundException());
-
-        // 2. 비밀번호 검증
-        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+        // 0. 패스워드 null 체크 강화
+        if (password == null || password.trim().isEmpty()) {
+            log.error("[회원 탈퇴] 입력된 비밀번호가 없습니다. userId={}", userId);
             throw new InvalidPasswordException();
         }
 
-        // 3. 탈퇴 일시 생성 (yyyyMMddHHmmss 형식)
-        String deletedTimestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        String modifiedPhoneNumber = user.getPhoneNumber() + "_DEL_" + deletedTimestamp;
+        // 1. 사용자 조회 (예외 처리 및 로깅 강화)
+        UserVO user = userMapper.findById(userId)
+                .orElseThrow(() -> {
+                    log.error("[회원 탈퇴] 사용자를 찾을 수 없습니다. userId={}", userId);
+                    return new lookie.backend.domain.user.exception.UserNotFoundException();
+                });
 
-        // 4. DB 업데이트 (is_active=FALSE, phone_number 수정)
-        Map<String, Object> params = new HashMap<>();
-        params.put("userId", userId);
-        params.put("phoneNumber", modifiedPhoneNumber);
-        userMapper.softDeleteUser(params);
-
-        // 5. 모든 RefreshToken 삭제
-        String refreshTokenPattern = "refresh:" + userId;
-        Set<String> keys = redisTemplate.keys(refreshTokenPattern + "*");
-        if (keys != null && !keys.isEmpty()) {
-            redisTemplate.delete(keys);
+        // 2. 비밀번호 검증
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            log.warn("[회원 탈퇴] 비밀번호가 일치하지 않습니다. userId={}", userId);
+            throw new InvalidPasswordException();
         }
 
-        log.info("[회원 탈퇴] 완료: userId={}, 수정된 전화번호={}", userId, modifiedPhoneNumber);
+        // 3. DB 업데이트 (MyBatis XML에서 CONCAT, NOW() 처리)
+        Map<String, Object> params = new HashMap<>();
+        params.put("userId", userId);
+
+        try {
+            userMapper.softDeleteUser(params);
+            log.info("[회원 탈퇴] DB Soft Delete 완료. userId={}", userId);
+        } catch (Exception e) {
+            log.error("[회원 탈퇴] DB 업데이트 중 에러 발생. userId={}, error={}", userId, e.getMessage());
+            throw e;
+        }
+
+        // 4. Redis 토큰 삭제 (try-catch로 감싸서 예외 격리)
+        try {
+            String refreshTokenPattern = "refresh:" + userId;
+            Set<String> keys = redisTemplate.keys(refreshTokenPattern + "*");
+            if (keys != null && !keys.isEmpty()) {
+                redisTemplate.delete(keys);
+                log.info("[회원 탈퇴] Redis 토큰 삭제 완료. userId={}, count={}", userId, keys.size());
+            }
+        } catch (Exception e) {
+            // Redis 에러는 로깅만 하고 전체 프로세스를 중단하지 않음
+            log.error("[회원 탈퇴] Redis 토큰 삭제 중 에러 발생 (프로세스 계속 진행). userId={}, error={}", userId, e.getMessage());
+        }
+
+        log.info("[회원 탈퇴] 탈퇴 처리가 정상적으로 완료되었습니다. userId={}", userId);
     }
 }
