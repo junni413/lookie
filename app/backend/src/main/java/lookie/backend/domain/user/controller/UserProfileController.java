@@ -11,8 +11,6 @@ import lookie.backend.global.security.JwtProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
-
 @Tag(name = "User", description = "사용자 프로필 관리 API (내 정보 조회/수정/탈퇴)")
 @RestController
 @RequestMapping("/api/users")
@@ -74,8 +72,6 @@ public class UserProfileController {
     /**
      * 비밀번호 변경 (프로필 수정의 일부)
      * PATCH /api/users/me/password
-     * 
-     * 참고: API 명세서에 별도 엔드포인트가 있다면 사용, 없으면 PATCH /me로 통합
      */
     @Operation(summary = "비밀번호 변경", description = "현재 로그인된 사용자의 비밀번호를 변경합니다")
     @PatchMapping("/me/password")
@@ -102,39 +98,31 @@ public class UserProfileController {
     /**
      * 회원 탈퇴 (Soft Delete)
      * DELETE /api/users/me
+     * [변경됨]: Map -> DeleteAccountRequest DTO 사용
      */
     @Operation(summary = "회원 탈퇴", description = "현재 로그인한 사용자의 계정을 탈퇴합니다 (Soft Delete)")
     @DeleteMapping("/me")
     public ResponseEntity<ApiResponse<Void>> deleteAccount(
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody Map<String, String> payload) {
+            @RequestBody DeleteAccountRequest request) { // Map 대신 DTO 사용
         // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
         String accessToken = authHeader.substring(7);
 
         // 2. 토큰에서 사용자 ID 추출
         String userId = jwtProvider.getUserId(accessToken);
 
-        // 3. Request Body에서 password 추출 및 검증
-        String password = payload != null ? payload.get("password") : null;
-        if (password == null || password.trim().isEmpty()) {
-            throw new lookie.backend.domain.user.exception.InvalidPasswordException();
-        }
+        // 3. DTO에서 비밀번호 추출 및 서비스 호출
+        // (null 체크는 DTO 내부나 서비스 로직, 또는 @Valid로 처리 가능하지만 현재 로직 유지)
+        String password = request.getPassword();
 
-        // 4. 서비스 호출 (비밀번호 검증 포함)
+        // 4. 서비스 호출
         userService.deleteAccount(Long.parseLong(userId), password);
 
         return ResponseEntity.ok(ApiResponse.success("회원 탈퇴가 완료되었습니다.", null));
     }
 
-    // ==================== 이메일 변경 OTP (명세서 확인 필요) ====================
-    // 명세서에 없으면 제거하거나 내부 로직으로 통합
+    // ==================== 이메일 변경 OTP ====================
 
-    /**
-     * 이메일 변경 인증번호 요청
-     * POST /api/users/me/email/otp/request
-     * 
-     * 참고: API 명세서에 없으면 제거
-     */
     @Operation(summary = "이메일 변경 인증번호 요청", description = "새 이메일로 인증번호를 발송합니다 (5분 유효)")
     @PostMapping("/me/email/otp/request")
     public ResponseEntity<ApiResponse<Void>> requestEmailChangeOtp(@RequestBody EmailChangeOtpRequest request) {
@@ -142,12 +130,6 @@ public class UserProfileController {
         return ResponseEntity.ok(ApiResponse.success("인증번호가 발송되었습니다.", null));
     }
 
-    /**
-     * 이메일 변경 인증번호 검증
-     * POST /api/users/me/email/otp/verify
-     * 
-     * 참고: API 명세서에 없으면 제거
-     */
     @Operation(summary = "이메일 변경 인증번호 검증", description = "인증번호를 검증하고 이메일 변경 토큰을 발급합니다 (10분 유효)")
     @PostMapping("/me/email/otp/verify")
     public ResponseEntity<ApiResponse<Void>> verifyEmailChangeOtp(
