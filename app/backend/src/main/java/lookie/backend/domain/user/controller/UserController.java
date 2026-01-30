@@ -140,7 +140,8 @@ public class UserController {
      */
     @Operation(summary = "비밀번호 재설정 인증번호 검증", description = "인증번호를 검증하고 resetToken을 발급합니다 (5분 유효)")
     @PostMapping("/password/reset/otp/verify")
-    public ResponseEntity<ApiResponse<PasswordResetTokenResponse>> verifyPasswordResetOtp(@RequestBody PasswordResetOtpVerifyRequest request) {
+    public ResponseEntity<ApiResponse<PasswordResetTokenResponse>> verifyPasswordResetOtp(
+            @RequestBody PasswordResetOtpVerifyRequest request) {
         String resetToken = userService.verifyPasswordResetOtp(request.getEmail(), request.getCode());
         PasswordResetTokenResponse response = PasswordResetTokenResponse.builder()
                 .resetToken(resetToken)
@@ -155,7 +156,68 @@ public class UserController {
     @Operation(summary = "비밀번호 재설정 최종 확인", description = "resetToken을 사용하여 비밀번호를 변경합니다")
     @PostMapping("/password/reset/confirm")
     public ResponseEntity<ApiResponse<Void>> confirmPasswordReset(@RequestBody PasswordResetConfirmRequest request) {
-        userService.confirmPasswordReset(request.getResetToken(), request.getNewPassword(), request.getConfirmPassword());
+        userService.confirmPasswordReset(request.getResetToken(), request.getNewPassword(),
+                request.getConfirmPassword());
         return ResponseEntity.ok(ApiResponse.success("비밀번호가 변경되었습니다.", null));
+    }
+
+    // ==================== 내 정보 수정 ====================
+
+    /**
+     * 이메일 변경 인증번호 요청
+     * POST /api/users/me/email/otp/request
+     */
+    @Operation(summary = "이메일 변경 인증번호 요청", description = "새 이메일로 인증번호를 발송합니다 (5분 유효)")
+    @PostMapping("/users/me/email/otp/request")
+    public ResponseEntity<ApiResponse<Void>> requestEmailChangeOtp(@RequestBody EmailChangeOtpRequest request) {
+        userService.requestEmailChangeOtp(request.getNewEmail());
+        return ResponseEntity.ok(ApiResponse.success("인증번호가 발송되었습니다.", null));
+    }
+
+    /**
+     * 이메일 변경 인증번호 검증
+     * POST /api/users/me/email/otp/verify
+     */
+    @Operation(summary = "이메일 변경 인증번호 검증", description = "인증번호를 검증하고 이메일 변경 토큰을 발급합니다 (10분 유효)")
+    @PostMapping("/users/me/email/otp/verify")
+    public ResponseEntity<ApiResponse<Void>> verifyEmailChangeOtp(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody EmailChangeOtpVerifyRequest request) {
+        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
+        String accessToken = authHeader.substring(7);
+
+        // 2. 토큰에서 사용자 ID 추출
+        String userId = jwtProvider.getUserId(accessToken);
+
+        // 3. 이메일 변경 OTP 검증 및 토큰 발급
+        userService.verifyEmailChangeOtp(Long.parseLong(userId), request.getNewEmail(), request.getCode());
+
+        return ResponseEntity.ok(ApiResponse.success("이메일 변경 인증에 성공하였습니다.", null));
+    }
+
+    /**
+     * 프로필 수정
+     * PATCH /api/users/me
+     */
+    @Operation(summary = "프로필 수정", description = "이름, 이메일, 비밀번호를 선택적으로 수정합니다 (이메일 변경 시 사전 인증 필수)")
+    @PatchMapping("/users/me")
+    public ResponseEntity<ApiResponse<Void>> updateProfile(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody UpdateProfileRequest request) {
+        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
+        String accessToken = authHeader.substring(7);
+
+        // 2. 토큰에서 사용자 ID 추출
+        String userId = jwtProvider.getUserId(accessToken);
+
+        // 3. 프로필 업데이트
+        userService.updateProfile(
+                Long.parseLong(userId),
+                request.getName(),
+                request.getEmail(),
+                request.getPassword()
+        );
+
+        return ResponseEntity.ok(ApiResponse.success("프로필이 수정되었습니다.", null));
     }
 }
