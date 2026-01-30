@@ -1,11 +1,14 @@
 package lookie.backend.global.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lookie.backend.global.error.ErrorCode;
+import lookie.backend.global.response.ApiResponse;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -15,7 +18,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -31,6 +33,7 @@ public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtProvider jwtProvider;
     private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 필터의 핵심 로직 (모든 HTTP 요청마다 1번씩 실행됨)
@@ -49,7 +52,7 @@ public class JwtFilter extends OncePerRequestFilter {
             String blacklistKey = "blacklist:" + token;
             if (Boolean.TRUE.equals(redisTemplate.hasKey(blacklistKey))) {
                 log.warn("블랙리스트에 등록된 토큰입니다. 인증을 거부합니다.");
-                filterChain.doFilter(request, response);
+                writeErrorResponse(response, ErrorCode.AUTH_LOGOUT_TOKEN);
                 return;
             }
 
@@ -83,5 +86,23 @@ public class JwtFilter extends OncePerRequestFilter {
             return bearerToken.substring(7); // 앞의 "Bearer " 7글자 자르고 뒤에 토큰만 리턴
         }
         return null;
+    }
+
+    /**
+     * 커스텀 에러 응답 작성
+     * - 블랙리스트 토큰 등 필터 단계에서 발생하는 에러를 JSON 형식으로 반환
+     * 
+     * @param response  HttpServletResponse
+     * @param errorCode 에러 코드
+     * @throws IOException JSON 변환 실패 시
+     */
+    private void writeErrorResponse(HttpServletResponse response, ErrorCode errorCode) throws IOException {
+        response.setStatus(errorCode.getStatus().value());
+        response.setContentType("application/json;charset=UTF-8");
+
+        ApiResponse<Void> errorResponse = ApiResponse.fail(errorCode.getDefaultMessage(), errorCode);
+        String jsonResponse = objectMapper.writeValueAsString(errorResponse);
+
+        response.getWriter().write(jsonResponse);
     }
 }
