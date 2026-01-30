@@ -13,6 +13,22 @@ public enum ErrorCode {
 	// ===== AUTH =====
 	AUTH_LOGIN_FAILED("AUTH_001", HttpStatus.UNAUTHORIZED, "로그인 실패"),
 	AUTH_REQUIRED("AUTH_002", HttpStatus.UNAUTHORIZED, "인증이 필요합니다"),
+	AUTH_INVALID_TOKEN("AUTH_003", HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다"),
+	AUTH_EXPIRED_TOKEN("AUTH_004", HttpStatus.UNAUTHORIZED, "만료된 토큰입니다"),
+	AUTH_EMAIL_ALREADY_SENT("AUTH_005", HttpStatus.TOO_MANY_REQUESTS, "1분 내 재발송이 제한됩니다"),
+	AUTH_EMAIL_VERIFY_REQUIRED("AUTH_006", HttpStatus.FORBIDDEN, "이메일 인증이 필요합니다"),
+	AUTH_EMAIL_CODE_EXPIRED("AUTH_007", HttpStatus.BAD_REQUEST, "인증번호가 만료되었거나 일치하지 않습니다"),
+
+	// ===== EMAIL =====
+	EMAIL_SEND_FAILED("EMAIL_001", HttpStatus.SERVICE_UNAVAILABLE, "이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요"),
+
+	// ===== USER =====
+	USER_ALREADY_EXISTS_PHONE("USER_001", HttpStatus.CONFLICT, "이미 가입된 전화번호입니다"),
+	USER_ALREADY_EXISTS_EMAIL("USER_002", HttpStatus.CONFLICT, "이미 가입된 이메일입니다"),
+	USER_NOT_FOUND("USER_003", HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다"),
+	INVALID_EMAIL_FORMAT("USER_004", HttpStatus.BAD_REQUEST, "유효하지 않은 이메일 형식입니다"),
+	INVALID_PHONE_FORMAT("USER_005", HttpStatus.BAD_REQUEST, "유효하지 않은 전화번호 형식입니다"),
+	INVALID_PASSWORD_FORMAT("USER_006", HttpStatus.BAD_REQUEST, "비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다"),
 
 	// ===== TASK =====
 	TASK_ALREADY_ASSIGNED("TASK_001", HttpStatus.CONFLICT, "이미 할당된 작업입니다"),
@@ -29,7 +45,7 @@ public enum ErrorCode {
 	ISSUE_RECAPTURE_REQUIRED("ISSUE_001", HttpStatus.BAD_REQUEST, "재촬영이 필요합니다"),
 
 	// ==== SYSTEM =====
-	SYSTEM_TEMPORARY_LOCK_FAILED("SYS_001",HttpStatus.TOO_MANY_REQUESTS,"요청이 많아 잠시 후 다시 시도해주세요");
+	SYSTEM_TEMPORARY_LOCK_FAILED("SYS_001", HttpStatus.TOO_MANY_REQUESTS, "요청이 많아 잠시 후 다시 시도해주세요");
 
 	private final String code; // 프론트 노출용
 	private final HttpStatus status;
