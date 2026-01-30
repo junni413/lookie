@@ -1,7 +1,12 @@
 package lookie.backend.domain.task.service;
 
 import lombok.RequiredArgsConstructor;
+import lookie.backend.domain.location.exception.LocationNotFoundException;
+import lookie.backend.domain.location.exception.LocationZoneMismatchException;
+import lookie.backend.domain.location.mapper.LocationMapper;
+import lookie.backend.domain.location.vo.LocationVO;
 import lookie.backend.domain.task.event.TaskCompletedEvent;
+import lookie.backend.domain.task.exception.InvalidTaskActionStateException;
 import lookie.backend.domain.task.exception.InvalidTaskStateException;
 import lookie.backend.domain.task.exception.NoAvailableTaskException;
 import lookie.backend.domain.task.exception.TaskAlreadyAssignedException;
@@ -26,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskService {
     private final TaskMapper taskMapper;
     private final ToteMapper toteMapper;
+    private final LocationMapper locationMapper;
     private final ZoneAssignmentMapper zoneAssignmentMapper;
     private final ApplicationEventPublisher publisher;
 
@@ -108,7 +114,7 @@ public class TaskService {
 
         // 2. FSM 검증
         if (task.getActionStatus() != TaskActionStatus.SCAN_TOTE) {
-            throw new InvalidTaskStateException(TaskStatus.IN_PROGRESS, TaskStatus.IN_PROGRESS);
+            throw new InvalidTaskActionStateException(task.getActionStatus(), TaskActionStatus.SCAN_TOTE);
         }
 
         // 3. 바코드 검증 및 할당 로직
@@ -138,11 +144,50 @@ public class TaskService {
         // Task 업데이트 (action_status, tote_scanned_at, tote_id)
         int updated = taskMapper.updateToteScanResult(taskId, scannedTote.getToteId());
         if (updated == 0) {
-            throw new InvalidTaskStateException(TaskStatus.IN_PROGRESS, TaskStatus.IN_PROGRESS);
+            // 이미 상태가 변했거나 동시성 이슈
+            throw new InvalidTaskActionStateException(task.getActionStatus(), TaskActionStatus.SCAN_TOTE);
         }
 
         // Tote 업데이트 (current_batch_task_id)
         toteMapper.updateToteMapping(scannedTote.getToteId(), taskId);
+
+        return taskMapper.findById(taskId);
+    }
+
+    /**
+     * [지번 스캔]
+     * - 검증: 현재 상태가 SCAN_LOCATION인지, 스캔된 지번이 작업 구역에 속하는지
+     * - 실행: DB 업데이트 (SCAN_ITEM으로 전이)
+     */
+    @Transactional
+    public TaskVO scanLocation(Long taskId, String locationCode) {
+        // 1. 작업 조회
+        TaskVO task = taskMapper.findById(taskId);
+        if (task == null) {
+            throw new TaskNotFoundException(taskId);
+        }
+
+        // 2. FSM 검증
+        if (task.getActionStatus() != TaskActionStatus.SCAN_LOCATION) {
+            throw new InvalidTaskActionStateException(task.getActionStatus(), TaskActionStatus.SCAN_LOCATION);
+        }
+
+        // 3. 지번 조회 및 검증
+        LocationVO scannedLocation = locationMapper.findByCode(locationCode);
+        if (scannedLocation == null) {
+            throw new LocationNotFoundException();
+        }
+
+        // 구역 검증 (현재 작업의 구역과 일치하는지)
+        if (!task.getZoneId().equals(scannedLocation.getZoneId())) {
+            throw new LocationZoneMismatchException();
+        }
+
+        // 4. 상태 업데이트
+        int updated = taskMapper.updateLocationScanResult(taskId);
+        if (updated == 0) {
+            throw new InvalidTaskActionStateException(task.getActionStatus(), TaskActionStatus.SCAN_LOCATION);
+        }
 
         return taskMapper.findById(taskId);
     }

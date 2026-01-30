@@ -22,4 +22,7 @@ public interface TaskMapper {
 
     // [수정] 토트 스캔 결과 업데이트 (SCAN_TOTE -> SCAN_LOCATION)
     int updateToteScanResult(@Param("batchTaskId") Long batchTaskId, @Param("toteId") Long toteId);
+
+    // [수정] 지번 스캔 결과 업데이트 (SCAN_LOCATION -> SCAN_ITEM)
+    int updateLocationScanResult(@Param("batchTaskId") Long batchTaskId);
 }

@@ -40,6 +40,10 @@ public enum ErrorCode {
 	TASK_INVALID_STATE("TASK_005", HttpStatus.CONFLICT, "작업 상태 전이가 올바르지 않습니다"),
 	TASK_TOTE_MISMATCH("TASK_006", HttpStatus.BAD_REQUEST, "토트 바코드가 일치하지 않습니다"),
 
+	// ==== LOCATION ====
+	LOCATION_NOT_FOUND("LOC_001", HttpStatus.NOT_FOUND, "존재하지 않는 지번 코드입니다"),
+	LOCATION_ZONE_MISMATCH("LOC_002", HttpStatus.BAD_REQUEST, "현재 작업 구역과 일치하지 않는 지번입니다"),
+
 	// ==== ZONE ====
 	WORKER_ZONE_NOT_ASSIGNED("ZONE_001", HttpStatus.BAD_REQUEST, "작업자에게 배정된 작업 구역이 없습니다"),
 
