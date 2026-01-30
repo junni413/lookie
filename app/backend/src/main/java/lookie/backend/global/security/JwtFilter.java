@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -20,6 +21,7 @@ import java.util.List;
 /**
  * JWT 인증 필터
  * 모든 API 요청이 들어올 때마다 가장 먼저 실행되어 토큰 검사
+ * - 블랙리스트 확인: 로그아웃된 토큰인지 Redis에서 검증
  * - 유효한 토큰이면: 인증 정보(Authentication)를 만들어 SecurityContext에 저장
  * - 유효하지 않거나 토큰이 없으면: 아무 작업 없이 다음 필터로 넘김 (이후 SecurityConfig에서 걸러짐)
  */
@@ -28,6 +30,7 @@ import java.util.List;
 public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtProvider jwtProvider;
+    private final StringRedisTemplate redisTemplate;
 
     /**
      * 필터의 핵심 로직 (모든 HTTP 요청마다 1번씩 실행됨)
@@ -42,13 +45,21 @@ public class JwtFilter extends OncePerRequestFilter {
         // 2. 토큰 유효성 검사
         if (StringUtils.hasText(token) && jwtProvider.validateToken(token)) {
 
+            // 3. 블랙리스트 확인 (로그아웃된 토큰인지 검증)
+            String blacklistKey = "blacklist:" + token;
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(blacklistKey))) {
+                log.warn("블랙리스트에 등록된 토큰입니다. 인증을 거부합니다.");
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             String userId = jwtProvider.getUserId(token);
             String role = jwtProvider.getRole(token);
 
             // [수정] role이 null이 아닐 때만 인증 처리 (NPE 방지)
             if (userId != null && role != null) {
-                Authentication authentication =
-                        new UsernamePasswordAuthenticationToken(userId, null, List.of(new SimpleGrantedAuthority(role)));
+                Authentication authentication = new UsernamePasswordAuthenticationToken(userId, null,
+                        List.of(new SimpleGrantedAuthority(role)));
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
                 log.debug("Security Context에 '{}' 인증 정보를 저장했습니다. 권한: {}", userId, role);
