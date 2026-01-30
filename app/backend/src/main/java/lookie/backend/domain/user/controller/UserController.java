@@ -29,6 +29,25 @@ public class UserController {
     private final JwtProvider jwtProvider;
 
     /**
+     * 토큰 재발급 (RTR 방식)
+     * POST /api/auth/refresh
+     */
+    @Operation(summary = "토큰 재발급", description = "Refresh Token을 사용하여 새로운 Access Token과 Refresh Token을 발급합니다 (RTR 방식)")
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<TokenResponse>> refresh(@RequestHeader("Refresh-Token") String refreshToken) {
+        // 1. 토큰 재발급 처리 (RTR: 기존 토큰 삭제 + 새 토큰 생성)
+        Map<String, String> tokens = userService.reissueToken(refreshToken);
+        
+        // 2. TokenResponse 생성
+        TokenResponse response = TokenResponse.builder()
+                .accessToken(tokens.get("accessToken"))
+                .refreshToken(tokens.get("refreshToken"))
+                .build();
+        
+        return ResponseEntity.ok(ApiResponse.success("토큰이 재발급되었습니다.", response));
+    }
+
+    /**
      * 회원가입
      * POST /api/auth/signup
      */
@@ -72,12 +91,15 @@ public class UserController {
     @Operation(summary = "로그아웃", description = "현재 사용자를 로그아웃하고 토큰을 무효화합니다")
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader("Authorization") String authHeader) {
-        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토
-
+        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
+        String accessToken = authHeader.substring(7);
+        
         // 2. 토큰에서 사용자 ID 추출
-
-        // 3. 로그아웃 처리 (Refresh Token 삭제 + Access
-
+        String userId = jwtProvider.getUserId(accessToken);
+        
+        // 3. 로그아웃 처리 (Refresh Token 삭제 + Access Token 블랙리스트 등록)
+        userService.logout(accessToken, userId);
+        
         return ResponseEntity.ok(ApiResponse.success("로그아웃되었습니다.", null));
     }
 
