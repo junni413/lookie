@@ -17,6 +17,12 @@
         AND is_active = TRUE
     </select>
 
+    <!-- 2-1. 로그인 시 삭제된 계정 구분용 (is_active 필터링 없이 조회) -->
+    <select id="findByPhoneNumberIncludingDeleted" parameterType="String" resultType="UserVO">
+        SELECT * FROM users 
+        WHERE phone_number = #{phoneNumber}
+    </select>
+
     <!-- 3. 전화번호 (아이디) 중복 확인 -->
     <select id="existByPhoneNumber" parameterType="String" resultType="Boolean">
         SELECT EXISTS (

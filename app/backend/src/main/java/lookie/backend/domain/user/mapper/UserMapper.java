@@ -14,6 +14,9 @@ public interface UserMapper {
     // 2. 로그인 및 정보 조회용
     Optional<UserVO> findByPhoneNumber(String phoneNumber);
 
+    // 2-1. 로그인 시 삭제된 계정 구분용 (is_active 필터링 없이 조회)
+    Optional<UserVO> findByPhoneNumberIncludingDeleted(String phoneNumber);
+
     // 3. 전화번호 (아이디) 중복 확인용
     boolean existByPhoneNumber(String phoneNumber);
 
@@ -31,5 +34,8 @@ public interface UserMapper {
 
     // 8. 프로필 업데이트 (이름, 이메일, 비밀번호 선택적 수정)
     void updateUserProfile(java.util.Map<String, Object> params);
+
+    // 9. 회원 탈퇴 (Soft Delete)
+    void softDeleteUser(java.util.Map<String, Object> params);
 
 }
