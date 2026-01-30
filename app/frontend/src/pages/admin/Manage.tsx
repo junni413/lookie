@@ -34,7 +34,7 @@ export default function Manage() {
             ]);
             setStats(fetchedStats);
             setWorkers(fetchedWorkers);
-            setLastAppliedWorkers(fetchedWorkers);
+            setLastAppliedWorkers(structuredClone(fetchedWorkers));
             setPrevAppliedWorkers(null);
         } catch (error: any) {
             console.error("Failed to load manage data", error);
@@ -53,24 +53,46 @@ export default function Manage() {
         }));
     };
 
+    // Helper: Deep comparison for worker state (optimization)
+    const hasWorkerStateChanged = (current: DB_Worker[], original: DB_Worker[]) => {
+        if (current.length !== original.length) return true;
+        for (let i = 0; i < current.length; i++) {
+            if (current[i].worker_id !== original[i].worker_id) return true; // Order changed (shouldn't happen if sorted, but safe check)
+            if (current[i].current_zone_id !== original[i].current_zone_id) return true; // Zone changed
+        }
+        return false;
+    };
+
     const handleReset = () => {
-        setWorkers([...lastAppliedWorkers]);
+        if (lastAppliedWorkers.length > 0) {
+            setWorkers(structuredClone(lastAppliedWorkers));
+        }
     };
 
     const handleRestorePrevious = () => {
         if (prevAppliedWorkers) {
             if (confirm("정말 이전 배치로 되돌리시겠습니까? 현재 작업 내용은 저장되지 않습니다.")) {
-                setWorkers([...prevAppliedWorkers]);
+                setWorkers(structuredClone(prevAppliedWorkers));
             }
         }
     };
 
     const handleApply = async () => {
-        // Mock apply action
-        alert("작업자 배치가 적용되었습니다.");
+        setLoading(true);
+        try {
+            // Call API
+            await manageService.updateWorkers(workers);
+            alert("작업자 배치가 적용되었습니다.");
 
-        setPrevAppliedWorkers(lastAppliedWorkers);
-        setLastAppliedWorkers(workers);
+            // Update History with Deep Copy
+            setPrevAppliedWorkers(structuredClone(lastAppliedWorkers));
+            setLastAppliedWorkers(structuredClone(workers));
+        } catch (err) {
+            console.error("Failed to apply changes", err);
+            alert("배치 적용 중 오류가 발생했습니다.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleAiReallocate = () => {
@@ -90,8 +112,8 @@ export default function Manage() {
         return <div className="h-full flex items-center justify-center text-red-500">Error: {error}</div>;
     }
 
-    // Diff check for "Reset" button (enable only if changed)
-    const hasChanges = JSON.stringify(workers) !== JSON.stringify(lastAppliedWorkers);
+    // Optimized diff check
+    const hasChanges = hasWorkerStateChanged(workers, lastAppliedWorkers);
 
     return (
         <div className="h-full flex flex-col gap-6 p-2">

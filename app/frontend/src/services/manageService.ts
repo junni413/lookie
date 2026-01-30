@@ -45,9 +45,12 @@ export const manageService = {
     moveWorker: async (workerId: number, targetZoneId: number): Promise<void> => {
         await new Promise((resolve) => setTimeout(resolve, 300));
         console.log(`[Mock API] Moved worker ${workerId} to zone ${targetZoneId}`);
-        // In a real app, we would update the DB. 
-        // Here, the UI state will update optimistically, 
-        // but if we re-fetch 'getDerivedWorker', it won't reflect unless we update mockData storage.
-        // For this prototype, we'll rely on local state in the Page component.
+    },
+
+    // Batch update workers (Mock)
+    updateWorkers: async (workers: DB_Worker[]): Promise<void> => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        console.log(`[Mock API] Batch updating ${workers.length} workers...`);
+        // In real backend, we would send the full list or diff
     }
 };
