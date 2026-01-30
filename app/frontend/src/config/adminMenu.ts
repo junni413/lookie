@@ -9,6 +9,10 @@ export const ADMIN_MENU: AdminMenuItem[] = [
     path: "/admin/dashboard",
   },
   {
+    label: "Manage",
+    path: "/admin/manage",
+  },
+  {
     label: "Issue",
     path: "/admin/issue",
   },

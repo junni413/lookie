@@ -15,8 +15,9 @@ import ProfileEdit from "./pages/worker/ProfileEdit";
 import WorkHistory from "./pages/worker/WorkHistory";
 import IssueListPage from "./pages/worker/IssueList";
 
-import AdminDashboard from "./pages/admin/pages/Dashboard";
-import IssuePage from "./pages/admin/pages/Issue";
+import AdminDashboard from "./pages/admin/Dashboard";
+import IssuePage from "./pages/admin/Issue";
+import ManagePage from "./pages/admin/Manage";
 
 // ✅ 작업 흐름 (프론트만)
 import TaskAssignLoading from "./pages/worker/task/TaskAssignLoading";
@@ -130,6 +131,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="manage" element={<ManagePage />} />
         <Route path="issue" element={<IssuePage />} />
       </Route>
 
