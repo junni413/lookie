@@ -6,6 +6,7 @@ import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
 import lookie.backend.domain.user.exception.AlreadyExistsPhoneException;
 import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
 import lookie.backend.domain.user.exception.InvalidEmailFormatException;
+import lookie.backend.domain.user.exception.InvalidPasswordException;
 import lookie.backend.domain.user.exception.InvalidPasswordFormatException;
 import lookie.backend.domain.user.exception.InvalidPhoneFormatException;
 import lookie.backend.domain.user.exception.InvalidTokenException;
@@ -20,8 +21,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -121,7 +125,7 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> login(String phoneNumber, String rawPassword) {
-        // 1. 전화번호로 사용자 조회
+        // 1. 전화번호로 사용자 조회 (is_active 필터링 없이 조회하여 탈퇴 여부 확인)
         UserVO user = userMapper.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new LoginFailedException(phoneNumber));
 
@@ -130,9 +134,9 @@ public class UserService {
             throw new LoginFailedException(phoneNumber);
         }
 
-        // 3. 계정 활성화 상태 확인 (보안: 비활성 계정도 로그인 실패로 통일)
+        // 3. 계정 활성화 상태 확인 (탈퇴한 계정은 명시적 에러 반환)
         if (user.getIsActive() == null || !user.getIsActive()) {
-            throw new LoginFailedException(phoneNumber);
+            throw new lookie.backend.domain.user.exception.DeletedUserException();
         }
 
         // 4. JWT 토큰 생성
@@ -501,5 +505,46 @@ public class UserService {
         } else {
             log.info("[프로필 수정] 요청: userId={}, 수정할 내용 없음", userId);
         }
+    }
+
+    /**
+     * 회원 탈퇴 (Soft Delete)
+     * - 비밀번호 검증
+     * - is_active를 FALSE로 업데이트
+     * - phone_number에 탈퇴 일시 추가 (재가입 방지)
+     * - 모든 RefreshToken 삭제
+     * 
+     * @param userId   현재 로그인된 사용자 ID
+     * @param password 비밀번호 (본인 확인용)
+     */
+    @Transactional
+    public void deleteAccount(Long userId, String password) {
+        // 1. 사용자 조회
+        UserVO user = userMapper.findById(userId)
+                .orElseThrow(() -> new lookie.backend.domain.user.exception.UserNotFoundException());
+
+        // 2. 비밀번호 검증
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new InvalidPasswordException();
+        }
+
+        // 3. 탈퇴 일시 생성 (yyyyMMddHHmmss 형식)
+        String deletedTimestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String modifiedPhoneNumber = user.getPhoneNumber() + "_DEL_" + deletedTimestamp;
+
+        // 4. DB 업데이트 (is_active=FALSE, phone_number 수정)
+        Map<String, Object> params = new HashMap<>();
+        params.put("userId", userId);
+        params.put("phoneNumber", modifiedPhoneNumber);
+        userMapper.softDeleteUser(params);
+
+        // 5. 모든 RefreshToken 삭제
+        String refreshTokenPattern = "refresh:" + userId;
+        Set<String> keys = redisTemplate.keys(refreshTokenPattern + "*");
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
+
+        log.info("[회원 탈퇴] 완료: userId={}, 수정된 전화번호={}", userId, modifiedPhoneNumber);
     }
 }
