@@ -10,11 +10,13 @@ import lookie.backend.domain.user.dto.LoginResponse;
 import lookie.backend.domain.user.dto.SignupRequest;
 import lookie.backend.domain.user.service.MailService;
 import lookie.backend.domain.user.service.UserService;
-import lookie.backend.domain.user.vo.UserRole;
 import lookie.backend.domain.user.vo.UserVO;
 import lookie.backend.global.response.ApiResponse;
+import lookie.backend.global.security.JwtProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @Tag(name = "Auth", description = "회원가입, 로그인, 이메일 인증 API")
 @RestController
@@ -24,6 +26,7 @@ public class UserController {
 
     private final UserService userService;
     private final MailService mailService;
+    private final JwtProvider jwtProvider;
 
     /**
      * 회원가입
@@ -48,12 +51,34 @@ public class UserController {
     @Operation(summary = "로그인", description = "전화번호와 비밀번호로 로그인합니다")
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest request) {
-        UserVO user = userService.login(request.getPhoneNumber(), request.getPassword());
 
-        // UserVO -> LoginResponse 변환 (passwordHash 제외)
-        LoginResponse response = LoginResponse.from(user);
+        Map<String, Object> loginResult = userService.login(request.getPhoneNumber(), request.getPassword());
+
+        // Map에서 데이터 추출
+        UserVO user = (UserVO) loginResult.get("user");
+        String accessToken = (String) loginResult.get("accessToken");
+        String refreshToken = (String) loginResult.get("refreshToken");
+
+        // UserVO + 토큰 -> LoginResponse 변환 (passwordHash 제외)
+        LoginResponse response = LoginResponse.from(user, accessToken, refreshToken);
 
         return ResponseEntity.ok(ApiResponse.success("로그인에 성공하였습니다.", response));
+    }
+
+    /**
+     * 로그아웃
+     * POST /api/auth/logout
+     */
+    @Operation(summary = "로그아웃", description = "현재 사용자를 로그아웃하고 토큰을 무효화합니다")
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader("Authorization") String authHeader) {
+        // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토
+
+        // 2. 토큰에서 사용자 ID 추출
+
+        // 3. 로그아웃 처리 (Refresh Token 삭제 + Access
+
+        return ResponseEntity.ok(ApiResponse.success("로그아웃되었습니다.", null));
     }
 
     /**
