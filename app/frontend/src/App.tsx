@@ -18,7 +18,10 @@ import IssueListPage from "./pages/worker/issue/IssueList";
 import IssueReportPage from "./pages/worker/issue/IssueReport";
 import IssueResultPage from "./pages/worker/issue/IssueResult";
 
-// WORKER task flow
+import AdminDashboard from "./pages/admin/pages/Dashboard";
+import IssuePage from "./pages/admin/pages/Issue";
+
+// ✅ 작업 흐름 (프론트만)
 import TaskAssignLoading from "./pages/worker/task/TaskAssignLoading";
 import TaskScanStart from "./pages/worker/task/TaskScanStart";
 import ToteScan from "./pages/worker/task/ToteScan";
@@ -143,6 +146,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="manage" element={<ManagePage />} />
         <Route path="issue" element={<IssuePage />} />
       </Route>
 

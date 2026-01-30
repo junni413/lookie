@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import StatusCard from "../components/dashboard/StatusCard";
-import ZoneGrid from "../components/dashboard/ZoneGrid";
-import IssueList from "../components/dashboard/DashboardIssueList";
+import StatusCard from "./components/dashboard/StatusCard";
+import ZoneGrid from "./components/dashboard/ZoneGrid";
+import IssueList from "./components/dashboard/DashboardIssueList";
 import { adminDashboardMock } from "@/mocks/mockData";
 import { issueService } from "@/services/issueService";
 import type { IssueResponse } from "@/types/db";
