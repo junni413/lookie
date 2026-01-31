@@ -31,28 +31,28 @@ public class TaskController {
         return ResponseEntity.ok(ApiResponse.success("작업이 할당되었습니다.", response));
     }
 
-    @Operation(summary = "토트 스캔", description = "작업에 사용할 토트 바코드를 스캔하여 등록합니다.")
-    @PostMapping("/{taskId}/tote/scan")
+    @Operation(summary = "토트 등록", description = "작업({taskId})에 사용할 토트를 등록(스캔)합니다.")
+    @PostMapping("/{taskId}/totes")
     public ResponseEntity<ApiResponse<TaskResponse<TaskVO>>> scanTote(
             @PathVariable Long taskId,
             @RequestBody ToteScanRequest request) {
 
         TaskResponse<TaskVO> response = taskWorkflowFacade.scanTote(taskId, request.getBarcode());
-        return ResponseEntity.ok(ApiResponse.success("토트 스캔이 완료되었습니다.", response));
+        return ResponseEntity.ok(ApiResponse.success("토트가 등록되었습니다.", response));
     }
 
-    @Operation(summary = "지번 스캔", description = "상품이 위치한 지번(Location) 바코드를 스캔합니다.")
-    @PostMapping("/{taskId}/location/scan")
+    @Operation(summary = "지번 검증", description = "작업자가 현재 올바른 지번(Location)에 있는지 검증합니다.")
+    @PostMapping("/{taskId}/locations/check")
     public ResponseEntity<ApiResponse<TaskResponse<TaskVO>>> scanLocation(
             @PathVariable Long taskId,
             @RequestBody LocationScanRequest request) {
 
         TaskResponse<TaskVO> response = taskWorkflowFacade.scanLocation(taskId, request.getLocationCode());
-        return ResponseEntity.ok(ApiResponse.success("지번 스캔이 완료되었습니다.", response));
+        return ResponseEntity.ok(ApiResponse.success("지번 검증이 완료되었습니다.", response));
     }
 
-    @Operation(summary = "상품 스캔", description = "현재 지번의 상품 바코드를 스캔합니다.")
-    @PostMapping("/{taskId}/item/scan")
+    @Operation(summary = "상품 식별(스캔)", description = "작업 내에서 바코드로 상품을 식별하고 수량을 1 증가시킵니다.")
+    @PostMapping("/{taskId}/items/scan")
     public ResponseEntity<ApiResponse<TaskResponse<TaskItemVO>>> scanItem(
             @PathVariable Long taskId,
             @RequestBody ItemScanRequest request) {
@@ -61,8 +61,8 @@ public class TaskController {
         return ResponseEntity.ok(ApiResponse.success("상품이 확인되었습니다.", response));
     }
 
-    @Operation(summary = "상품 수량 조정", description = "스캔된 상품의 집품 수량을 조정합니다.")
-    @PostMapping("/items/{itemId}/quantity")
+    @Operation(summary = "상품 수량 수정", description = "특정 상품 아이템({itemId})의 집품 수량을 수정합니다.")
+    @PatchMapping("/items/{itemId}")
     public ResponseEntity<ApiResponse<TaskResponse<TaskItemVO>>> updateQuantity(
             @PathVariable Long itemId,
             @RequestBody QuantityUpdateRequest request) {
