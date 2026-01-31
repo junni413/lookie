@@ -156,6 +156,7 @@ class TaskWorkflowFacadeTest {
 
         // then
         verify(taskItemService).updateQuantityAtomic(500L, 1);
+        verify(taskMapper).updateActionStatus(taskId, TaskActionStatus.ADJUST_QUANTITY);
         assertEquals(NextAction.ADJUST_QUANTITY, response.getNextAction());
     }
 

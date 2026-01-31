@@ -129,7 +129,8 @@ public class TaskWorkflowFacade {
         // 스캔 시 기본 1개 증가 처리 (자동 완료 제거로 인해 DONE 여부 체크 불필요)
         TaskItemVO updatedItem = taskItemService.updateQuantityAtomic(item.getBatchTaskItemId(), 1);
 
-        // 스캔 후에는 무조건 수량 조정 단계로 간주 (프론트엔드에서 수량 확인 후 완료 버튼 클릭 유도)
+        // 스캔 후에는 무조건 수량 조정 단계로 간주하고 DB 상태도 동기화
+        taskMapper.updateActionStatus(taskId, TaskActionStatus.ADJUST_QUANTITY);
         NextAction nextAction = NextAction.ADJUST_QUANTITY;
 
         TaskItemVO nextItem = taskItemService.getNextItem(taskId);
@@ -209,6 +210,8 @@ public class TaskWorkflowFacade {
             taskMapper.updateActionStatus(taskId, TaskActionStatus.SCAN_LOCATION);
         } else if (nextAction == NextAction.COMPLETE_TASK) {
             taskMapper.updateActionStatus(taskId, TaskActionStatus.COMPLETE_TASK);
+        } else if (nextAction == NextAction.ADJUST_QUANTITY) {
+            taskMapper.updateActionStatus(taskId, TaskActionStatus.ADJUST_QUANTITY);
         }
     }
 
