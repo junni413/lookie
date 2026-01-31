@@ -3,7 +3,8 @@ package lookie.backend.domain.task.service;
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.task.exception.ItemQuantityExceededException;
 import lookie.backend.domain.task.exception.ItemQuantityNotSufficientException;
-import lookie.backend.domain.task.exception.TaskItemMismatchException;
+import lookie.backend.domain.product.exception.ProductNotFoundException;
+import lookie.backend.domain.task.exception.TaskItemNotAssignedException;
 import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
@@ -29,14 +30,14 @@ public class TaskItemService {
     public TaskItemVO scanAndGetItem(Long taskId, Long locationId, String barcode) {
         ProductVO product = productMapper.findByBarcode(barcode);
         if (product == null) {
-            // 시스템에 없는 상품이거나 바코드가 틀린 경우 -> 상품 미일치로 처리
-            throw new TaskItemMismatchException();
+            // 시스템에 없는 상품이거나 바코드가 틀린 경우
+            throw new ProductNotFoundException();
         }
 
         TaskItemVO item = taskItemMapper.findPendingOne(taskId, locationId, product.getProductId());
         if (item == null) {
-            // 해당 지번에 이 상품이 할당되어 있지 않거나 이미 완료된 경우 -> 상품 미일치로 처리
-            throw new TaskItemMismatchException();
+            // 해당 지번에 이 상품이 할당되어 있지 않거나 이미 완료된 경우
+            throw new TaskItemNotAssignedException();
         }
         return item;
     }

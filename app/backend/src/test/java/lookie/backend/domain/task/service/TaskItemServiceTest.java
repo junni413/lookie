@@ -5,7 +5,8 @@ import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
 import lookie.backend.domain.product.vo.ProductVO;
 import lookie.backend.domain.task.exception.ItemQuantityExceededException;
-import lookie.backend.domain.task.exception.TaskItemMismatchException;
+import lookie.backend.domain.product.exception.ProductNotFoundException;
+import lookie.backend.domain.task.exception.TaskItemNotAssignedException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -89,7 +90,7 @@ class TaskItemServiceTest {
         when(productMapper.findByBarcode("WRONG")).thenReturn(null);
 
         // when & then
-        assertThrows(TaskItemMismatchException.class, () -> {
+        assertThrows(ProductNotFoundException.class, () -> {
             taskItemService.scanAndGetItem(1L, 10L, "WRONG");
         });
     }
@@ -106,7 +107,7 @@ class TaskItemServiceTest {
         when(taskItemMapper.findPendingOne(anyLong(), anyLong(), eq(100L))).thenReturn(null);
 
         // when & then
-        assertThrows(TaskItemMismatchException.class, () -> {
+        assertThrows(TaskItemNotAssignedException.class, () -> {
             taskItemService.scanAndGetItem(1L, 10L, barcode);
         });
     }
