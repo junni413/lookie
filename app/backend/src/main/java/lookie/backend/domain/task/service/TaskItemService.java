@@ -2,6 +2,7 @@ package lookie.backend.domain.task.service;
 
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.task.exception.ItemQuantityExceededException;
+import lookie.backend.domain.task.exception.ItemQuantityNotSufficientException;
 import lookie.backend.domain.task.exception.TaskItemMismatchException;
 import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
@@ -68,7 +69,7 @@ public class TaskItemService {
 
         // 2. 수량 충족 여부 체크
         if (!item.getPickedQty().equals(item.getRequiredQty())) {
-            throw new lookie.backend.domain.task.exception.ItemQuantityNotSufficientException();
+            throw new ItemQuantityNotSufficientException();
         }
 
         // 3. 상태 업데이트 (PENDING -> DONE)
