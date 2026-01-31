@@ -19,8 +19,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Collections;
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -106,30 +104,28 @@ class TaskWorkflowFacadeTest {
     }
 
     @Test
-    @DisplayName("수량 조정 성공: 해당 지번에 남은 아이템이 있으면 SCAN_ITEM 반환")
-    void pickItem_StayAtLocation() {
+    @DisplayName("수량 조정 성공: 수량 변경 후 기본 상태인 ADJUST_QUANTITY 반환")
+    void pickItem_Success_AdjustQuantity() {
         // given
         Long itemId = 1L;
         TaskItemVO item = new TaskItemVO();
         item.setBatchTaskItemId(itemId);
-        item.setStatus("DONE");
+        item.setStatus("PENDING");
         item.setBatchTaskId(100L);
         item.setLocationId(200L);
 
         when(taskItemService.updateQuantityAtomic(itemId, 1)).thenReturn(item);
-        when(taskItemService.getPendingItemsAtLocation(100L, 200L))
-                .thenReturn(Collections.singletonList(new TaskItemVO()));
 
         // when
         TaskResponse<TaskItemVO> response = taskWorkflowFacade.pickItem(itemId, 1);
 
         // then
-        assertEquals(NextAction.SCAN_ITEM, response.getNextAction());
+        assertEquals(NextAction.ADJUST_QUANTITY, response.getNextAction());
     }
 
     @Test
-    @DisplayName("상품 스캔 성공: 즉시 1개 증가 후 완료되면 SCAN_ITEM 반환 (같은 지번 잔여)")
-    void scanItem_Success_AutoIncrement_Done() {
+    @DisplayName("상품 스캔 성공: 1개 증가 후 수량 조정 단계 유지 (수동 완료 대기)")
+    void scanItem_Success_AdjustQuantity() {
         // given
         Long taskId = 100L;
         String barcode = "P001";
@@ -147,25 +143,18 @@ class TaskWorkflowFacadeTest {
         updatedItem.setBatchTaskItemId(500L);
         updatedItem.setRequiredQty(1);
         updatedItem.setPickedQty(1);
-        updatedItem.setStatus("DONE");
-        updatedItem.setBatchTaskId(100L);
-        updatedItem.setLocationId(10L);
+        updatedItem.setStatus("PENDING"); // 자동 완료 안됨
 
         when(taskMapper.findById(taskId)).thenReturn(task);
         when(taskItemService.scanAndGetItem(taskId, 10L, barcode)).thenReturn(item);
         when(taskItemService.updateQuantityAtomic(500L, 1)).thenReturn(updatedItem);
-        // 같은 지번에 잔여 아이템이 있다고 가정
-        when(taskItemService.getPendingItemsAtLocation(100L, 10L))
-                .thenReturn(Collections.singletonList(new TaskItemVO()));
 
         // when
         TaskResponse<TaskItemVO> response = taskWorkflowFacade.scanItem(taskId, barcode);
 
         // then
-        // 1. updateQuantityAtomic이 호출되었는지 확인
         verify(taskItemService).updateQuantityAtomic(500L, 1);
-        // 2. 해당 지번에 잔여 상품이 있더라도 무조건 다음 지번 스캔(SCAN_LOCATION)으로 가는지 확인 (1:1 원칙)
-        assertEquals(NextAction.SCAN_LOCATION, response.getNextAction());
+        assertEquals(NextAction.ADJUST_QUANTITY, response.getNextAction());
     }
 
     @Test
