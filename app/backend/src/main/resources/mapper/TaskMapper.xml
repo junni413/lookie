@@ -17,6 +17,7 @@
             started_at AS startedAt,
             completed_at AS completedAt,
             tote_id AS toteId,
+            current_location_id AS currentLocationId,
             tote_scanned_at AS toteScannedAt,
             location_scanned_at AS locationScannedAt,
             tote_released_at AS toteReleasedAt
@@ -74,6 +75,18 @@
             tote_id = #{toteId},
             action_status = 'SCAN_LOCATION',
             tote_scanned_at = NOW()
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
+
+    <!--[수정] 지번 스캔 결과 업데이트 -->
+    <update id="updateLocationScanResult">
+        UPDATE batch_tasks
+        SET
+            current_location_id = #{locationId},
+            action_status = 'SCAN_ITEM',
+            location_scanned_at = NOW()
         WHERE
             batch_task_id = #{batchTaskId}
             AND status = 'IN_PROGRESS'

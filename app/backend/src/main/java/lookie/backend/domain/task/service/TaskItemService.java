@@ -1,0 +1,62 @@
+package lookie.backend.domain.task.service;
+
+import lombok.RequiredArgsConstructor;
+import lookie.backend.domain.task.exception.ItemNotFoundException;
+import lookie.backend.domain.task.exception.ItemQuantityExceededException;
+import lookie.backend.domain.task.mapper.TaskItemMapper;
+import lookie.backend.domain.task.vo.TaskItemVO;
+import lookie.backend.domain.product.mapper.ProductMapper;
+import lookie.backend.domain.product.vo.ProductVO;
+import lookie.backend.domain.product.exception.ProductNotFoundException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+/**
+ * TaskItem(집품 아이템) 도메인 로직 처리 서비스
+ */
+@Service
+@RequiredArgsConstructor
+public class TaskItemService {
+
+    private final TaskItemMapper taskItemMapper;
+    private final ProductMapper productMapper;
+
+    /**
+     * 상품 바코드 스캔 및 매칭되는 아이템 조회
+     */
+    public TaskItemVO scanAndGetItem(Long taskId, Long locationId, String barcode) {
+        ProductVO product = productMapper.findByBarcode(barcode);
+        if (product == null) {
+            throw new ProductNotFoundException(barcode);
+        }
+
+        TaskItemVO item = taskItemMapper.findPendingOne(taskId, locationId, product.getProductId());
+        if (item == null) {
+            throw new ItemNotFoundException();
+        }
+        return item;
+    }
+
+    /**
+     * 원자적 수량 업데이트 및 유효성 검사
+     */
+    @Transactional
+    public TaskItemVO updateQuantityAtomic(Long itemId, int increment) {
+        int affected = taskItemMapper.updatePickedQuantityAtomic(itemId, increment);
+        if (affected == 0) {
+            // WHERE 절 조건(status='PENDING' 및 picked_qty + increment <= required_qty)에 걸림
+            throw new ItemQuantityExceededException();
+        }
+        return taskItemMapper.findById(itemId);
+    }
+
+    public List<TaskItemVO> getPendingItemsAtLocation(Long taskId, Long locationId) {
+        return taskItemMapper.findByTaskIdAndLocationId(taskId, locationId);
+    }
+
+    public int countPendingItems(Long taskId) {
+        return taskItemMapper.countPendingItemsByTaskId(taskId);
+    }
+}

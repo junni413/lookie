@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="lookie.backend.domain.task.mapper.TaskItemMapper">
+
+    <!-- [조회] 특정 작업, 지번, 상품이 일치하는 PENDING 아이템 하나를 조회 (식별 및 검증 동시 수행) -->
+    <select id="findPendingOne" resultType="TaskItemVO">
+        SELECT
+            i.batch_task_item_id AS batchTaskItemId,
+            i.batch_task_id AS batchTaskId,
+            i.product_id AS productId,
+            i.location_id AS locationId,
+            i.required_qty AS requiredQty,
+            i.picked_qty AS pickedQty,
+            i.status,
+            i.completed_at AS completedAt,
+            i.last_scanned_at AS lastScannedAt,
+            p.product_name AS productName,
+            p.barcode
+        FROM batch_task_items i
+        JOIN products p ON i.product_id = p.product_id
+        WHERE i.batch_task_id = #{batchTaskId}
+          AND i.location_id = #{locationId}
+          AND i.product_id = #{productId}
+          AND i.status = 'PENDING'
+    </select>
+
+    <!-- [조회] 특정 작업 및 지번에 해당하는 모든 아이템 목록 (상품 정보 포함) -->
+    <select id="findByTaskIdAndLocationId" resultType="TaskItemVO">
+        SELECT
+            i.batch_task_item_id AS batchTaskItemId,
+            i.batch_task_id AS batchTaskId,
+            i.product_id AS productId,
+            i.location_id AS locationId,
+            i.required_qty AS requiredQty,
+            i.picked_qty AS pickedQty,
+            i.status,
+            i.completed_at AS completedAt,
+            i.last_scanned_at AS lastScannedAt,
+            p.product_name AS productName,
+            p.barcode
+        FROM batch_task_items i
+        JOIN products p ON i.product_id = p.product_id
+        WHERE i.batch_task_id = #{batchTaskId}
+          AND i.location_id = #{locationId}
+    </select>
+
+    <!-- [조회] 해당 작업 내 아직 완료되지 않은(PENDING) 아이템의 총 개수 -->
+    <select id="countPendingItemsByTaskId" resultType="int">
+        SELECT COUNT(*)
+        FROM batch_task_items
+        WHERE batch_task_id = #{batchTaskId}
+          AND status = 'PENDING'
+    </select>
+
+    <!-- [조회] 특정 작업 아이템 상세 정보 (상품 정보 포함) -->
+    <select id="findById" resultMap="TaskItemResultMap">
+        SELECT
+            i.batch_task_item_id AS batchTaskItemId,
+            i.batch_task_id AS batchTaskId,
+            i.product_id AS productId,
+            i.location_id AS locationId,
+            i.required_qty AS requiredQty,
+            i.picked_qty AS pickedQty,
+            i.status,
+            i.completed_at AS completedAt,
+            i.last_scanned_at AS lastScannedAt,
+            p.product_name AS productName,
+            p.barcode
+        FROM batch_task_items i
+        JOIN products p ON i.product_id = p.product_id
+        WHERE i.batch_task_item_id = #{batchTaskItemId}
+    </select>
+
+    <!-- [수정] 원자적 수량 증가 및 목표 수량 도달 시 상태 자동 변경 (PENDING -> DONE) -->
+    <select id="updatePickedQuantityAtomic">
+        UPDATE batch_task_items
+        SET 
+            picked_qty = picked_qty + #{increment},
+            last_scanned_at = NOW(),
+            status = CASE 
+                WHEN picked_qty + #{increment} = required_qty THEN 'DONE'
+                ELSE status 
+            END,
+            completed_at = CASE 
+                WHEN picked_qty + #{increment} = required_qty THEN NOW() 
+                ELSE completed_at 
+            END
+        WHERE batch_task_item_id = #{batchTaskItemId}
+          AND status = 'PENDING'
+          AND picked_qty + #{increment} &lt;= required_qty
+    </update>
+
+    <!-- [수정] 아이템 상태 직접 변경 및 완료 시간 기록 -->
+    <update id="updateStatus">
+        UPDATE batch_task_items
+        SET 
+            status = #{status},
+            completed_at = CASE WHEN #{status} = 'DONE' THEN NOW() ELSE completed_at END
+        WHERE batch_task_item_id = #{batchTaskItemId}
+    </update>
+
+</mapper>

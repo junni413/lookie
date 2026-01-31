@@ -1,7 +1,9 @@
 package lookie.backend.domain.task.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lookie.backend.domain.task.service.TaskService;
+import lookie.backend.domain.task.constant.NextAction;
+import lookie.backend.domain.task.dto.TaskResponse;
+import lookie.backend.domain.task.service.TaskWorkflowFacade;
 import lookie.backend.domain.task.vo.TaskVO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,7 +34,7 @@ class TaskControllerTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private TaskService taskService;
+    private TaskWorkflowFacade taskWorkflowFacade;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -46,14 +48,15 @@ class TaskControllerTest {
         task.setBatchTaskId(1L);
         task.setStatus("IN_PROGRESS");
 
-        when(taskService.startTask(any())).thenReturn(task);
+        when(taskWorkflowFacade.startTask(any()))
+                .thenReturn(TaskResponse.of(task, NextAction.SCAN_TOTE));
 
         // when & then
         mockMvc.perform(post("/api/tasks")
                 .with(csrf()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.batchTaskId").value(1L))
-                .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
+                .andExpect(jsonPath("$.data.payload.batchTaskId").value(1L))
+                .andExpect(jsonPath("$.data.nextAction").value("SCAN_TOTE"));
     }
 
     @Test
@@ -68,7 +71,8 @@ class TaskControllerTest {
         task.setBatchTaskId(taskId);
         task.setToteId(100L);
 
-        when(taskService.scanTote(eq(taskId), eq(barcode))).thenReturn(task);
+        when(taskWorkflowFacade.scanTote(eq(taskId), eq(barcode)))
+                .thenReturn(TaskResponse.of(task, NextAction.SCAN_LOCATION));
 
         Map<String, String> request = new HashMap<>();
         request.put("barcode", barcode);
@@ -79,7 +83,8 @@ class TaskControllerTest {
                 .content(objectMapper.writeValueAsString(request))
                 .with(csrf()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.toteId").value(100L));
+                .andExpect(jsonPath("$.data.payload.toteId").value(100L))
+                .andExpect(jsonPath("$.data.nextAction").value("SCAN_LOCATION"));
     }
 
     @Test
@@ -93,7 +98,8 @@ class TaskControllerTest {
         TaskVO task = new TaskVO();
         task.setBatchTaskId(taskId);
 
-        when(taskService.scanLocation(eq(taskId), eq(locationCode))).thenReturn(task);
+        when(taskWorkflowFacade.scanLocation(eq(taskId), eq(locationCode)))
+                .thenReturn(TaskResponse.of(task, NextAction.SCAN_ITEM));
 
         Map<String, String> request = new HashMap<>();
         request.put("locationCode", locationCode);
@@ -103,6 +109,7 @@ class TaskControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
                 .with(csrf()))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nextAction").value("SCAN_ITEM"));
     }
 }

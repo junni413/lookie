@@ -2,7 +2,8 @@ package lookie.backend.domain.task.infra;
 
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.task.exception.TaskLockFailedException;
-import lookie.backend.domain.task.service.TaskService;
+import lookie.backend.domain.task.dto.TaskResponse;
+import lookie.backend.domain.task.service.TaskWorkflowFacade;
 import lookie.backend.domain.task.vo.TaskVO;
 import lookie.backend.domain.zone.exception.WorkerZoneNotAssignedException;
 import lookie.backend.domain.zone.mapper.ZoneAssignmentMapper;
@@ -23,7 +24,7 @@ public class TaskLockExecutor {
 
     private final RedissonClient redissonClient;
     private final ZoneAssignmentMapper zoneAssignmentMapper;
-    private final TaskService taskService;
+    private final TaskWorkflowFacade taskWorkflowFacade;
 
     /**
      * 작업 시작
@@ -62,8 +63,9 @@ public class TaskLockExecutor {
         }
 
         try {
-            // 3. 실제 비즈니스 로직은 TaskServie에 위임
-            return taskService.startTask(workerId);
+            // 3. 실제 비즈니스 로직은 Facade에 위임
+            TaskResponse<TaskVO> response = taskWorkflowFacade.startTask(workerId);
+            return response.getPayload();
         } finally {
             // 4. 락 해제
             if (lock.isHeldByCurrentThread()) {
@@ -99,8 +101,8 @@ public class TaskLockExecutor {
         }
 
         try {
-            // 3. 실제 비즈니스 로직은 TaskServie에 위임
-            taskService.completeTask(taskId);
+            // 3. 실제 비즈니스 로직은 Facade에 위임
+            taskWorkflowFacade.completeTask(taskId);
         } finally {
             // 4. 락 해제
             if (lock.isHeldByCurrentThread()) {
