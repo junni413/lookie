@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lookie.backend.domain.task.constant.NextAction;
 import lookie.backend.domain.task.dto.TaskResponse;
 import lookie.backend.domain.task.service.TaskWorkflowFacade;
+import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,86 +31,140 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false) // Spring Security 필터 비활성화 (테스트 편의상)
 class TaskControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+        @Autowired
+        private MockMvc mockMvc;
 
-    @MockBean
-    private TaskWorkflowFacade taskWorkflowFacade;
+        @MockBean
+        private TaskWorkflowFacade taskWorkflowFacade;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+        @Autowired
+        private ObjectMapper objectMapper;
 
-    @Test
-    @DisplayName("작업 시작 API 테스트")
-    @WithMockUser(username = "1")
-    void startTask() throws Exception {
-        // given
-        TaskVO task = new TaskVO();
-        task.setBatchTaskId(1L);
-        task.setStatus("IN_PROGRESS");
+        @Test
+        @DisplayName("작업 시작 API 테스트")
+        @WithMockUser(username = "1")
+        void startTask() throws Exception {
+                // given
+                TaskVO task = new TaskVO();
+                task.setBatchTaskId(1L);
+                task.setStatus("IN_PROGRESS");
 
-        when(taskWorkflowFacade.startTask(any()))
-                .thenReturn(TaskResponse.of(task, NextAction.SCAN_TOTE));
+                when(taskWorkflowFacade.startTask(any()))
+                                .thenReturn(TaskResponse.of(task, NextAction.SCAN_TOTE));
 
-        // when & then
-        mockMvc.perform(post("/api/tasks")
-                .with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.payload.batchTaskId").value(1L))
-                .andExpect(jsonPath("$.data.nextAction").value("SCAN_TOTE"));
-    }
+                // when & then
+                mockMvc.perform(post("/api/tasks")
+                                .with(csrf()))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.data.payload.batchTaskId").value(1L))
+                                .andExpect(jsonPath("$.data.nextAction").value("SCAN_TOTE"));
+        }
 
-    @Test
-    @DisplayName("토트 스캔 API 테스트")
-    @WithMockUser
-    void scanTote() throws Exception {
-        // given
-        Long taskId = 1L;
-        String barcode = "T001";
+        @Test
+        @DisplayName("토트 스캔 API 테스트")
+        @WithMockUser
+        void scanTote() throws Exception {
+                // given
+                Long taskId = 1L;
+                String barcode = "T001";
 
-        TaskVO task = new TaskVO();
-        task.setBatchTaskId(taskId);
-        task.setToteId(100L);
+                TaskVO task = new TaskVO();
+                task.setBatchTaskId(taskId);
+                task.setToteId(100L);
 
-        when(taskWorkflowFacade.scanTote(eq(taskId), eq(barcode)))
-                .thenReturn(TaskResponse.of(task, NextAction.SCAN_LOCATION));
+                when(taskWorkflowFacade.scanTote(eq(taskId), eq(barcode)))
+                                .thenReturn(TaskResponse.of(task, NextAction.SCAN_LOCATION));
 
-        Map<String, String> request = new HashMap<>();
-        request.put("barcode", barcode);
+                Map<String, String> request = new HashMap<>();
+                request.put("barcode", barcode);
 
-        // when & then
-        mockMvc.perform(post("/api/tasks/{taskId}/tote/scan", taskId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request))
-                .with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.payload.toteId").value(100L))
-                .andExpect(jsonPath("$.data.nextAction").value("SCAN_LOCATION"));
-    }
+                // when & then
+                mockMvc.perform(post("/api/tasks/{taskId}/tote/scan", taskId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                                .with(csrf()))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.data.payload.toteId").value(100L))
+                                .andExpect(jsonPath("$.data.nextAction").value("SCAN_LOCATION"));
+        }
 
-    @Test
-    @DisplayName("지번 스캔 API 테스트")
-    @WithMockUser
-    void scanLocation() throws Exception {
-        // given
-        Long taskId = 1L;
-        String locationCode = "LOC-001";
+        @Test
+        @DisplayName("지번 스캔 API 테스트")
+        @WithMockUser
+        void scanLocation() throws Exception {
+                // given
+                Long taskId = 1L;
+                String locationCode = "LOC-001";
 
-        TaskVO task = new TaskVO();
-        task.setBatchTaskId(taskId);
+                TaskVO task = new TaskVO();
+                task.setBatchTaskId(taskId);
 
-        when(taskWorkflowFacade.scanLocation(eq(taskId), eq(locationCode)))
-                .thenReturn(TaskResponse.of(task, NextAction.SCAN_ITEM));
+                when(taskWorkflowFacade.scanLocation(eq(taskId), eq(locationCode)))
+                                .thenReturn(TaskResponse.of(task, NextAction.SCAN_ITEM));
 
-        Map<String, String> request = new HashMap<>();
-        request.put("locationCode", locationCode);
+                Map<String, String> request = new HashMap<>();
+                request.put("locationCode", locationCode);
 
-        // when & then
-        mockMvc.perform(post("/api/tasks/{taskId}/location/scan", taskId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request))
-                .with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.nextAction").value("SCAN_ITEM"));
-    }
+                // when & then
+                mockMvc.perform(post("/api/tasks/{taskId}/location/scan", taskId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                                .with(csrf()))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.data.nextAction").value("SCAN_ITEM"));
+        }
+
+        @Test
+        @DisplayName("상품 스캔 API 테스트")
+        @WithMockUser
+        void scanItem() throws Exception {
+                // given
+                Long taskId = 1L;
+                String barcode = "APPLE01";
+                TaskItemVO item = new TaskItemVO();
+                item.setBatchTaskItemId(10L);
+                item.setProductId(100L);
+
+                when(taskWorkflowFacade.scanItem(eq(taskId), eq(barcode)))
+                                .thenReturn(TaskResponse.of(item, NextAction.ADJUST_QUANTITY));
+
+                Map<String, String> request = new HashMap<>();
+                request.put("barcode", barcode);
+
+                // when & then
+                mockMvc.perform(post("/api/tasks/{taskId}/item/scan", taskId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                                .with(csrf()))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.data.payload.batchTaskItemId").value(10L))
+                                .andExpect(jsonPath("$.data.nextAction").value("ADJUST_QUANTITY"));
+        }
+
+        @Test
+        @DisplayName("수량 반영 API 테스트")
+        @WithMockUser
+        void updateQuantity() throws Exception {
+                // given
+                Long itemId = 10L;
+                int increment = 5;
+                TaskItemVO item = new TaskItemVO();
+                item.setBatchTaskItemId(itemId);
+                item.setPickedQty(5);
+
+                when(taskWorkflowFacade.pickItem(eq(itemId), eq(increment)))
+                                .thenReturn(TaskResponse.of(item, NextAction.SCAN_ITEM));
+
+                Map<String, Integer> request = new HashMap<>();
+                request.put("increment", increment);
+
+                // when & then
+                mockMvc.perform(post("/api/tasks/items/{itemId}/quantity", itemId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                                .with(csrf()))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.data.payload.pickedQty").value(5))
+                                .andExpect(jsonPath("$.data.nextAction").value("SCAN_ITEM"));
+        }
 }
