@@ -1,7 +1,10 @@
 package lookie.backend.domain.task.exception;
 
-public class ItemQuantityExceededException extends RuntimeException {
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
+
+public class ItemQuantityExceededException extends ApiException {
     public ItemQuantityExceededException() {
-        super("요구 수량을 초과하여 집품할 수 없습니다.");
+        super(ErrorCode.TASK_ITEM_QUANTITY_EXCEEDED);
     }
 }

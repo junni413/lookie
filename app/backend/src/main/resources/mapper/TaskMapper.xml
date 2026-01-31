@@ -75,7 +75,8 @@
         UPDATE batch_tasks
         SET
             status = 'COMPLETED',
-            completed_at = NOW()
+            completed_at = NOW(),
+            action_status = 'COMPLETE_TASK'
         WHERE
             batch_task_id = #{batchTaskId}
             AND status = 'IN_PROGRESS'
@@ -100,6 +101,16 @@
             current_location_id = #{locationId},
             action_status = 'SCAN_ITEM',
             location_scanned_at = NOW()
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
+
+    <!--[수정] 작업 액션 상태 강제 업데이트 -->
+    <update id="updateActionStatus">
+        UPDATE batch_tasks
+        SET
+            action_status = #{actionStatus}
         WHERE
             batch_task_id = #{batchTaskId}
             AND status = 'IN_PROGRESS'

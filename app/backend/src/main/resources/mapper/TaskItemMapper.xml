@@ -74,18 +74,10 @@
         WHERE i.batch_task_item_id = #{batchTaskItemId}
     </select>
 
-    <!-- [수정] 원자적 수량 증가 및 목표 수량 도달 시 상태 자동 변경 (PENDING -> DONE) -->
+    <!-- [수정] 원자적 수량 증가 (자동 완료 제거) -->
     <update id="updatePickedQuantityAtomic">
         UPDATE batch_task_items
-        SET 
-            status = CASE 
-                WHEN picked_qty + #{increment} = required_qty THEN 'DONE'
-                ELSE status 
-            END,
-            completed_at = CASE 
-                WHEN picked_qty + #{increment} = required_qty THEN NOW() 
-                ELSE completed_at 
-            END,
+        SET
             picked_qty = picked_qty + #{increment},
             last_scanned_at = NOW()
         WHERE batch_task_item_id = #{batchTaskItemId}

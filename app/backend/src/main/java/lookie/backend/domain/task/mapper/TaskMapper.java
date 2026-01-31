@@ -1,5 +1,6 @@
 package lookie.backend.domain.task.mapper;
 
+import lookie.backend.domain.task.vo.TaskActionStatus;
 import lookie.backend.domain.task.vo.TaskVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -30,4 +31,9 @@ public interface TaskMapper {
         int updateLocationScanResult(
                         @Param("batchTaskId") Long batchTaskId,
                         @Param("locationId") Long locationId);
+
+        // [수정] 작업 액션 상태 강제 업데이트
+        int updateActionStatus(
+                        @Param("batchTaskId") Long batchTaskId,
+                        @Param("actionStatus") TaskActionStatus actionStatus);
 }

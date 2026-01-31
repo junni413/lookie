@@ -71,6 +71,13 @@ public class TaskController {
         return ResponseEntity.ok(ApiResponse.success("수량이 반영되었습니다.", response));
     }
 
+    @Operation(summary = "상품별 집품 완료", description = "수량이 충족된 상품에 대해 [완료] 처리를 수행합니다.")
+    @PostMapping("/items/{itemId}/complete")
+    public ResponseEntity<ApiResponse<TaskResponse<TaskItemVO>>> completeItem(@PathVariable Long itemId) {
+        TaskResponse<TaskItemVO> response = taskWorkflowFacade.completeItem(itemId);
+        return ResponseEntity.ok(ApiResponse.success("상품 집품이 완료되었습니다.", response));
+    }
+
     @Operation(summary = "작업 완료", description = "현재 진행 중인 작업을 완료 상태로 변경합니다.")
     @PostMapping("/{taskId}/complete")
     public ResponseEntity<ApiResponse<Void>> completeTask(@PathVariable Long taskId) {

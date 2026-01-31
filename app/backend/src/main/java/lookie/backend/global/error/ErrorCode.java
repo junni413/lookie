@@ -46,6 +46,8 @@ public enum ErrorCode {
 	TASK_ITEM_MISMATCH("TASK_008", HttpStatus.BAD_REQUEST, "지시된 상품 바코드와 일치하지 않습니다"),
 	TASK_NOT_RELEASABLE("TASK_009", HttpStatus.BAD_REQUEST, "미완료된 아이템이 있어 작업을 완료할 수 없습니다"),
 	WORKER_ALREADY_HAS_TASK("TASK_010", HttpStatus.CONFLICT, "이미 진행 중인 작업이 있습니다"),
+	TASK_ITEM_QUANTITY_EXCEEDED("TASK_011", HttpStatus.BAD_REQUEST, "요구 수량을 초과하여 집품할 수 없습니다"),
+	TASK_ITEM_QUANTITY_NOT_SUFFICIENT("TASK_012", HttpStatus.BAD_REQUEST, "요구 수량을 모두 채워야 완료할 수 있습니다"),
 
 	// ==== LOCATION ====
 	LOCATION_NOT_FOUND("LOC_001", HttpStatus.NOT_FOUND, "존재하지 않는 지번 코드입니다"),

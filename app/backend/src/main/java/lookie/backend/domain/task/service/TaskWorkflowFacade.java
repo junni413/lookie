@@ -1,6 +1,7 @@
 package lookie.backend.domain.task.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.location.service.LocationService;
 import lookie.backend.domain.location.vo.LocationVO;
 import lookie.backend.domain.task.constant.NextAction;
@@ -29,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
  * - 트랜잭션 경계 설정 및 도메인 서비스 간 오케스트레이션
  * - 다음 단계 행동(NextAction) 결정
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TaskWorkflowFacade {
@@ -97,7 +99,9 @@ public class TaskWorkflowFacade {
      */
     @Transactional
     public TaskResponse<TaskVO> scanLocation(Long taskId, String locationCode) {
+        log.info("[TaskWorkflow] scanLocation started. taskId={}, locationCode={}", taskId, locationCode);
         TaskVO task = getTaskOrThrow(taskId);
+
         validateAction(task, TaskActionStatus.SCAN_LOCATION);
 
         LocationVO location = locationService.getByCode(locationCode);
@@ -106,9 +110,12 @@ public class TaskWorkflowFacade {
         // 지번 검증: 다음 수행할 아이템의 지번과 일치하는지 확인 (순차 작업 강제)
         TaskItemVO nextItem = taskItemService.getNextItem(taskId);
         if (nextItem != null && !nextItem.getLocationId().equals(location.getLocationId())) {
+            log.warn("[TaskWorkflow] Location mismatch. ExpectedId={}, ScannedId={}",
+                    nextItem.getLocationId(), location.getLocationId());
             throw new TaskLocationMismatchException();
         }
 
+        log.info("[TaskWorkflow] scanLocation success. taskId={}", taskId);
         taskMapper.updateLocationScanResult(taskId, location.getLocationId());
 
         return TaskResponse.of(taskMapper.findById(taskId), NextAction.SCAN_ITEM, nextItem);
@@ -125,11 +132,12 @@ public class TaskWorkflowFacade {
 
         TaskItemVO item = taskItemService.scanAndGetItem(taskId, task.getCurrentLocationId(), barcode);
 
-        // 스캔 시 기본 1개 증가 처리
+        // 스캔 시 기본 1개 증가 처리 (자동 완료 제거로 인해 DONE 여부 체크 불필요)
         TaskItemVO updatedItem = taskItemService.updateQuantityAtomic(item.getBatchTaskItemId(), 1);
 
-        // 수량이 다 찼으면 다음 단계(SCAN_LOCATION 등), 아니면 수량 조절(ADJUST_QUANTITY)
-        NextAction nextAction = determineNextActionAfterPick(updatedItem);
+        // 스캔 후에는 무조건 수량 조정 단계로 간주 (프론트엔드에서 수량 확인 후 완료 버튼 클릭 유도)
+        NextAction nextAction = NextAction.ADJUST_QUANTITY;
+
         TaskItemVO nextItem = taskItemService.getNextItem(taskId);
         return TaskResponse.of(updatedItem, nextAction, nextItem);
     }
@@ -142,9 +150,23 @@ public class TaskWorkflowFacade {
     public TaskResponse<TaskItemVO> pickItem(Long itemId, int increment) {
         TaskItemVO updatedItem = taskItemService.updateQuantityAtomic(itemId, increment);
 
-        NextAction nextAction = determineNextActionAfterPick(updatedItem);
-        TaskItemVO nextItem = taskItemService.getNextItem(updatedItem.getBatchTaskId());
-        return TaskResponse.of(updatedItem, nextAction, nextItem);
+        // 수량 변경만 수행하고 상태 전이는 completeItem에서 담당
+        return TaskResponse.of(updatedItem, NextAction.ADJUST_QUANTITY, null);
+    }
+
+    /**
+     * [워크플로우 5-2단계] 상품 집품 완료 (수동)
+     * - 프론트엔드에서 [완료] 버튼 클릭 시 호출
+     */
+    @Transactional
+    public TaskResponse<TaskItemVO> completeItem(Long itemId) {
+        TaskItemVO item = taskItemService.completeItemManual(itemId);
+
+        NextAction nextAction = determineNextActionAfterPick(item);
+        updateTaskStatusIfNecessary(item.getBatchTaskId(), nextAction);
+
+        TaskItemVO nextItem = taskItemService.getNextItem(item.getBatchTaskId());
+        return TaskResponse.of(item, nextAction, nextItem);
     }
 
     /**
@@ -179,14 +201,30 @@ public class TaskWorkflowFacade {
     }
 
     private void validateAction(TaskVO task, TaskActionStatus expected) {
+        log.debug("[TaskWorkflow] Validating action. TaskId={}, DB_ActionStatus={}, Expected={}",
+                task.getBatchTaskId(), task.getActionStatus(), expected);
         if (task.getActionStatus() != expected) {
+            log.error("[TaskWorkflow] State Mismatch! TaskId={}, DB_ActionStatus={}, Expected={}",
+                    task.getBatchTaskId(), task.getActionStatus(), expected);
             throw new InvalidTaskActionStateException(task.getActionStatus(), expected);
         }
     }
 
+    private void updateTaskStatusIfNecessary(Long taskId, NextAction nextAction) {
+        if (nextAction == NextAction.SCAN_LOCATION) {
+            taskMapper.updateActionStatus(taskId, TaskActionStatus.SCAN_LOCATION);
+        } else if (nextAction == NextAction.COMPLETE_TASK) {
+            taskMapper.updateActionStatus(taskId, TaskActionStatus.COMPLETE_TASK);
+        }
+    }
+
     private NextAction determineNextActionAfterPick(TaskItemVO item) {
+        log.debug("[TaskWorkflow] Determining next action for item {}. Status={}", item.getBatchTaskItemId(),
+                item.getStatus());
         if ("DONE".equals(item.getStatus())) {
             int totalPending = taskItemService.countPendingItems(item.getBatchTaskId());
+            log.info("[TaskWorkflow] Item DONE. Total pending items for task {}: {}", item.getBatchTaskId(),
+                    totalPending);
             if (totalPending == 0) {
                 return NextAction.COMPLETE_TASK;
             }

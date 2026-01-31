@@ -53,6 +53,30 @@ public class TaskItemService {
         return taskItemMapper.findById(itemId);
     }
 
+    /**
+     * [수동 완료] 상품 집품을 사용자가 직접 완료 처리
+     * - 필수 조건: 집품 수량(pickedQty)이 목표 수량(requiredQty)과 일치해야 함
+     */
+    @Transactional
+    public TaskItemVO completeItemManual(Long itemId) {
+        TaskItemVO item = taskItemMapper.findById(itemId);
+
+        // 1. 이미 완료된 경우 체크
+        if ("DONE".equals(item.getStatus())) {
+            return item;
+        }
+
+        // 2. 수량 충족 여부 체크
+        if (!item.getPickedQty().equals(item.getRequiredQty())) {
+            throw new lookie.backend.domain.task.exception.ItemQuantityNotSufficientException();
+        }
+
+        // 3. 상태 업데이트 (PENDING -> DONE)
+        taskItemMapper.updateStatus(itemId, "DONE");
+
+        return taskItemMapper.findById(itemId);
+    }
+
     public List<TaskItemVO> getPendingItemsAtLocation(Long taskId, Long locationId) {
         return taskItemMapper.findByTaskIdAndLocationId(taskId, locationId);
     }
