@@ -107,4 +107,45 @@ class TaskWorkflowFacadeTest {
         // then
         assertEquals(NextAction.SCAN_ITEM, response.getNextAction());
     }
+
+    @Test
+    @DisplayName("상품 스캔 성공: 즉시 1개 증가 후 완료되면 SCAN_ITEM 반환 (같은 지번 잔여)")
+    void scanItem_Success_AutoIncrement_Done() {
+        // given
+        Long taskId = 100L;
+        String barcode = "P001";
+        TaskVO task = new TaskVO();
+        task.setBatchTaskId(taskId);
+        task.setActionStatus(TaskActionStatus.SCAN_ITEM);
+        task.setCurrentLocationId(10L);
+
+        TaskItemVO item = new TaskItemVO();
+        item.setBatchTaskItemId(500L);
+        item.setRequiredQty(1);
+        item.setPickedQty(0);
+
+        TaskItemVO updatedItem = new TaskItemVO();
+        updatedItem.setBatchTaskItemId(500L);
+        updatedItem.setRequiredQty(1);
+        updatedItem.setPickedQty(1);
+        updatedItem.setStatus("DONE");
+        updatedItem.setBatchTaskId(100L);
+        updatedItem.setLocationId(10L);
+
+        when(taskMapper.findById(taskId)).thenReturn(task);
+        when(taskItemService.scanAndGetItem(taskId, 10L, barcode)).thenReturn(item);
+        when(taskItemService.updateQuantityAtomic(500L, 1)).thenReturn(updatedItem);
+        // 같은 지번에 잔여 아이템이 있다고 가정
+        when(taskItemService.getPendingItemsAtLocation(100L, 10L))
+                .thenReturn(Collections.singletonList(new TaskItemVO()));
+
+        // when
+        TaskResponse<TaskItemVO> response = taskWorkflowFacade.scanItem(taskId, barcode);
+
+        // then
+        // 1. updateQuantityAtomic이 호출되었는지 확인
+        verify(taskItemService).updateQuantityAtomic(500L, 1);
+        // 2. 완료 처리 되어 다음 아이템 스캔으로 넘어가는지 확인
+        assertEquals(NextAction.SCAN_ITEM, response.getNextAction());
+    }
 }

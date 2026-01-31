@@ -78,8 +78,6 @@
     <update id="updatePickedQuantityAtomic">
         UPDATE batch_task_items
         SET 
-            picked_qty = picked_qty + #{increment},
-            last_scanned_at = NOW(),
             status = CASE 
                 WHEN picked_qty + #{increment} = required_qty THEN 'DONE'
                 ELSE status 
@@ -87,7 +85,9 @@
             completed_at = CASE 
                 WHEN picked_qty + #{increment} = required_qty THEN NOW() 
                 ELSE completed_at 
-            END
+            END,
+            picked_qty = picked_qty + #{increment},
+            last_scanned_at = NOW()
         WHERE batch_task_item_id = #{batchTaskItemId}
           AND status = 'PENDING'
           AND picked_qty + #{increment} &lt;= required_qty

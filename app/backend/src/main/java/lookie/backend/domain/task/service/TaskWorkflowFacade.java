@@ -98,7 +98,7 @@ public class TaskWorkflowFacade {
 
     /**
      * [워크플로우 4단계] 상품 바코드 스캔
-     * - 현재 위치에서 집품해야 할 상품을 바코드로 확인합니다.
+     * - 상품을 식별하고 즉시 수량을 1 증가시킵니다. (기본 1개 집품 처리)
      */
     @Transactional
     public TaskResponse<TaskItemVO> scanItem(Long taskId, String barcode) {
@@ -107,7 +107,12 @@ public class TaskWorkflowFacade {
 
         TaskItemVO item = taskItemService.scanAndGetItem(taskId, task.getCurrentLocationId(), barcode);
 
-        return TaskResponse.of(item, NextAction.ADJUST_QUANTITY);
+        // 스캔 시 기본 1개 증가 처리
+        TaskItemVO updatedItem = taskItemService.updateQuantityAtomic(item.getBatchTaskItemId(), 1);
+
+        // 수량이 다 찼으면 다음 단계(SCAN_LOCATION 등), 아니면 수량 조절(ADJUST_QUANTITY)
+        NextAction nextAction = determineNextActionAfterPick(updatedItem);
+        return TaskResponse.of(updatedItem, nextAction);
     }
 
     /**
