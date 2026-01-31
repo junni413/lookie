@@ -16,8 +16,13 @@ import lookie.backend.domain.task.constant.NextAction;
 public class TaskResponse<T> {
     private final T payload;
     private final NextAction nextAction;
+    private final Object nextItem; // 다음 진행할 상품 정보 (TaskItemVO 등)
 
     public static <T> TaskResponse<T> of(T payload, NextAction nextAction) {
-        return new TaskResponse<>(payload, nextAction);
+        return new TaskResponse<>(payload, nextAction, null);
+    }
+
+    public static <T> TaskResponse<T> of(T payload, NextAction nextAction, Object nextItem) {
+        return new TaskResponse<>(payload, nextAction, nextItem);
     }
 }

@@ -1,7 +1,6 @@
 package lookie.backend.domain.task.service;
 
 import lookie.backend.domain.location.service.LocationService;
-import lookie.backend.domain.location.vo.LocationVO;
 import lookie.backend.domain.task.constant.NextAction;
 import lookie.backend.domain.task.dto.TaskResponse;
 import lookie.backend.domain.task.mapper.TaskMapper;
@@ -21,7 +20,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,7 +62,7 @@ class TaskWorkflowFacadeTest {
     }
 
     @Test
-    @DisplayName("T3-T4: 토트 스캔 성공 시 SCAN_LOCATION 반환")
+    @DisplayName("T3-T4: 토트 스캔 성공 시 SCAN_LOCATION 반환 및 다음 아이템 포함")
     void scanTote_Success() {
         // given
         Long taskId = 100L;
@@ -75,14 +73,19 @@ class TaskWorkflowFacadeTest {
         ToteVO tote = new ToteVO();
         tote.setToteId(50L);
 
+        TaskItemVO nextItem = new TaskItemVO();
+        nextItem.setBatchTaskItemId(1L);
+
         when(taskMapper.findById(taskId)).thenReturn(task);
         when(toteService.getByBarcode(barcode)).thenReturn(tote);
+        when(taskItemService.getNextItem(taskId)).thenReturn(nextItem); // 다음 아이템 Mocking
 
         // when
         TaskResponse<TaskVO> response = taskWorkflowFacade.scanTote(taskId, barcode);
 
         // then
         assertEquals(NextAction.SCAN_LOCATION, response.getNextAction());
+        assertNotNull(response.getNextItem()); // 다음 아이템 포함 여부 검증
         verify(taskMapper).updateToteScanResult(taskId, 50L);
     }
 

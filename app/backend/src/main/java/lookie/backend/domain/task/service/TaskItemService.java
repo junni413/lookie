@@ -1,13 +1,12 @@
 package lookie.backend.domain.task.service;
 
 import lombok.RequiredArgsConstructor;
-import lookie.backend.domain.task.exception.ItemNotFoundException;
 import lookie.backend.domain.task.exception.ItemQuantityExceededException;
+import lookie.backend.domain.task.exception.TaskItemMismatchException;
 import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
 import lookie.backend.domain.product.vo.ProductVO;
-import lookie.backend.domain.product.exception.ProductNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,12 +28,14 @@ public class TaskItemService {
     public TaskItemVO scanAndGetItem(Long taskId, Long locationId, String barcode) {
         ProductVO product = productMapper.findByBarcode(barcode);
         if (product == null) {
-            throw new ProductNotFoundException(barcode);
+            // 시스템에 없는 상품이거나 바코드가 틀린 경우 -> 상품 미일치로 처리
+            throw new TaskItemMismatchException();
         }
 
         TaskItemVO item = taskItemMapper.findPendingOne(taskId, locationId, product.getProductId());
         if (item == null) {
-            throw new ItemNotFoundException();
+            // 해당 지번에 이 상품이 할당되어 있지 않거나 이미 완료된 경우 -> 상품 미일치로 처리
+            throw new TaskItemMismatchException();
         }
         return item;
     }
@@ -58,5 +59,13 @@ public class TaskItemService {
 
     public int countPendingItems(Long taskId) {
         return taskItemMapper.countPendingItemsByTaskId(taskId);
+    }
+
+    public TaskItemVO getNextItem(Long taskId) {
+        return taskItemMapper.findNextItem(taskId);
+    }
+
+    public List<TaskItemVO> getAllItems(Long taskId) {
+        return taskItemMapper.findAllByTaskId(taskId);
     }
 }

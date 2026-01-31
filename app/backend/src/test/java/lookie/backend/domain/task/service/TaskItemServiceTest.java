@@ -4,9 +4,8 @@ import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
 import lookie.backend.domain.product.vo.ProductVO;
-import lookie.backend.domain.product.exception.ProductNotFoundException;
-import lookie.backend.domain.task.exception.ItemNotFoundException;
 import lookie.backend.domain.task.exception.ItemQuantityExceededException;
+import lookie.backend.domain.task.exception.TaskItemMismatchException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -81,5 +80,34 @@ class TaskItemServiceTest {
 
         // then
         assertEquals(productId, result.getProductId());
+    }
+
+    @Test
+    @DisplayName("상품 스캔 실패: 상품 정보 없음")
+    void scanAndGetItem_Fail_ProductNotFound() {
+        // given
+        when(productMapper.findByBarcode("WRONG")).thenReturn(null);
+
+        // when & then
+        assertThrows(TaskItemMismatchException.class, () -> {
+            taskItemService.scanAndGetItem(1L, 10L, "WRONG");
+        });
+    }
+
+    @Test
+    @DisplayName("상품 스캔 실패: 현재 위치에 할당된 상품이 아님")
+    void scanAndGetItem_Fail_ItemMismatch() {
+        // given
+        String barcode = "P001";
+        ProductVO product = new ProductVO();
+        product.setProductId(100L);
+
+        when(productMapper.findByBarcode(barcode)).thenReturn(product);
+        when(taskItemMapper.findPendingOne(anyLong(), anyLong(), eq(100L))).thenReturn(null);
+
+        // when & then
+        assertThrows(TaskItemMismatchException.class, () -> {
+            taskItemService.scanAndGetItem(1L, 10L, barcode);
+        });
     }
 }

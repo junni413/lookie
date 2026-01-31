@@ -7,6 +7,7 @@ import lookie.backend.domain.task.constant.NextAction;
 import lookie.backend.domain.task.dto.TaskResponse;
 import lookie.backend.domain.task.exception.InvalidTaskActionStateException;
 import lookie.backend.domain.task.exception.NoAvailableTaskException;
+import lookie.backend.domain.task.exception.TaskLocationMismatchException;
 import lookie.backend.domain.task.exception.TaskNotFoundException;
 import lookie.backend.domain.task.event.TaskCompletedEvent;
 import lookie.backend.domain.task.mapper.TaskMapper;
@@ -58,7 +59,11 @@ public class TaskWorkflowFacade {
         taskMapper.updateAssignToInProgress(task.getBatchTaskId(), workerId);
         TaskVO updatedTask = taskMapper.findById(task.getBatchTaskId());
 
-        return TaskResponse.of(updatedTask, NextAction.SCAN_TOTE);
+        return TaskResponse.of(
+                updatedTask,
+                NextAction.SCAN_TOTE,
+                null // 작업 시작 시점엔 아직 진행 할 상품 조회 불필요 (토트가 없으므로)
+        );
     }
 
     /**
@@ -76,7 +81,8 @@ public class TaskWorkflowFacade {
         taskMapper.updateToteScanResult(taskId, tote.getToteId());
         toteService.mappingToTask(tote.getToteId(), taskId);
 
-        return TaskResponse.of(taskMapper.findById(taskId), NextAction.SCAN_LOCATION);
+        TaskItemVO nextItem = taskItemService.getNextItem(taskId);
+        return TaskResponse.of(taskMapper.findById(taskId), NextAction.SCAN_LOCATION, nextItem);
     }
 
     /**
@@ -91,9 +97,15 @@ public class TaskWorkflowFacade {
         LocationVO location = locationService.getByCode(locationCode);
         locationService.validateZone(location, task.getZoneId());
 
+        // 지번 검증: 다음 수행할 아이템의 지번과 일치하는지 확인 (순차 작업 강제)
+        TaskItemVO nextItem = taskItemService.getNextItem(taskId);
+        if (nextItem != null && !nextItem.getLocationId().equals(location.getLocationId())) {
+            throw new TaskLocationMismatchException();
+        }
+
         taskMapper.updateLocationScanResult(taskId, location.getLocationId());
 
-        return TaskResponse.of(taskMapper.findById(taskId), NextAction.SCAN_ITEM);
+        return TaskResponse.of(taskMapper.findById(taskId), NextAction.SCAN_ITEM, nextItem);
     }
 
     /**
@@ -112,7 +124,8 @@ public class TaskWorkflowFacade {
 
         // 수량이 다 찼으면 다음 단계(SCAN_LOCATION 등), 아니면 수량 조절(ADJUST_QUANTITY)
         NextAction nextAction = determineNextActionAfterPick(updatedItem);
-        return TaskResponse.of(updatedItem, nextAction);
+        TaskItemVO nextItem = taskItemService.getNextItem(taskId);
+        return TaskResponse.of(updatedItem, nextAction, nextItem);
     }
 
     /**
@@ -124,7 +137,8 @@ public class TaskWorkflowFacade {
         TaskItemVO updatedItem = taskItemService.updateQuantityAtomic(itemId, increment);
 
         NextAction nextAction = determineNextActionAfterPick(updatedItem);
-        return TaskResponse.of(updatedItem, nextAction);
+        TaskItemVO nextItem = taskItemService.getNextItem(updatedItem.getBatchTaskId());
+        return TaskResponse.of(updatedItem, nextAction, nextItem);
     }
 
     /**
