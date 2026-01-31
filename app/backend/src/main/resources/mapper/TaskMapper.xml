@@ -44,6 +44,19 @@
         FOR UPDATE
     </select>
 
+    <!--[조회] 작업자가 현재 진행 중인 작업이 있는지 확인-->
+    <select id="findInProgressByWorkerId" resultType="TaskVO">
+        SELECT
+            batch_task_id AS batchTaskId,
+            worker_id AS workerId,
+            status,
+            action_status AS actionStatus
+        FROM batch_tasks
+        WHERE worker_id = #{workerId}
+          AND status = 'IN_PROGRESS'
+        LIMIT 1
+    </select>
+
     <!--[수정] 할당된 작업 상태 변경 -->
     <update id="updateAssignToInProgress">
         UPDATE batch_tasks

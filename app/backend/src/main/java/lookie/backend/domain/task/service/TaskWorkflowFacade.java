@@ -9,6 +9,8 @@ import lookie.backend.domain.task.exception.InvalidTaskActionStateException;
 import lookie.backend.domain.task.exception.NoAvailableTaskException;
 import lookie.backend.domain.task.exception.TaskLocationMismatchException;
 import lookie.backend.domain.task.exception.TaskNotFoundException;
+import lookie.backend.domain.task.exception.TaskNotReleasableException;
+import lookie.backend.domain.task.exception.WorkerAlreadyHasTaskException;
 import lookie.backend.domain.task.event.TaskCompletedEvent;
 import lookie.backend.domain.task.mapper.TaskMapper;
 import lookie.backend.domain.task.vo.TaskActionStatus;
@@ -49,6 +51,12 @@ public class TaskWorkflowFacade {
         Long zoneId = zoneAssignmentMapper.findZoneIdByWorkerId(workerId);
         if (zoneId == null) {
             throw new NoAvailableTaskException(0L); // 구역 미배정 예외 (간소화)
+        }
+
+        // 작업자가 이미 진행 중인 작업이 있는지 확인
+        TaskVO activeTask = taskMapper.findInProgressByWorkerId(workerId);
+        if (activeTask != null) {
+            throw new WorkerAlreadyHasTaskException();
         }
 
         TaskVO task = taskMapper.findNextUnassignedForZoneForUpdate(zoneId);
@@ -148,7 +156,13 @@ public class TaskWorkflowFacade {
     @Transactional
     public void completeTask(Long taskId) {
         TaskVO task = getTaskOrThrow(taskId);
-        // 완료 가능 여부 체크 로직 추가 가능
+
+        // 미완료 아이템이 있는지 검증
+        int pendingCount = taskItemService.countPendingItems(taskId);
+        if (pendingCount > 0) {
+            throw new TaskNotReleasableException();
+        }
+
         taskMapper.updateComplete(taskId);
 
         // 이벤트 발행 복구

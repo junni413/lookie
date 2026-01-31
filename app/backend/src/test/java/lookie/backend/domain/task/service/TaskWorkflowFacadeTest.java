@@ -7,6 +7,8 @@ import lookie.backend.domain.task.mapper.TaskMapper;
 import lookie.backend.domain.task.vo.TaskActionStatus;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
+import lookie.backend.domain.task.exception.TaskNotReleasableException;
+import lookie.backend.domain.task.exception.WorkerAlreadyHasTaskException;
 import lookie.backend.domain.tote.service.ToteService;
 import lookie.backend.domain.tote.vo.ToteVO;
 import lookie.backend.domain.zone.mapper.ZoneAssignmentMapper;
@@ -59,6 +61,20 @@ class TaskWorkflowFacadeTest {
         // then
         assertEquals(NextAction.SCAN_TOTE, response.getNextAction());
         verify(taskMapper).updateAssignToInProgress(taskId, workerId);
+    }
+
+    @Test
+    @DisplayName("작업 시작 실패: 이미 진행 중인 작업이 있는 경우")
+    void startTask_Fail_AlreadyHasTask() {
+        // given
+        Long workerId = 1L;
+        when(zoneAssignmentMapper.findZoneIdByWorkerId(workerId)).thenReturn(10L);
+        when(taskMapper.findInProgressByWorkerId(workerId)).thenReturn(new TaskVO());
+
+        // when & then
+        assertThrows(WorkerAlreadyHasTaskException.class, () -> {
+            taskWorkflowFacade.startTask(workerId);
+        });
     }
 
     @Test
@@ -150,5 +166,19 @@ class TaskWorkflowFacadeTest {
         verify(taskItemService).updateQuantityAtomic(500L, 1);
         // 2. 완료 처리 되어 다음 아이템 스캔으로 넘어가는지 확인
         assertEquals(NextAction.SCAN_ITEM, response.getNextAction());
+    }
+
+    @Test
+    @DisplayName("작업 완료 실패: 미완료 아이템이 남아있는 경우")
+    void completeTask_Fail_HasPendingItems() {
+        // given
+        Long taskId = 100L;
+        when(taskMapper.findById(taskId)).thenReturn(new TaskVO());
+        when(taskItemService.countPendingItems(taskId)).thenReturn(5);
+
+        // when & then
+        assertThrows(TaskNotReleasableException.class, () -> {
+            taskWorkflowFacade.completeTask(taskId);
+        });
     }
 }
