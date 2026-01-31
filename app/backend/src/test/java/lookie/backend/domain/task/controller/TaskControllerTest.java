@@ -37,6 +37,9 @@ class TaskControllerTest {
         private TaskWorkflowFacade taskWorkflowFacade;
 
         @MockBean
+        private lookie.backend.domain.task.infra.TaskLockExecutor taskLockExecutor;
+
+        @MockBean
         private lookie.backend.domain.task.service.TaskItemService taskItemService;
 
         @Autowired
@@ -51,7 +54,7 @@ class TaskControllerTest {
                 task.setBatchTaskId(1L);
                 task.setStatus("IN_PROGRESS");
 
-                when(taskWorkflowFacade.startTask(any()))
+                when(taskLockExecutor.startTask(any()))
                                 .thenReturn(TaskResponse.of(task, NextAction.SCAN_TOTE));
 
                 // when & then

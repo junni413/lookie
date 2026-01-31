@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.task.dto.TaskResponse;
 import lookie.backend.domain.task.dto.*;
+import lookie.backend.domain.task.infra.TaskLockExecutor;
 import lookie.backend.domain.task.service.TaskItemService;
 import lookie.backend.domain.task.service.TaskWorkflowFacade;
 import lookie.backend.domain.task.vo.TaskItemVO;
@@ -22,12 +23,13 @@ public class TaskController {
 
     private final TaskWorkflowFacade taskWorkflowFacade;
     private final TaskItemService taskItemService;
+    private final TaskLockExecutor taskLockExecutor;
 
     @Operation(summary = "작업 할당 및 시작", description = "작업자에게 할당된 구역의 미할당 작업을 하나 가져와 시작 상태로 변경합니다.")
     @PostMapping
     public ResponseEntity<ApiResponse<TaskResponse<TaskVO>>> startTask() {
         Long userId = SecurityUtil.getCurrentUserId();
-        TaskResponse<TaskVO> response = taskWorkflowFacade.startTask(userId);
+        TaskResponse<TaskVO> response = taskLockExecutor.startTask(userId);
         return ResponseEntity.ok(ApiResponse.success("작업이 할당되었습니다.", response));
     }
 
@@ -81,7 +83,7 @@ public class TaskController {
     @Operation(summary = "작업 완료", description = "현재 진행 중인 작업을 완료 상태로 변경합니다.")
     @PostMapping("/{taskId}/complete")
     public ResponseEntity<ApiResponse<Void>> completeTask(@PathVariable Long taskId) {
-        taskWorkflowFacade.completeTask(taskId);
+        taskLockExecutor.completeTask(taskId);
         return ResponseEntity.ok(ApiResponse.success("작업이 완료되었습니다.", null));
     }
 

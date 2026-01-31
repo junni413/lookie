@@ -11,7 +11,7 @@ import lookie.backend.domain.task.exception.TaskNotReleasableException;
 import lookie.backend.domain.task.exception.WorkerAlreadyHasTaskException;
 import lookie.backend.domain.tote.service.ToteService;
 import lookie.backend.domain.tote.vo.ToteVO;
-import lookie.backend.domain.zone.mapper.ZoneAssignmentMapper;
+// import lookie.backend.domain.zone.mapper.ZoneAssignmentMapper; // Removed
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,8 +33,7 @@ class TaskWorkflowFacadeTest {
     private ToteService toteService;
     @Mock
     private LocationService locationService;
-    @Mock
-    private ZoneAssignmentMapper zoneAssignmentMapper;
+    // @Mock private ZoneAssignmentMapper zoneAssignmentMapper; // Removed
 
     @InjectMocks
     private TaskWorkflowFacade taskWorkflowFacade;
@@ -49,12 +48,13 @@ class TaskWorkflowFacadeTest {
         TaskVO task = new TaskVO();
         task.setBatchTaskId(taskId);
 
-        when(zoneAssignmentMapper.findZoneIdByWorkerId(workerId)).thenReturn(zoneId);
+        // when(zoneAssignmentMapper.findZoneIdByWorkerId(workerId)).thenReturn(zoneId);
+        // // Removed
         when(taskMapper.findNextUnassignedForZoneForUpdate(zoneId)).thenReturn(task);
         when(taskMapper.findById(taskId)).thenReturn(task);
 
         // when
-        TaskResponse<TaskVO> response = taskWorkflowFacade.startTask(workerId);
+        TaskResponse<TaskVO> response = taskWorkflowFacade.startTask(workerId, zoneId);
 
         // then
         assertEquals(NextAction.SCAN_TOTE, response.getNextAction());
@@ -66,12 +66,14 @@ class TaskWorkflowFacadeTest {
     void startTask_Fail_AlreadyHasTask() {
         // given
         Long workerId = 1L;
-        when(zoneAssignmentMapper.findZoneIdByWorkerId(workerId)).thenReturn(10L);
+        Long zoneId = 10L;
+        // when(zoneAssignmentMapper.findZoneIdByWorkerId(workerId)).thenReturn(10L); //
+        // Removed
         when(taskMapper.findInProgressByWorkerId(workerId)).thenReturn(new TaskVO());
 
         // when & then
         assertThrows(WorkerAlreadyHasTaskException.class, () -> {
-            taskWorkflowFacade.startTask(workerId);
+            taskWorkflowFacade.startTask(workerId, zoneId);
         });
     }
 

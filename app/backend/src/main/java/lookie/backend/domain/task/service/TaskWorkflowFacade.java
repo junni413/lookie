@@ -19,7 +19,7 @@ import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
 import lookie.backend.domain.tote.service.ToteService;
 import lookie.backend.domain.tote.vo.ToteVO;
-import lookie.backend.domain.zone.mapper.ZoneAssignmentMapper;
+
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,7 +39,6 @@ public class TaskWorkflowFacade {
     private final TaskItemService taskItemService;
     private final ToteService toteService;
     private final LocationService locationService;
-    private final ZoneAssignmentMapper zoneAssignmentMapper;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -47,12 +46,7 @@ public class TaskWorkflowFacade {
      * - 구역 내 대기 중인 작업을 작업자에게 배정하고 진행 상태로 전환합니다.
      */
     @Transactional
-    public TaskResponse<TaskVO> startTask(Long workerId) {
-        Long zoneId = zoneAssignmentMapper.findZoneIdByWorkerId(workerId);
-        if (zoneId == null) {
-            throw new NoAvailableTaskException(0L); // 구역 미배정 예외 (간소화)
-        }
-
+    public TaskResponse<TaskVO> startTask(Long workerId, Long zoneId) {
         // 작업자가 이미 진행 중인 작업이 있는지 확인
         TaskVO activeTask = taskMapper.findInProgressByWorkerId(workerId);
         if (activeTask != null) {

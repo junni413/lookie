@@ -31,7 +31,7 @@ public class TaskLockExecutor {
      * - zone 기준 Redis 락
      * - 락 안에서 TaskService 호출
      */
-    public TaskVO startTask(Long workerId) {
+    public TaskResponse<TaskVO> startTask(Long workerId) {
 
         // 1. 작업자의 현재 zone 조회
         Long zoneId = zoneAssignmentMapper.findZoneIdByWorkerId(workerId);
@@ -63,9 +63,8 @@ public class TaskLockExecutor {
         }
 
         try {
-            // 3. 실제 비즈니스 로직은 Facade에 위임
-            TaskResponse<TaskVO> response = taskWorkflowFacade.startTask(workerId);
-            return response.getPayload();
+            // 3. 실제 비즈니스 로직은 Facade에 위임 (zoneId 전달)
+            return taskWorkflowFacade.startTask(workerId, zoneId);
         } finally {
             // 4. 락 해제
             if (lock.isHeldByCurrentThread()) {
