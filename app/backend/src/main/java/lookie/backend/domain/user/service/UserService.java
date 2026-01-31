@@ -1,10 +1,12 @@
 package lookie.backend.domain.user.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
 import lookie.backend.domain.user.exception.AlreadyExistsPhoneException;
 import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
 import lookie.backend.domain.user.exception.InvalidEmailFormatException;
+import lookie.backend.domain.user.exception.InvalidPasswordException;
 import lookie.backend.domain.user.exception.InvalidPasswordFormatException;
 import lookie.backend.domain.user.exception.InvalidPhoneFormatException;
 import lookie.backend.domain.user.exception.InvalidTokenException;
@@ -19,11 +21,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -119,8 +125,8 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> login(String phoneNumber, String rawPassword) {
-        // 1. 전화번호로 사용자 조회
-        UserVO user = userMapper.findByPhoneNumber(phoneNumber)
+        // 1. 전화번호로 사용자 조회 (is_active 필터링 없이 조회하여 탈퇴 여부 확인)
+        UserVO user = userMapper.findByPhoneNumberIncludingDeleted(phoneNumber)
                 .orElseThrow(() -> new LoginFailedException(phoneNumber));
 
         // 2. 비밀번호 검증
@@ -128,9 +134,9 @@ public class UserService {
             throw new LoginFailedException(phoneNumber);
         }
 
-        // 3. 계정 활성화 상태 확인 (보안: 비활성 계정도 로그인 실패로 통일)
+        // 3. 계정 활성화 상태 확인 (탈퇴한 계정은 명시적 에러 반환)
         if (user.getIsActive() == null || !user.getIsActive()) {
-            throw new LoginFailedException(phoneNumber);
+            throw new lookie.backend.domain.user.exception.DeletedUserException();
         }
 
         // 4. JWT 토큰 생성
@@ -374,5 +380,189 @@ public class UserService {
 
         // 7. resetToken 즉시 폐기
         redisTemplate.delete(resetTokenKey);
+    }
+
+    // ==================== 내 정보 수정 ====================
+
+    /**
+     * 이메일 변경 인증번호 요청
+     * - 새 이메일로 인증번호 발송
+     */
+    public void requestEmailChangeOtp(String newEmail) {
+        mailService.sendEmailChangeCode(newEmail);
+    }
+
+    /**
+     * 이메일 변경 인증번호 검증 및 토큰 발급
+     * - 인증번호 검증 성공 시 짧은 TTL의 emailChangeToken 발급 (10분)
+     * - emailChangeToken은 Redis에 저장: email:change:token:{userId} = {newEmail}
+     */
+    public void verifyEmailChangeOtp(Long userId, String newEmail, String code) {
+        // 1. 인증번호 검증 (MailService 재사용)
+        mailService.verifyEmailChangeCode(newEmail, code);
+
+        // 2. Redis에 emailChangeToken 저장 (TTL 10분)
+        String emailChangeTokenKey = "email:change:token:" + userId;
+        redisTemplate.opsForValue().set(emailChangeTokenKey, newEmail, 10, TimeUnit.MINUTES);
+
+        log.info("[이메일 변경] 토큰 발급 완료: userId={}, newEmail={}", userId, newEmail);
+    }
+
+    /**
+     * 마이페이지 조회
+     * - 현재 로그인된 사용자의 프로필 정보 조회
+     * 
+     * @param userId 현재 로그인된 사용자 ID (SecurityContext에서 추출)
+     * @return UserVO 사용자 정보
+     */
+    @Transactional(readOnly = true)
+    public UserVO getMyProfile(Long userId) {
+        return userMapper.findById(userId)
+                .orElseThrow(() -> new lookie.backend.domain.user.exception.UserNotFoundException());
+    }
+
+    /**
+     * 프로필 업데이트
+     * - 이름, 이메일, 비밀번호, 생년월일 선택적 수정
+     * - 이메일 변경 시 emailChangeToken 검증 필수
+     * - 비밀번호 변경 시 형식 검증 및 암호화
+     * - 전화번호는 수정 불가 (파라미터에서 제외)
+     * 
+     * @param userId    현재 로그인된 사용자 ID (SecurityContext에서 추출)
+     * @param name      변경할 이름 (null이면 수정 안 함)
+     * @param email     변경할 이메일 (null이면 수정 안 함)
+     * @param password  변경할 비밀번호 (null이면 수정 안 함)
+     * @param birthDate 변경할 생년월일 (null이면 수정 안 함)
+     */
+    @Transactional
+    public void updateProfile(Long userId, String name, String email, String password, java.time.LocalDate birthDate) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("userId", userId);
+
+        // 1. 이름 수정
+        if (name != null && !name.trim().isEmpty()) {
+            params.put("name", name);
+        }
+
+        // 2. 이메일 수정
+        if (email != null && !email.trim().isEmpty()) {
+            // 2-1. 이메일 형식 검증
+            if (!isValidEmail(email)) {
+                throw new InvalidEmailFormatException(email);
+            }
+
+            // 2-2. emailChangeToken 검증 (Redis에서 조회)
+            String emailChangeTokenKey = "email:change:token:" + userId;
+            String verifiedEmail = redisTemplate.opsForValue().get(emailChangeTokenKey);
+
+            if (verifiedEmail == null || !verifiedEmail.equals(email)) {
+                throw new lookie.backend.domain.user.exception.EmailChangeTokenRequiredException(email);
+            }
+
+            // 2-3. 이메일 중복 체크 개선
+            // 현재 사용자의 기존 이메일 조회
+            UserVO currentUser = userMapper.findById(userId)
+                    .orElseThrow(() -> new lookie.backend.domain.user.exception.UserNotFoundException());
+
+            // 기존 이메일과 다른 경우에만 중복 체크 수행
+            if (!email.equals(currentUser.getEmail()) && userMapper.existByEmail(email)) {
+                throw new AlreadyExistsEmailException(email);
+            }
+
+            params.put("email", email);
+
+            // 2-4. emailChangeToken 삭제 (재사용 방지)
+            redisTemplate.delete(emailChangeTokenKey);
+        }
+
+        // 3. 비밀번호 수정
+        if (password != null && !password.trim().isEmpty()) {
+            // 3-1. 비밀번호 형식 검증 (기존 isValidPassword() 재사용)
+            if (!isValidPassword(password)) {
+                throw new InvalidPasswordFormatException("비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다");
+            }
+
+            // 3-2. 비밀번호 암호화
+            String encodedPassword = passwordEncoder.encode(password);
+            params.put("passwordHash", encodedPassword);
+        }
+
+        // 4. 생년월일 수정
+        if (birthDate != null) {
+            params.put("birthDate", birthDate);
+        }
+
+        // 5. DB 업데이트 (전화번호는 절대 업데이트하지 않음)
+        // params에 userId만 있으면 업데이트할 내용이 없으므로 아무것도 하지 않음
+        if (params.size() > 1) {
+            userMapper.updateUserProfile(params);
+            // 수정된 필드 목록 로깅
+            String updatedFields = params.keySet().stream()
+                    .filter(k -> !k.equals("userId"))
+                    .map(k -> k.equals("passwordHash") ? "password" : k)
+                    .collect(java.util.stream.Collectors.joining(", "));
+            log.info("[프로필 수정] 완료: userId={}, 수정된 필드: {}", userId, updatedFields);
+        } else {
+            log.info("[프로필 수정] 요청: userId={}, 수정할 내용 없음", userId);
+        }
+    }
+
+    /**
+     * 회원 탈퇴 (Soft Delete)
+     * - 비밀번호 검증
+     * - is_active를 FALSE로 업데이트
+     * - phone_number에 탈퇴 일시 추가 (재가입 방지)
+     * - 모든 RefreshToken 삭제
+     * 
+     * @param userId   현재 로그인된 사용자 ID
+     * @param password 비밀번호 (본인 확인용)
+     */
+    @Transactional
+    public void deleteAccount(Long userId, String password) {
+        // 0. 패스워드 null 체크 강화
+        if (password == null || password.trim().isEmpty()) {
+            log.error("[회원 탈퇴] 입력된 비밀번호가 없습니다. userId={}", userId);
+            throw new InvalidPasswordException();
+        }
+
+        // 1. 사용자 조회 (예외 처리 및 로깅 강화)
+        UserVO user = userMapper.findById(userId)
+                .orElseThrow(() -> {
+                    log.error("[회원 탈퇴] 사용자를 찾을 수 없습니다. userId={}", userId);
+                    return new lookie.backend.domain.user.exception.UserNotFoundException();
+                });
+
+        // 2. 비밀번호 검증
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            log.warn("[회원 탈퇴] 비밀번호가 일치하지 않습니다. userId={}", userId);
+            throw new InvalidPasswordException();
+        }
+
+        // 3. DB 업데이트 (MyBatis XML에서 CONCAT, NOW() 처리)
+        Map<String, Object> params = new HashMap<>();
+        params.put("userId", userId);
+
+        try {
+            userMapper.softDeleteUser(params);
+            log.info("[회원 탈퇴] DB Soft Delete 완료. userId={}", userId);
+        } catch (Exception e) {
+            log.error("[회원 탈퇴] DB 업데이트 중 에러 발생. userId={}, error={}", userId, e.getMessage());
+            throw e;
+        }
+
+        // 4. Redis 토큰 삭제 (try-catch로 감싸서 예외 격리)
+        try {
+            String refreshTokenPattern = "refresh:" + userId;
+            Set<String> keys = redisTemplate.keys(refreshTokenPattern + "*");
+            if (keys != null && !keys.isEmpty()) {
+                redisTemplate.delete(keys);
+                log.info("[회원 탈퇴] Redis 토큰 삭제 완료. userId={}, count={}", userId, keys.size());
+            }
+        } catch (Exception e) {
+            // Redis 에러는 로깅만 하고 전체 프로세스를 중단하지 않음
+            log.error("[회원 탈퇴] Redis 토큰 삭제 중 에러 발생 (프로세스 계속 진행). userId={}, error={}", userId, e.getMessage());
+        }
+
+        log.info("[회원 탈퇴] 탈퇴 처리가 정상적으로 완료되었습니다. userId={}", userId);
     }
 }

@@ -19,6 +19,7 @@ public enum ErrorCode {
 	AUTH_EMAIL_VERIFY_REQUIRED("AUTH_006", HttpStatus.FORBIDDEN, "이메일 인증이 필요합니다"),
 	AUTH_EMAIL_CODE_EXPIRED("AUTH_007", HttpStatus.BAD_REQUEST, "인증번호가 만료되었거나 일치하지 않습니다"),
 	AUTH_LOGOUT_TOKEN("AUTH_008", HttpStatus.UNAUTHORIZED, "이미 로그아웃된 토큰입니다. 다시 로그인해주세요."),
+	AUTH_EMAIL_CHANGE_TOKEN_REQUIRED("AUTH_009", HttpStatus.FORBIDDEN, "이메일 변경 인증이 필요합니다"),
 
 	// ===== EMAIL =====
 	EMAIL_SEND_FAILED("EMAIL_001", HttpStatus.SERVICE_UNAVAILABLE, "이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요"),
@@ -30,6 +31,8 @@ public enum ErrorCode {
 	INVALID_EMAIL_FORMAT("USER_004", HttpStatus.BAD_REQUEST, "유효하지 않은 이메일 형식입니다"),
 	INVALID_PHONE_FORMAT("USER_005", HttpStatus.BAD_REQUEST, "유효하지 않은 전화번호 형식입니다"),
 	INVALID_PASSWORD_FORMAT("USER_006", HttpStatus.BAD_REQUEST, "비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다"),
+	USER_DELETED("USER_007", HttpStatus.FORBIDDEN, "탈퇴한 계정입니다"),
+	USER_INVALID_PASSWORD("USER_008", HttpStatus.UNAUTHORIZED, "비밀번호가 일치하지 않습니다"),
 
 	// ===== TASK =====
 	TASK_ALREADY_ASSIGNED("TASK_001", HttpStatus.CONFLICT, "이미 할당된 작업입니다"),
