@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.task.dto.TaskResponse;
+import lookie.backend.domain.task.dto.*;
 import lookie.backend.domain.task.service.TaskWorkflowFacade;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
@@ -11,8 +12,6 @@ import lookie.backend.global.response.ApiResponse;
 import lookie.backend.global.security.SecurityUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 
 @Tag(name = "Task", description = "작업 관리(할당, 스캔) API")
 @RestController
@@ -34,10 +33,9 @@ public class TaskController {
     @PostMapping("/{taskId}/tote/scan")
     public ResponseEntity<ApiResponse<TaskResponse<TaskVO>>> scanTote(
             @PathVariable Long taskId,
-            @RequestBody Map<String, String> request) {
+            @RequestBody ToteScanRequest request) {
 
-        String barcode = request.get("barcode");
-        TaskResponse<TaskVO> response = taskWorkflowFacade.scanTote(taskId, barcode);
+        TaskResponse<TaskVO> response = taskWorkflowFacade.scanTote(taskId, request.getBarcode());
         return ResponseEntity.ok(ApiResponse.success("토트 스캔이 완료되었습니다.", response));
     }
 
@@ -45,10 +43,9 @@ public class TaskController {
     @PostMapping("/{taskId}/location/scan")
     public ResponseEntity<ApiResponse<TaskResponse<TaskVO>>> scanLocation(
             @PathVariable Long taskId,
-            @RequestBody Map<String, String> request) {
+            @RequestBody LocationScanRequest request) {
 
-        String locationCode = request.get("locationCode");
-        TaskResponse<TaskVO> response = taskWorkflowFacade.scanLocation(taskId, locationCode);
+        TaskResponse<TaskVO> response = taskWorkflowFacade.scanLocation(taskId, request.getLocationCode());
         return ResponseEntity.ok(ApiResponse.success("지번 스캔이 완료되었습니다.", response));
     }
 
@@ -56,10 +53,9 @@ public class TaskController {
     @PostMapping("/{taskId}/item/scan")
     public ResponseEntity<ApiResponse<TaskResponse<TaskItemVO>>> scanItem(
             @PathVariable Long taskId,
-            @RequestBody Map<String, String> request) {
+            @RequestBody ItemScanRequest request) {
 
-        String barcode = request.get("barcode");
-        TaskResponse<TaskItemVO> response = taskWorkflowFacade.scanItem(taskId, barcode);
+        TaskResponse<TaskItemVO> response = taskWorkflowFacade.scanItem(taskId, request.getBarcode());
         return ResponseEntity.ok(ApiResponse.success("상품이 확인되었습니다.", response));
     }
 
@@ -67,10 +63,9 @@ public class TaskController {
     @PostMapping("/items/{itemId}/quantity")
     public ResponseEntity<ApiResponse<TaskResponse<TaskItemVO>>> updateQuantity(
             @PathVariable Long itemId,
-            @RequestBody Map<String, Integer> request) {
+            @RequestBody QuantityUpdateRequest request) {
 
-        int increment = request.getOrDefault("increment", 1);
-        TaskResponse<TaskItemVO> response = taskWorkflowFacade.pickItem(itemId, increment);
+        TaskResponse<TaskItemVO> response = taskWorkflowFacade.pickItem(itemId, request.getIncrement());
         return ResponseEntity.ok(ApiResponse.success("수량이 반영되었습니다.", response));
     }
 

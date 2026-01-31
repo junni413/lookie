@@ -3,6 +3,7 @@ package lookie.backend.domain.task.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lookie.backend.domain.task.constant.NextAction;
 import lookie.backend.domain.task.dto.TaskResponse;
+import lookie.backend.domain.task.dto.*;
 import lookie.backend.domain.task.service.TaskWorkflowFacade;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
@@ -15,9 +16,6 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.HashMap;
-import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -75,8 +73,8 @@ class TaskControllerTest {
                 when(taskWorkflowFacade.scanTote(eq(taskId), eq(barcode)))
                                 .thenReturn(TaskResponse.of(task, NextAction.SCAN_LOCATION));
 
-                Map<String, String> request = new HashMap<>();
-                request.put("barcode", barcode);
+                ToteScanRequest request = new ToteScanRequest();
+                request.setBarcode(barcode);
 
                 // when & then
                 mockMvc.perform(post("/api/tasks/{taskId}/tote/scan", taskId)
@@ -102,8 +100,8 @@ class TaskControllerTest {
                 when(taskWorkflowFacade.scanLocation(eq(taskId), eq(locationCode)))
                                 .thenReturn(TaskResponse.of(task, NextAction.SCAN_ITEM));
 
-                Map<String, String> request = new HashMap<>();
-                request.put("locationCode", locationCode);
+                LocationScanRequest request = new LocationScanRequest();
+                request.setLocationCode(locationCode);
 
                 // when & then
                 mockMvc.perform(post("/api/tasks/{taskId}/location/scan", taskId)
@@ -128,8 +126,8 @@ class TaskControllerTest {
                 when(taskWorkflowFacade.scanItem(eq(taskId), eq(barcode)))
                                 .thenReturn(TaskResponse.of(item, NextAction.ADJUST_QUANTITY));
 
-                Map<String, String> request = new HashMap<>();
-                request.put("barcode", barcode);
+                ItemScanRequest request = new ItemScanRequest();
+                request.setBarcode(barcode);
 
                 // when & then
                 mockMvc.perform(post("/api/tasks/{taskId}/item/scan", taskId)
@@ -155,8 +153,8 @@ class TaskControllerTest {
                 when(taskWorkflowFacade.pickItem(eq(itemId), eq(increment)))
                                 .thenReturn(TaskResponse.of(item, NextAction.SCAN_ITEM));
 
-                Map<String, Integer> request = new HashMap<>();
-                request.put("increment", increment);
+                QuantityUpdateRequest request = new QuantityUpdateRequest();
+                request.setIncrement(increment);
 
                 // when & then
                 mockMvc.perform(post("/api/tasks/items/{itemId}/quantity", itemId)

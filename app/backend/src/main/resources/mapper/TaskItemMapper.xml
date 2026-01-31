@@ -56,7 +56,7 @@
     </select>
 
     <!-- [조회] 특정 작업 아이템 상세 정보 (상품 정보 포함) -->
-    <select id="findById" resultMap="TaskItemResultMap">
+    <select id="findById" resultType="TaskItemVO">
         SELECT
             i.batch_task_item_id AS batchTaskItemId,
             i.batch_task_id AS batchTaskId,
