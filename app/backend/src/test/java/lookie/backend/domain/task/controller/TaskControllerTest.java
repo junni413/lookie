@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -80,7 +81,7 @@ class TaskControllerTest {
                 request.setBarcode(barcode);
 
                 // when & then
-                mockMvc.perform(post("/api/tasks/{taskId}/tote/scan", taskId)
+                mockMvc.perform(post("/api/tasks/{taskId}/totes", taskId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request))
                                 .with(csrf()))
@@ -107,7 +108,7 @@ class TaskControllerTest {
                 request.setLocationCode(locationCode);
 
                 // when & then
-                mockMvc.perform(post("/api/tasks/{taskId}/location/scan", taskId)
+                mockMvc.perform(post("/api/tasks/{taskId}/locations/check", taskId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request))
                                 .with(csrf()))
@@ -133,7 +134,7 @@ class TaskControllerTest {
                 request.setBarcode(barcode);
 
                 // when & then
-                mockMvc.perform(post("/api/tasks/{taskId}/item/scan", taskId)
+                mockMvc.perform(post("/api/tasks/{taskId}/items/scan", taskId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request))
                                 .with(csrf()))
@@ -160,7 +161,7 @@ class TaskControllerTest {
                 request.setIncrement(increment);
 
                 // when & then
-                mockMvc.perform(post("/api/tasks/items/{itemId}/quantity", itemId)
+                mockMvc.perform(patch("/api/tasks/items/{itemId}", itemId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request))
                                 .with(csrf()))
