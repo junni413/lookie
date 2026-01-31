@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.task.dto.TaskResponse;
 import lookie.backend.domain.task.dto.*;
+import lookie.backend.domain.task.service.TaskItemService;
 import lookie.backend.domain.task.service.TaskWorkflowFacade;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 public class TaskController {
 
     private final TaskWorkflowFacade taskWorkflowFacade;
+    private final TaskItemService taskItemService;
 
     @Operation(summary = "작업 할당 및 시작", description = "작업자에게 할당된 구역의 미할당 작업을 하나 가져와 시작 상태로 변경합니다.")
     @PostMapping
@@ -74,5 +76,12 @@ public class TaskController {
     public ResponseEntity<ApiResponse<Void>> completeTask(@PathVariable Long taskId) {
         taskWorkflowFacade.completeTask(taskId);
         return ResponseEntity.ok(ApiResponse.success("작업이 완료되었습니다.", null));
+    }
+
+    @Operation(summary = "작업 아이템 목록 조회", description = "현재 작업에 포함된 모든 아이템 목록을 조회합니다.")
+    @GetMapping("/{taskId}/items")
+    public ResponseEntity<ApiResponse<java.util.List<TaskItemVO>>> getTaskItems(@PathVariable Long taskId) {
+        java.util.List<TaskItemVO> items = taskItemService.getAllItems(taskId);
+        return ResponseEntity.ok(ApiResponse.success("목록 조회가 완료되었습니다.", items));
     }
 }

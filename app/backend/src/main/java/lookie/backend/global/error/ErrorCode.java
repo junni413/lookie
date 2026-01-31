@@ -42,6 +42,8 @@ public enum ErrorCode {
 	TASK_NO_AVAILABLE("TASK_004", HttpStatus.CONFLICT, "할당 가능한 작업이 없습니다"),
 	TASK_INVALID_STATE("TASK_005", HttpStatus.CONFLICT, "작업 상태 전이가 올바르지 않습니다"),
 	TASK_TOTE_MISMATCH("TASK_006", HttpStatus.BAD_REQUEST, "토트 바코드가 일치하지 않습니다"),
+	TASK_LOCATION_MISMATCH("TASK_007", HttpStatus.BAD_REQUEST, "지시된 지번과 일치하지 않습니다"),
+	TASK_ITEM_MISMATCH("TASK_008", HttpStatus.BAD_REQUEST, "지시된 상품 바코드와 일치하지 않습니다"),
 
 	// ==== LOCATION ====
 	LOCATION_NOT_FOUND("LOC_001", HttpStatus.NOT_FOUND, "존재하지 않는 지번 코드입니다"),

@@ -35,6 +35,9 @@ class TaskControllerTest {
         @MockBean
         private TaskWorkflowFacade taskWorkflowFacade;
 
+        @MockBean
+        private lookie.backend.domain.task.service.TaskItemService taskItemService;
+
         @Autowired
         private ObjectMapper objectMapper;
 
@@ -164,5 +167,23 @@ class TaskControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.data.payload.pickedQty").value(5))
                                 .andExpect(jsonPath("$.data.nextAction").value("SCAN_ITEM"));
+        }
+
+        @Test
+        @DisplayName("전체 아이템 목록 조회 API 테스트")
+        @WithMockUser
+        void getTaskItems() throws Exception {
+                // given
+                Long taskId = 1L;
+                java.util.List<TaskItemVO> items = java.util.Collections.singletonList(new TaskItemVO());
+
+                when(taskItemService.getAllItems(taskId)).thenReturn(items);
+
+                // when & then
+                mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/tasks/{taskId}/items", taskId)
+                                .with(csrf()))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.data").isArray());
         }
 }

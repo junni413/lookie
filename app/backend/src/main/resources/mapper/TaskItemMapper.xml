@@ -102,4 +102,43 @@
         WHERE batch_task_item_id = #{batchTaskItemId}
     </update>
 
+    <!-- [조회] 작업 내에서 수행해야 할 다음 PENDING 아이템 하나 조회 -->
+    <select id="findNextItem" resultType="TaskItemVO">
+        SELECT
+            i.batch_task_item_id AS batchTaskItemId,
+            i.batch_task_id AS batchTaskId,
+            i.product_id AS productId,
+            i.location_id AS locationId,
+            i.required_qty AS requiredQty,
+            i.picked_qty AS pickedQty,
+            i.status,
+            p.product_name AS productName,
+            p.barcode,
+            l.location_code AS locationCode -- 지번 코드 추가
+        FROM batch_task_items i
+        JOIN products p ON i.product_id = p.product_id
+        JOIN zone_locations l ON i.location_id = l.location_id
+        WHERE i.batch_task_id = #{batchTaskId}
+          AND i.status = 'PENDING'
+        LIMIT 1
+    </select>
+
+    <!-- [목록] 작업 내 모든 아이템 목록 조회 (목록 보기용) -->
+    <select id="findAllByTaskId" resultType="TaskItemVO">
+        SELECT
+            i.batch_task_item_id AS batchTaskItemId,
+            i.batch_task_id AS batchTaskId,
+            i.product_id AS productId,
+            i.location_id AS locationId,
+            i.required_qty AS requiredQty,
+            i.picked_qty AS pickedQty,
+            i.status,
+            p.product_name AS productName,
+            p.barcode,
+            l.location_code AS locationCode
+        FROM batch_task_items i
+        JOIN products p ON i.product_id = p.product_id
+        JOIN zone_locations l ON i.location_id = l.location_id
+        WHERE i.batch_task_id = #{batchTaskId}
+    </select>
 </mapper>
