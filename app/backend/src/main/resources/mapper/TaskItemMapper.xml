@@ -75,7 +75,7 @@
     </select>
 
     <!-- [수정] 원자적 수량 증가 및 목표 수량 도달 시 상태 자동 변경 (PENDING -> DONE) -->
-    <select id="updatePickedQuantityAtomic">
+    <update id="updatePickedQuantityAtomic">
         UPDATE batch_task_items
         SET 
             picked_qty = picked_qty + #{increment},
