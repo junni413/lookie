@@ -8,6 +8,11 @@ import MobileLayout from "./components/layout/MobileLayout";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 
+// ✅ Password Reset pages (로그인 없이 접근)
+import PasswordForgot from "./pages/auth/password/PasswordForgot";
+import PasswordCode from "./pages/auth/password/PasswordCode";
+import PasswordReset from "./pages/auth/password/PasswordReset";
+
 // WORKER pages
 import WorkerAttend from "./pages/worker/Attend";
 import WorkerHome from "./pages/worker/Home";
@@ -27,7 +32,7 @@ import TaskAssignLoading from "./pages/worker/task/TaskAssignLoading";
 import TaskScanStart from "./pages/worker/task/TaskScanStart";
 import ToteScan from "./pages/worker/task/ToteScan";
 import WorkDetail from "./pages/worker/task/WorkDetail";
-
+import TaskList from "./pages/worker/task/TaskList";
 
 // ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -85,6 +90,11 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
 
+      {/* ✅ 비밀번호 찾기/재설정 (로그인 없이 접근 가능) */}
+      <Route path="/auth/password/forgot" element={<PasswordForgot />} />
+      <Route path="/auth/password/code" element={<PasswordCode />} />
+      <Route path="/auth/password/reset" element={<PasswordReset />} />
+
       {/* WORKER */}
       <Route
         path="/worker"
@@ -110,17 +120,12 @@ export default function App() {
         <Route path="task/scan-start" element={<TaskScanStart />} />
         <Route path="task/tote-scan" element={<ToteScan />} />
         <Route path="task/work-detail" element={<WorkDetail />} />
+        <Route path="task/list" element={<TaskList />} />
 
         {/* ✅ 이슈(목록/신고촬영) */}
-        {/* (A안) 단수: /worker/issue, /worker/issue/report */}
         <Route path="issue" element={<IssueListPage />} />
         <Route path="issue/report" element={<IssueReportPage />} />
         <Route path="issue/result" element={<IssueResultPage />} />
-
-        {/* (B안) 복수 유지하고 싶으면 위 2줄 대신 아래 2줄 사용
-            <Route path="issues" element={<IssueListPage />} />
-            <Route path="issues/report" element={<IssueReportPage />} />
-        */}
 
         {/* 사이드바 연결 페이지들 */}
         <Route path="mypage" element={<MyPage />} />
