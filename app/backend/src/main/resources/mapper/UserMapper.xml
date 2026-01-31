@@ -10,9 +10,17 @@
         VALUES (#{passwordHash}, #{name}, #{phoneNumber}, #{email}, #{birthDate})
     </insert>
 
-    <!-- 2. 로그인 및 정보 조회 -->
+    <!-- 2. 로그인 및 정보 조회 (활성 계정만) -->
     <select id="findByPhoneNumber" parameterType="String" resultType="UserVO">
-        SELECT * FROM users WHERE phone_number = #{phoneNumber}
+        SELECT * FROM users 
+        WHERE phone_number = #{phoneNumber} 
+        AND is_active = TRUE
+    </select>
+
+    <!-- 2-1. 로그인 시 삭제된 계정 구분용 (is_active 필터링 없이 조회) -->
+    <select id="findByPhoneNumberIncludingDeleted" parameterType="String" resultType="UserVO">
+        SELECT * FROM users 
+        WHERE phone_number = #{phoneNumber}
     </select>
 
     <!-- 3. 전화번호 (아이디) 중복 확인 -->
@@ -29,20 +37,53 @@
         )
     </select>
 
-    <!-- 5. 사용자 ID로 조회 (토큰 재발급 시 Role 정보 필요) -->
+    <!-- 5. 사용자 ID로 조회 (토큰 재발급 시 Role 정보 필요, 활성 계정만) -->
     <select id="findById" parameterType="Long" resultType="UserVO">
-        SELECT * FROM users WHERE user_id = #{userId}
+        SELECT * FROM users 
+        WHERE user_id = #{userId} 
+        AND is_active = TRUE
     </select>
 
-    <!-- 6. 이메일로 사용자 조회 (비밀번호 재설정용) -->
+    <!-- 6. 이메일로 사용자 조회 (비밀번호 재설정용, 활성 계정만) -->
     <select id="findByEmail" parameterType="String" resultType="UserVO">
-        SELECT * FROM users WHERE email = #{email}
+        SELECT * FROM users 
+        WHERE email = #{email} 
+        AND is_active = TRUE
     </select>
 
     <!-- 7. 비밀번호 업데이트 (비밀번호 재설정용) -->
     <update id="updatePassword" parameterType="map">
         UPDATE users
         SET password_hash = #{passwordHash}
+        WHERE user_id = #{userId}
+    </update>
+
+    <!-- 8. 프로필 업데이트 (이름, 이메일, 비밀번호, 생년월일 선택적 수정, 전화번호는 수정 불가) -->
+    <update id="updateUserProfile" parameterType="map">
+        UPDATE users
+        <set>
+            <if test="name != null">
+                name = #{name},
+            </if>
+            <if test="email != null">
+                email = #{email},
+            </if>
+            <if test="passwordHash != null">
+                password_hash = #{passwordHash},
+            </if>
+            <if test="birthDate != null">
+                birth_date = #{birthDate},
+            </if>
+        </set>
+        WHERE user_id = #{userId}
+    </update>
+
+    <!-- 9. 회원 탈퇴 (Soft Delete) -->
+    <update id="softDeleteUser" parameterType="map">
+        UPDATE users
+        SET is_active = FALSE,
+            phone_number = CONCAT('DEL_', user_id),
+            updated_at = NOW()
         WHERE user_id = #{userId}
     </update>
 </mapper>

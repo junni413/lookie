@@ -16,4 +16,8 @@ export const ADMIN_MENU: AdminMenuItem[] = [
     label: "Issue",
     path: "/admin/issue",
   },
+  {
+    label: "Map",
+    path: "/admin/map",
+  },
 ];
