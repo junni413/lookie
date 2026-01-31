@@ -23,8 +23,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
 /**
  * Task 메인 워크플로우를 주관하는 Facade 서비스
  * - 집품 프로세스(할당~완료) 전체 흐름 제어
@@ -188,19 +186,11 @@ public class TaskWorkflowFacade {
 
     private NextAction determineNextActionAfterPick(TaskItemVO item) {
         if ("DONE".equals(item.getStatus())) {
-            // 해당 지번에 남은 PENDING 아이템이 있는지 확인
-            List<TaskItemVO> pendingItems = taskItemService.getPendingItemsAtLocation(item.getBatchTaskId(),
-                    item.getLocationId());
-            if (pendingItems.isEmpty()) {
-                // 지번 내 아이템 소진 -> 전체 작업의 잔여 아이템 확인
-                int totalPending = taskItemService.countPendingItems(item.getBatchTaskId());
-                if (totalPending == 0) {
-                    return NextAction.COMPLETE_TASK;
-                }
-                return NextAction.SCAN_LOCATION;
-            } else {
-                return NextAction.SCAN_ITEM;
+            int totalPending = taskItemService.countPendingItems(item.getBatchTaskId());
+            if (totalPending == 0) {
+                return NextAction.COMPLETE_TASK;
             }
+            return NextAction.SCAN_LOCATION;
         }
         return NextAction.ADJUST_QUANTITY;
     }

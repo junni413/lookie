@@ -164,8 +164,8 @@ class TaskWorkflowFacadeTest {
         // then
         // 1. updateQuantityAtomic이 호출되었는지 확인
         verify(taskItemService).updateQuantityAtomic(500L, 1);
-        // 2. 완료 처리 되어 다음 아이템 스캔으로 넘어가는지 확인
-        assertEquals(NextAction.SCAN_ITEM, response.getNextAction());
+        // 2. 해당 지번에 잔여 상품이 있더라도 무조건 다음 지번 스캔(SCAN_LOCATION)으로 가는지 확인 (1:1 원칙)
+        assertEquals(NextAction.SCAN_LOCATION, response.getNextAction());
     }
 
     @Test
