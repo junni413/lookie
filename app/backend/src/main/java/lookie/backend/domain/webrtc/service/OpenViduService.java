@@ -27,7 +27,7 @@ public class OpenViduService {
     private final OpenVidu openVidu;
     private final StringRedisTemplate redisTemplate;
     private final CallHistoryMapper callHistoryMapper;
-    private final ApplicationEventPublisher eventPublisher; // [추가] 이벤트 발행기 주입
+    private final ApplicationEventPublisher eventPublisher; // 이벤트 발행기 주입
     private static final String USER_STATUS_KEY = "user:status:";
     private static final String STATUS_BUSY = "BUSY";
 
@@ -144,6 +144,44 @@ public class OpenViduService {
         }
 
         // 리소스 정리
+        clearUserStatus(call.getCalleeId());
+        closeSessionInternal(call.getOpenViduSessionId());
+    }
+
+    /**
+     * 5. 화상 요청 취소 및 미응답 처리
+     */
+    @Transactional
+    public void cancelCall(Long callId, WebRtcDto.CancelRequest request) {
+        CallHistoryVO call = callHistoryMapper.findById(callId)
+                .orElseThrow(() -> new ApiException(ErrorCode.WEBRTC_SESSION_NOT_FOUND));
+
+        if (!"WAITING".equals(call.getStatus())) {
+            throw new ApiException(ErrorCode.WEBRTC_CLIENT_ERROR, "대기 중인 통화만 취소할 수 있습니다.");
+        }
+
+        // 사유에 따른 분기 처리
+        if ("TIMEOUT".equals(request.getReason())) {
+            // 시나리오 1: 30초 동안 안 받음 -> "응답 없음"
+            call.updateStatus("NO_ANSWER");
+
+            // [중요] 응답 없음은 "도움 요청 실패"이므로 긴급도 격상 이벤트 발행
+            if (call.getIssueId() != null) {
+                // 기존 Rejected 이벤트나 새로운 NoAnswer 이벤트를 사용
+                eventPublisher.publishEvent(new CallRejectedEvent(
+                        call.getId(), call.getIssueId(), call.getCallerId(), call.getCalleeId()
+                ));
+            }
+
+        } else {
+            // 시나리오 2: 잘못 눌러서 취소함 -> "취소됨"
+            call.updateStatus("CANCELED");
+            // 이슈 업데이트 불필요 (이벤트 발행 안 함)
+        }
+
+        callHistoryMapper.update(call);
+
+        // 뒷정리 (공통)
         clearUserStatus(call.getCalleeId());
         closeSessionInternal(call.getOpenViduSessionId());
     }

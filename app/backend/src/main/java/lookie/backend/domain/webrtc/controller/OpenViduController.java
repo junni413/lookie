@@ -67,4 +67,18 @@ public class OpenViduController {
         openViduService.endCall(callId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
+
+    /*
+        5. 화상 요청 취소/미응답
+        POST /api/webrtc/{callId}/cancel
+     */
+    @Operation(summary = "화상 요청 취소/미응답", description = "reason: 'TIMEOUT'(시간초과) 또는 'MISTAKE'(단순취소)")
+    @PostMapping("/{callId}/cancel")
+    public ResponseEntity<ApiResponse<Void>> cancelCall(
+            @PathVariable Long callId,
+            @RequestBody WebRtcDto.CancelRequest request) { // Body 추가
+
+        openViduService.cancelCall(callId, request);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
 }

@@ -25,11 +25,19 @@ public class WebRtcDto {
         private String token;      // Caller 본인 입장 토큰
     }
 
-    // [3] (추천) 토큰 응답 (수락 시 사용)
-    // 물론 String 그대로 써도 되지만, { "token": "wss://..." } 형태가 더 명확합니다.
+    // [3] 토큰 응답 (수락 시 사용)
+    // String 그대로 써도 되지만, { "token": "wss://..." } 형태가 더 명확함.
     @Getter
     @AllArgsConstructor
     public static class TokenResponse {
         private String token;
+    }
+
+    // [4] 취소 요청 DTO
+    @Getter
+    @NoArgsConstructor
+    public static class CancelRequest {
+        // "TIMEOUT" (시간 초과/응답 없음) 또는 "MISTAKE" (단순 취소)
+        private String reason;
     }
 }
