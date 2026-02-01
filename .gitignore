@@ -220,4 +220,7 @@ data/
 *.log
 .env
 
+# Eclipse/STS IDE Workspace
+/.metadata/
+
 # End of https://www.toptal.com/developers/gitignore/api/react,java,dotenv,python

@@ -1,0 +1,6 @@
+ALTER TABLE issues
+  DROP COLUMN required_action,
+  ADD COLUMN issue_handling ENUM('BLOCKING','NON_BLOCKING')
+    NOT NULL DEFAULT 'NON_BLOCKING',
+  ADD COLUMN admin_required BOOLEAN
+    NOT NULL DEFAULT FALSE;
