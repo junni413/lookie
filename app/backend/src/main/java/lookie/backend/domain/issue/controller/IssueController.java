@@ -1,8 +1,12 @@
 package lookie.backend.domain.issue.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.issue.dto.AiResultRequest;
+import lookie.backend.domain.issue.dto.AiResultResponse;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
 import lookie.backend.domain.issue.dto.IssueResponse;
 import lookie.backend.domain.issue.service.IssueService;
@@ -16,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
  * - 이슈 생성 (작업자)
  * - AI 판정 결과 수신 (Webhook)
  */
+@Slf4j
 @Tag(name = "Issue", description = "이슈 관리 API")
 @RestController
 @RequestMapping("/api/issues")
@@ -34,5 +39,31 @@ public class IssueController {
         Long workerId = SecurityUtil.getCurrentUserId();
         IssueResponse response = issueService.createIssue(workerId, request);
         return ResponseEntity.ok(ApiResponse.success("이슈가 등록되었습니다.", response));
+    }
+
+    /**
+     * AI 판정 결과 수신 (Webhook)
+     * - AI 서버가 이미지 분석 완료 후 호출
+     * - Issue 상태 및 정책 자동 업데이트
+     * 
+     * ⚠️ AI 서버 연동 상태:
+     * - AI 서버: app/ai-server (FastAPI, POST /predict)
+     * - Webhook 구현: 미완료 (AI 팀 작업 필요)
+     * - 현재 상태: 엔드포인트만 준비됨
+     * 
+     */
+    @Operation(summary = "AI 판정 결과 수신", description = "AI 서버로부터 이미지 분석 결과를 수신하여 Issue 상태를 업데이트합니다. (Webhook)")
+    @PostMapping("/{issueId}/ai/result")
+    public ResponseEntity<ApiResponse<AiResultResponse>> receiveAiResult(
+            @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
+            @RequestBody AiResultRequest request) {
+        log.info("[IssueController] AI result received. issueId={}, aiDecision={}",
+                issueId, request.getAiDecision());
+
+        AiResultResponse response = issueService.processAiResult(issueId, request);
+
+        return ResponseEntity.ok(ApiResponse.success(
+                "AI 판정 결과가 반영되었습니다.",
+                response));
     }
 }

@@ -316,4 +316,34 @@ class IssueServiceTest {
         verify(issueMapper, never()).updateAiJudgment(any());
         verify(issueMapper, never()).updateIssueStatus(any());
     }
+
+    @Test
+    @DisplayName("AI 결과 처리 무시 - 이미 판정이 완료된 경우 (중복 요청)")
+    void processAiResult_DuplicateRequest_Ignore() {
+        // given
+        Long issueId = 1L;
+        AiResultRequest request = new AiResultRequest();
+        request.setAiDecision("FAIL");
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("RESOLVED");
+
+        AiJudgmentVO existingJudgment = new AiJudgmentVO();
+        existingJudgment.setAiDecision("PASS"); // 이미 판정된 상태
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(existingJudgment);
+
+        // when
+        AiResultResponse response = issueService.processAiResult(issueId, request);
+
+        // then
+        assertNotNull(response);
+        assertEquals("RESOLVED", response.getStatus());
+        // 중요: DB 업데이트 메서드들이 호출되지 않아야 함
+        verify(issueMapper, never()).updateAiJudgment(any(AiJudgmentVO.class));
+        verify(issueMapper, never()).updateIssueStatus(any(IssueVO.class));
+    }
 }

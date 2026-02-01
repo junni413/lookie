@@ -104,6 +104,14 @@ public class IssueService {
             throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
         }
 
+        // 이미 판정 결과가 존재하면(UNKNOWN이 아니면) 중복 업데이트 방지
+        AiJudgmentVO existing = issueMapper.findAiJudgmentByIssueId(issueId);
+        if (existing != null && !"UNKNOWN".equals(existing.getAiDecision())) {
+            log.warn("[IssueService] AI result already applied. Skip overwrite. issueId={}, existingDecision={}",
+                    issueId, existing.getAiDecision());
+            return AiResultResponse.from(issue, calculateNextAction(issue));
+        }
+
         // 2. AI 판정 결과 업데이트
         AiJudgmentVO judgment = new AiJudgmentVO();
         judgment.setIssueId(issueId);
