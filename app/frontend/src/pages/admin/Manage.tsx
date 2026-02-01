@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+
 import { manageService, type ZoneStat } from "@/services/manageService";
 import type { DB_Worker } from "@/types/db";
 import ManageStatisticCard from "./components/manage/ManageStatisticCard";
@@ -115,14 +116,14 @@ export default function Manage() {
     const hasChanges = hasWorkerStateChanged(workers, lastAppliedWorkers);
 
     return (
-        <div className="h-full flex flex-col gap-6 p-2">
+        <div className="flex flex-col h-[calc(100vh-60px)] space-y-4 pt-2 pb-2 px-1">
             {/* Header Area */}
-            <div className="flex items-center justify-between shrink-0">
-                <h1 className="text-2xl font-bold">작업자 관리</h1>
+            <div className="flex justify-end pb-4 px-2">
                 <div className="flex gap-2">
                     <Button
                         onClick={handleAiReallocate}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 shadow-sm"
+                        size="sm"
                     >
                         <Wand2 size={16} />
                         AI 추천 재배치
@@ -134,8 +135,9 @@ export default function Manage() {
                         variant="outline"
                         onClick={handleRestorePrevious}
                         disabled={!prevAppliedWorkers}
-                        className="gap-2 text-slate-600"
+                        className="gap-2 text-slate-600 shadow-sm"
                         title="이전 적용 배치 가져오기"
+                        size="sm"
                     >
                         <RotateCcw size={16} />
                         이전 배치
@@ -146,8 +148,9 @@ export default function Manage() {
                         variant="outline"
                         onClick={handleReset}
                         disabled={!hasChanges}
-                        className="gap-2 text-slate-600"
+                        className="gap-2 text-slate-600 shadow-sm"
                         title="현재 변경사항 초기화"
+                        size="sm"
                     >
                         <RotateCcw size={16} />
                         되돌리기
@@ -155,7 +158,8 @@ export default function Manage() {
 
                     <Button
                         onClick={handleApply}
-                        className="gap-2"
+                        className="gap-2 shadow-sm"
+                        size="sm"
                     >
                         <Check size={16} />
                         적용
@@ -177,7 +181,7 @@ export default function Manage() {
             </div>
 
             {/* Bottom Zones Columns */}
-            <div className="flex-1 overflow-x-auto">
+            <div className="flex-1 overflow-x-auto min-h-0 pb-2">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-full min-w-[1000px] lg:min-w-0">
                     {stats.map(stat => (
                         <ManageZoneColumn

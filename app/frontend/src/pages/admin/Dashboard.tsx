@@ -1,69 +1,147 @@
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState, useMemo } from "react";
 import StatusCard from "./components/dashboard/StatusCard";
 import ZoneGrid from "./components/dashboard/ZoneGrid";
-import IssueList from "./components/dashboard/DashboardIssueList";
+import IssueList from "./components/issue/IssueList";
 import { adminDashboardMock } from "@/mocks/mockData";
 import { issueService } from "@/services/issueService";
 import type { IssueResponse } from "@/types/db";
+import { Users, Package, CheckCircle2, History } from "lucide-react";
+import { cn } from "@/utils/cn";
+
+type SortKey = "TIME" | "PRIORITY";
+const priorityMap: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
 export default function Dashboard() {
   const { summary, zones } = adminDashboardMock;
   const [issues, setIssues] = useState<IssueResponse[]>([]);
+  const [sortKey, setSortKey] = useState<SortKey>("TIME");
 
   useEffect(() => {
-    // Fetch initial issues for the list
     issueService.getIssues().then((data) => {
-      // Filter only unresolved (OPEN) issues
       const unresolved = data.filter((i) => i.status === "OPEN");
       setIssues(unresolved);
     });
   }, []);
 
+  const sortedIssues = useMemo(() => {
+    const arr = [...issues];
+    if (sortKey === "TIME") {
+      arr.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } else {
+      // priority 큰 게 위로 (HIGH > MEDIUM > LOW)
+      // Note: If priority is undefined, fallback to 0
+      arr.sort((a, b) => (priorityMap[b.priority] || 0) - (priorityMap[a.priority] || 0));
+    }
+    return arr;
+  }, [issues, sortKey]);
+
   return (
-    <div className="space-y-6">
-      {/* Layout grid */}
-      <div className="grid grid-cols-12 gap-6">
+    // Global Container: strict h-full to fit parent, no overflow on body
+    // 🔒 LOCKED LAYOUT: The container structure and Grid Split (50/50) are FIXED. Do not modify layout sizing.
+    // SPACING UPDATE: Red (Top/Left 30px) > Blue (Right/Bottom 24px)
+    // Global Container: strict h-full to fit parent, no overflow on body
+    // 🔒 LOCKED LAYOUT: The container structure and Grid Split (50/50) are FIXED. Do not modify layout sizing.
+    // SPACING UPDATE: Red (Top/Left 30px) > Blue (Right/Bottom 24px)
+    // Global Container: strict h-full to fit parent, no overflow on body
+    // 🔒 LOCKED LAYOUT: The container structure and Grid Split (50/50) are FIXED. Do not modify layout sizing.
+    // SPACING UPDATE: Red (Top/Left 30px) > Blue (Right/Bottom 24px)
+    <div className="flex flex-col h-full bg-[#f8f9fc] overflow-hidden relative">
 
-        {/* Top: summary */}
-        <section className="col-span-12">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">작업 현황 요약</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatusCard title="작업 중인 작업자" value={summary.working} variant="primary" />
-                <StatusCard title="대기 중인 판정" value={summary.waiting} />
-                <StatusCard title="완료된 판정" value={summary.done} />
-                <StatusCard
-                  title="작업 진행률"
-                  value={`${summary.progress}%`}
-                  variant="progress"
-                  progressValue={summary.progress}
-                />
-              </div>
-            </CardContent>
-          </Card>
+      {/* Top Section: Tight Packing (pb-5 ensures gap to bottom section) */}
+      <div className="shrink-0 pt-[30px] pr-6 pb-5 pl-[30px]">
+        <section className="grid grid-cols-4 gap-3">
+          <StatusCard
+            title="작업중인 작업자"
+            value={summary.working}
+            icon={Users}
+            trend="8.5% Up"
+            trendUp={true}
+          />
+          <StatusCard
+            title="대기중인 판정"
+            value={summary.waiting}
+            icon={Package}
+            trend="1.3% Up"
+            trendUp={true}
+          />
+          <StatusCard
+            title="완료된 판정"
+            value={summary.done}
+            icon={CheckCircle2}
+            trend="4.3% Down"
+            trendUp={false}
+          />
+          <StatusCard
+            title="작업 진행률"
+            value={`${summary.progress}%`}
+            icon={History}
+            trend="1.8% Up"
+            trendUp={true}
+          />
         </section>
+      </div>
 
-        {/* Left: zone */}
-        <section className="col-span-12 lg:col-span-7">
-          <Card className="h-full">
-            <CardContent className="pt-6 h-full">
-              <ZoneGrid zones={zones} />
-            </CardContent>
-          </Card>
-        </section>
+      {/* Bottom Section: Fills remaining height, strict internal scroll, Flex Layout (Zone Expanded, Issue Fixed) */}
+      <div className="flex-1 min-h-0 flex gap-5 items-stretch pr-6 pb-6">
 
-        {/* Right: issue */}
-        <section className="col-span-12 lg:col-span-5">
-          <Card className="h-full">
-            <CardContent className="pt-6">
-              <IssueList items={issues} />
-            </CardContent>
-          </Card>
-        </section>
+        {/* Left: Zone Cards (Grid) - Takes remaining width */}
+        <div className="flex-1 flex flex-col min-h-0 relative h-[calc(100%+20px)] -mt-5">
+          <div className="absolute inset-0 pl-[30px] pr-1 pt-5">
+            <ZoneGrid zones={zones} />
+          </div>
+        </div>
+
+        {/* Right: Issue List (Card) - Fixed Width Restored */}
+        <div className="w-[400px] shrink-0 flex flex-col bg-white rounded-xl shadow-sm overflow-hidden h-full border border-slate-100/50">
+          <div className="px-5 pt-4 pb-2 flex justify-between items-center shrink-0">
+            <h3 className="text-base font-bold text-slate-900">판정 요청 목록</h3>
+
+            {/* Minimal Text Sort Controls */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSortKey("TIME")}
+                className={cn(
+                  "text-[11px] font-semibold transition-colors cursor-pointer",
+                  sortKey === "TIME"
+                    ? "text-slate-900"
+                    : "text-slate-400 hover:text-slate-600"
+                )}
+              >
+                시간순
+              </button>
+
+              {/* Divider */}
+              <div className="h-2.5 w-px bg-slate-200" />
+
+              <button
+                onClick={() => setSortKey("PRIORITY")}
+                className={cn(
+                  "text-[11px] font-semibold transition-colors cursor-pointer",
+                  sortKey === "PRIORITY"
+                    ? "text-slate-900" // Highlighted
+                    : "text-slate-400 hover:text-slate-600"
+                )}
+              >
+                긴급순
+              </button>
+            </div>
+          </div>
+
+          {/* List Area */}
+          <div className="flex-1 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1">
+            <IssueList issues={sortedIssues} />
+          </div>
+
+          {/* Footer: See All Button */}
+          <div className="p-4">
+            <button
+              className="w-full py-3 rounded-full border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              onClick={() => window.location.href = '/admin/issue'} // Simple navigation for now, or use useNavigate if available in scope
+            >
+              전체 이슈 확인하기
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
