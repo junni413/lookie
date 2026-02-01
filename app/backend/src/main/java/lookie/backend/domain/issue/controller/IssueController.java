@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
+import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueResponse;
 import lookie.backend.domain.issue.service.IssueService;
 import lookie.backend.global.response.ApiResponse;
@@ -39,6 +40,21 @@ public class IssueController {
         Long workerId = SecurityUtil.getCurrentUserId();
         IssueResponse response = issueService.createIssue(workerId, request);
         return ResponseEntity.ok(ApiResponse.success("이슈가 등록되었습니다.", response));
+    }
+
+    /**
+     * 이슈 상세 조회
+     * - 작업자가 신고한 이슈의 현재 상태 및 AI 판정 결과 조회
+     */
+    @Operation(summary = "이슈 상세 조회", description = "이슈 ID로 이슈의 상태, AI 판정 결과, 다음 행동을 조회합니다.")
+    @GetMapping("/{issueId}")
+    public ResponseEntity<ApiResponse<IssueDetailResponse>> getIssueDetail(
+            @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId) {
+        log.info("[IssueController] getIssueDetail called. issueId={}", issueId);
+
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        return ResponseEntity.ok(ApiResponse.success("이슈 조회 성공", response));
     }
 
     /**

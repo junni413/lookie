@@ -3,6 +3,7 @@ package lookie.backend.domain.issue.service;
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
+import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueResponse;
 import lookie.backend.domain.issue.mapper.IssueMapper;
 import lookie.backend.domain.issue.vo.AiJudgmentVO;
@@ -385,5 +386,95 @@ class IssueServiceTest {
         // 중요: DB 업데이트 메서드들이 호출되지 않아야 함
         verify(issueMapper, never()).updateAiJudgment(any(AiJudgmentVO.class));
         verify(issueMapper, never()).updateIssueStatus(any(IssueVO.class));
+    }
+
+    // ================================================================
+    // 이슈 상세 조회 테스트
+    // ================================================================
+
+    @Test
+    @DisplayName("이슈 상세 조회 성공 - AI 판정 완료")
+    void getIssueDetail_Success_WithAiJudgment() {
+        // given
+        Long issueId = 1L;
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("RESOLVED");
+        issue.setPriority("LOW");
+        issue.setIssueHandling("NON_BLOCKING");
+        issue.setAdminRequired(false);
+        issue.setReasonCode("AUTO_RESOLVED");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("PASS");
+        judgment.setConfidence(0.95f);
+        judgment.setSummary("정상 상품으로 판정됨");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertNotNull(response);
+        assertEquals(issueId, response.getIssueId());
+        assertEquals("DAMAGED", response.getType());
+        assertEquals("RESOLVED", response.getStatus());
+        assertEquals("PASS", response.getAiResult());
+        assertEquals(0.95f, response.getConfidence());
+        assertEquals("정상 상품으로 판정됨", response.getSummary());
+        assertEquals("AUTO_RESOLVED", response.getNextAction());
+        assertTrue(response.getAvailableActions().isEmpty());
+    }
+
+    @Test
+    @DisplayName("이슈 상세 조회 성공 - 관리자 확인 필요")
+    void getIssueDetail_Success_AdminRequired() {
+        // given
+        Long issueId = 2L;
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+        issue.setPriority("HIGH");
+        issue.setIssueHandling("BLOCKING");
+        issue.setAdminRequired(true);
+        issue.setReasonCode("UNKNOWN");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("NEED_CHECK");
+        judgment.setConfidence(0.55f);
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertNotNull(response);
+        assertEquals("NEED_CHECK", response.getAiResult());
+        assertEquals("WAIT_ADMIN", response.getNextAction());
+        assertEquals(1, response.getAvailableActions().size());
+        assertTrue(response.getAvailableActions().contains("CONNECT_ADMIN"));
+    }
+
+    @Test
+    @DisplayName("이슈 상세 조회 실패 - 존재하지 않는 이슈")
+    void getIssueDetail_NotFound() {
+        // given
+        Long issueId = 999L;
+        when(issueMapper.findById(issueId)).thenReturn(null);
+
+        // when & then
+        ApiException exception = assertThrows(ApiException.class, () -> {
+            issueService.getIssueDetail(issueId);
+        });
+
+        assertEquals(ErrorCode.ISSUE_NOT_FOUND, exception.getErrorCode());
     }
 }

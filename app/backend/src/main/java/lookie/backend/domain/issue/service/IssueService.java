@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
+import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueNextAction;
 import lookie.backend.domain.issue.dto.IssueResponse;
 import lookie.backend.domain.issue.mapper.IssueMapper;
@@ -19,6 +20,9 @@ import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Issue 도메인 비즈니스 로직 처리 서비스
@@ -85,6 +89,34 @@ public class IssueService {
         // TODO: AI 서버로 이미지 판정 요청 (비동기)
 
         return IssueResponse.from(issue);
+    }
+
+    /**
+     * 이슈 상세 조회
+     * - Issue 기본 정보 + AI 판정 결과 + 계산 필드 반환
+     * - 프론트엔드가 이슈 상태를 확인할 수 있도록 조회 전용 API
+     */
+    @Transactional(readOnly = true)
+    public IssueDetailResponse getIssueDetail(Long issueId) {
+        log.info("[IssueService] getIssueDetail started. issueId={}", issueId);
+
+        // 1. Issue 조회
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 2. AI 판정 결과 조회
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
+
+        // 3. nextAction 계산
+        IssueNextAction nextAction = calculateNextAction(issue);
+
+        // 4. availableActions 생성
+        List<String> availableActions = generateAvailableActions(issue);
+
+        // 5. DTO 매핑 및 반환
+        return IssueDetailResponse.from(issue, judgment, nextAction.name(), availableActions);
     }
 
     /**
@@ -282,5 +314,24 @@ public class IssueService {
 
         // 나머지 → CONTINUE_PICKING
         return IssueNextAction.CONTINUE_PICKING;
+    }
+
+    /**
+     * 이슈 상태에 따른 가능한 액션 목록 생성
+     * UI 힌트용으로만 사용되며 서버 명령이 아님
+     * 
+     * @param issue Issue VO
+     * @return 가능한 액션 목록
+     */
+    private List<String> generateAvailableActions(IssueVO issue) {
+        List<String> actions = new ArrayList<>();
+
+        // adminRequired가 true이면 관리자 연결 가능
+        if (Boolean.TRUE.equals(issue.getAdminRequired())) {
+            actions.add("CONNECT_ADMIN");
+        }
+
+        // 그 외의 경우 빈 배열 반환
+        return actions;
     }
 }
