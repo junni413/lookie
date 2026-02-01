@@ -8,6 +8,7 @@ type FieldErrors = Partial<{
   phone: string;
   email: string;
   emailCode: string;
+  birth: string;
   pw: string;
   pw2: string;
 }>;
@@ -15,8 +16,28 @@ type FieldErrors = Partial<{
 const onlyDigits = (v: string) => v.replace(/\D/g, "");
 const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
-// 비밀번호 규칙은 팀 규칙에 맞게 수정 가능 (현재: 8자 이상)
-const isValidPassword = (v: string) => v.length >= 8;
+// ✅ Backend(UserService) 규칙과 통일
+const PHONE_PATTERN = /^010\d{8}$/; // 하이픈 없이 010 + 8자리 = 11자리
+const PASSWORD_PATTERN =
+  /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*#?&]{7,15}$/; // 7~15자, 영문+숫자 필수
+
+const isValidPhone = (v: string) => PHONE_PATTERN.test(onlyDigits(v));
+const isValidPassword = (v: string) => PASSWORD_PATTERN.test(v);
+
+const PASSWORD_HELP =
+  "비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다. (특수문자 @$!%*#?& 사용 가능)";
+
+// ✅ 생년월일: yyyy-mm-dd (백으로 보낼 포맷)
+const BIRTH_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const isValidBirth = (v: string) => BIRTH_PATTERN.test(v);
+
+// 보기용 포맷 (입력은 010-1234-5678 형태로)
+function formatPhone(digits: string) {
+  const d = digits.slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+}
 
 // ----- API helpers (프로젝트 axios 인스턴스 있으면 교체) -----
 async function postJSON<T>(url: string, body: unknown): Promise<T> {
@@ -26,7 +47,6 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
 
-  // 응답이 비어있을 수도 있음
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
@@ -67,8 +87,12 @@ export default function Signup() {
   const navigate = useNavigate();
 
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(""); // 화면에는 하이픈 포함 형태로 표시
   const [email, setEmail] = useState("");
+
+  // ✅ 생년월일 추가 (yyyy-mm-dd)
+  const [birth, setBirth] = useState("");
+
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
 
@@ -134,17 +158,20 @@ export default function Signup() {
     if (!name.trim()) next.name = "이름을 입력해주세요.";
 
     if (!phone.trim()) next.phone = "전화번호를 입력해주세요.";
-    else if (onlyDigits(phone).length < 10)
-      next.phone = "전화번호 형식을 확인해주세요.";
-    else if (!phoneVerified)
-      next.phone = "전화번호 중복확인을 완료해주세요.";
+    else if (!isValidPhone(phone))
+      next.phone = "전화번호는 010으로 시작하는 11자리 숫자여야 합니다.";
+    else if (!phoneVerified) next.phone = "전화번호 중복확인을 완료해주세요.";
 
     if (!email.trim()) next.email = "이메일을 입력해주세요.";
     else if (!isValidEmail(email)) next.email = "이메일 형식을 확인해주세요.";
     else if (!emailVerified) next.email = "이메일 인증을 완료해주세요.";
 
+    // ✅ birth 검증
+    if (!birth.trim()) next.birth = "생년월일을 입력해주세요.";
+    else if (!isValidBirth(birth)) next.birth = "생년월일 형식을 확인해주세요. (YYYY-MM-DD)";
+
     if (!pw.trim()) next.pw = "비밀번호를 입력해주세요.";
-    else if (!isValidPassword(pw)) next.pw = "비밀번호는 8자 이상이어야 합니다.";
+    else if (!isValidPassword(pw)) next.pw = PASSWORD_HELP;
 
     if (!pw2.trim()) next.pw2 = "비밀번호 확인을 입력해주세요.";
     else if (pw !== pw2) next.pw2 = "비밀번호가 일치하지 않습니다.";
@@ -156,14 +183,17 @@ export default function Signup() {
   const canSubmit = useMemo(() => {
     return (
       name.trim() &&
-      phone.trim() &&
+      isValidPhone(phone) &&
       email.trim() &&
+      isValidEmail(email) &&
+      birth.trim() &&
+      isValidBirth(birth) &&
       isValidPassword(pw) &&
       pw === pw2 &&
       phoneVerified &&
       emailVerified
     );
-  }, [name, phone, email, pw, pw2, phoneVerified, emailVerified]);
+  }, [name, phone, email, birth, pw, pw2, phoneVerified, emailVerified]);
 
   // ---------- handlers ----------
   const handleSubmit = async () => {
@@ -177,8 +207,9 @@ export default function Signup() {
     try {
       await postJSON("/api/auth/signup", {
         name,
-        phoneNumber: onlyDigits(phone),
+        phoneNumber: onlyDigits(phone), // ✅ 백은 digits만 받음
         email,
+        birthDate: birth, // ✅ 추가
         password: pw,
       });
 
@@ -186,7 +217,6 @@ export default function Signup() {
       navigate("/login");
     } catch (err: any) {
       const code = getErrCode(err);
-      // 주요 에러 코드별로 필드 에러 매핑 (프로젝트 규칙에 맞춰 수정)
       if (code === "USER_001") {
         setErrors((p) => ({ ...p, phone: "이미 가입된 전화번호입니다." }));
       } else if (code === "USER_002") {
@@ -201,16 +231,16 @@ export default function Signup() {
 
   const handlePhoneDup = async () => {
     const digits = onlyDigits(phone);
-    if (digits.length < 10) {
+
+    if (!PHONE_PATTERN.test(digits)) {
       setErrors((prev) => ({
         ...prev,
-        phone: "전화번호 형식을 확인해주세요.",
+        phone: "전화번호는 010으로 시작하는 11자리 숫자여야 합니다.",
       }));
       return;
     }
 
     if (isDev) {
-      // 개발 모드에서는 UI만
       setPhoneVerified(true);
       setErrors((prev) => ({ ...prev, phone: undefined }));
       return;
@@ -218,7 +248,6 @@ export default function Signup() {
 
     try {
       setErrors((prev) => ({ ...prev, phone: undefined }));
-      // TODO: 실제 중복확인 API로 교체 (예: /api/auth/check/phone)
       // await postJSON("/api/auth/check/phone", { phone: digits });
       setPhoneVerified(true);
     } catch (err: any) {
@@ -254,26 +283,20 @@ export default function Signup() {
     }
 
     if (isDev) {
-      // 개발 모드: UI만
       setEmailStep("sent");
-      setEmailExpiresAt(Date.now() + 5 * 60 * 1000); // 5분
-      setCooldownUntil(Date.now() + 60 * 1000); // 1분
+      setEmailExpiresAt(Date.now() + 5 * 60 * 1000);
+      setCooldownUntil(Date.now() + 60 * 1000);
       setErrors((p) => ({ ...p, email: undefined, emailCode: undefined }));
       return;
     }
 
     try {
       setErrors((p) => ({ ...p, email: undefined, emailCode: undefined }));
-
-      // TODO: 너희 실제 엔드포인트로 맞추기 (예: /api/auth/email/send-code)
-      // 문서에서 200 응답이 { id: 1 } 이었음 → 프론트는 id 필요 없다고 했으니 무시 가능
       await postJSON("/api/auth/email/send-code", { email });
 
       setEmailStep("sent");
-
-      // TTL(유효시간) 백에서 안 내려주면 프론트는 팀 합의값으로 잡기
-      setEmailExpiresAt(Date.now() + 5 * 60 * 1000); // 5분 (필요시 조정)
-      setCooldownUntil(Date.now() + 60 * 1000); // 1분
+      setEmailExpiresAt(Date.now() + 5 * 60 * 1000);
+      setCooldownUntil(Date.now() + 60 * 1000);
     } catch (err: any) {
       const code = getErrCode(err);
 
@@ -282,7 +305,6 @@ export default function Signup() {
         return;
       }
       if (code === "AUTH_005") {
-        // 1분 제한
         setCooldownUntil(Date.now() + 60 * 1000);
         setErrors((p) => ({ ...p, email: "1분 내 재발송이 제한됩니다." }));
         return;
@@ -302,7 +324,7 @@ export default function Signup() {
     }
   };
 
-  // 이메일 코드 확인 (email + code 확정)
+  // 이메일 코드 확인
   const handleEmailConfirmCode = async () => {
     if (!isValidEmail(email)) {
       setErrors((p) => ({ ...p, email: "이메일 형식을 확인해주세요." }));
@@ -313,7 +335,10 @@ export default function Signup() {
       return;
     }
     if (isEmailExpired) {
-      setErrors((p) => ({ ...p, emailCode: "인증번호가 만료되었습니다. 재전송해주세요." }));
+      setErrors((p) => ({
+        ...p,
+        emailCode: "인증번호가 만료되었습니다. 재전송해주세요.",
+      }));
       return;
     }
 
@@ -357,7 +382,6 @@ export default function Signup() {
   return (
     <div className="min-h-[100dvh] bg-white px-4 py-8">
       <div className="mx-auto w-full max-w-[430px]">
-        {/* 로고 */}
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-extrabold text-blue-600">Lookie</h1>
         </div>
@@ -378,10 +402,12 @@ export default function Signup() {
                 value={phone}
                 onChange={(e) => {
                   if (phoneVerified) setPhoneVerified(false);
-                  setPhone(onlyDigits(e.target.value));
+                  const digits = onlyDigits(e.target.value);
+                  setPhone(formatPhone(digits));
                 }}
                 placeholder="010-0000-0000"
                 className={inputClass(!!errors.phone)}
+                inputMode="numeric"
               />
               <button
                 type="button"
@@ -398,7 +424,6 @@ export default function Signup() {
           </Field>
 
           <Field label="이메일" error={errors.email}>
-            {/* 이메일 입력 + 인증코드 발송 */}
             <div className="flex gap-2">
               <input
                 value={email}
@@ -427,19 +452,17 @@ export default function Signup() {
               </button>
             </div>
 
-            {/* 인증번호 입력 + 확인 (발송 후 노출) */}
             {emailStep === "sent" && (
               <div className="mt-2">
                 <div className="flex gap-2">
                   <input
                     value={emailCode}
                     onChange={(e) =>
-                      setEmailCode(
-                        e.target.value.replace(/\D/g, "").slice(0, 6)
-                      )
+                      setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))
                     }
                     placeholder="인증번호 6자리"
                     className={inputClass(!!errors.emailCode)}
+                    inputMode="numeric"
                   />
                   <button
                     type="button"
@@ -473,6 +496,16 @@ export default function Signup() {
             )}
           </Field>
 
+          {/* ✅ 생년월일 추가 */}
+          <Field label="생년월일" error={errors.birth}>
+            <input
+              type="date"
+              value={birth}
+              onChange={(e) => setBirth(e.target.value)}
+              className={inputClass(!!errors.birth)}
+            />
+          </Field>
+
           <Field label="비밀번호" error={errors.pw}>
             <input
               type="password"
@@ -481,6 +514,7 @@ export default function Signup() {
               placeholder="********"
               className={inputClass(!!errors.pw)}
             />
+            <div className="mt-2 text-[11px] text-gray-400">{PASSWORD_HELP}</div>
           </Field>
 
           <Field label="비밀번호 확인" error={errors.pw2}>

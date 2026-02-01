@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
+import { useAuthStore } from "../../stores/authStore";
 import type { MobileLayoutContext } from "../../components/layout/MobileLayout";
 
 type WorkStatus = "WORKING" | "PAUSED";
@@ -7,11 +8,17 @@ type WorkStatus = "WORKING" | "PAUSED";
 export default function Home() {
   const { setTitle } = useOutletContext<MobileLayoutContext>();
   const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
 
   const [workStatus, setWorkStatus] = useState<WorkStatus>("WORKING");
+  const [savedTime, setSavedTime] = useState<string>("— —");
 
   useEffect(() => {
     setTitle("홈");
+
+    // ✅ 출근 시간 불러오기
+    const t = localStorage.getItem("worker_attend_time");
+    if (t) setSavedTime(t);
   }, [setTitle]);
 
   // 임시 데이터 (나중에 API로 교체)
@@ -30,10 +37,22 @@ export default function Home() {
   const onCheckout = () => {
     // TODO: 퇴근 처리 (나중에 API 연동)
     alert("퇴근 처리(임시)");
+    localStorage.removeItem("worker_attend_time");
+    setSavedTime("— —");
   };
 
   return (
     <div className="space-y-4">
+      {/* 안녕하세요 섹션 */}
+      <div className="px-1 pt-2">
+        <h1 className="text-2xl font-bold text-gray-900">
+          {user?.name ?? "작업자"}님
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">
+          안녕하세요! 오늘의 작업을 시작하세요.
+        </p>
+      </div>
+
       {/* 출근 카드 */}
       <section className="rounded-2xl border bg-white p-4 shadow-sm">
         <div className="flex items-start justify-between">
@@ -46,7 +65,7 @@ export default function Home() {
                 오늘의 출근 시간
               </p>
               <p className="mt-1 text-2xl font-extrabold tracking-tight text-gray-900">
-                — —
+                {savedTime}
               </p>
             </div>
           </div>

@@ -10,7 +10,7 @@ export default function AttendPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setTitle("출근하기");
+    setTitle("");
   }, [setTitle]);
 
   const handleAttend = async () => {
@@ -18,8 +18,13 @@ export default function AttendPage() {
     setLoading(true);
 
     try {
-      await attend();           // ✅ 출근 처리
-      navigate("/worker/home"); // ✅ 홈으로 이동 (홈이 상태조회해서 WORKING UI로 렌더링)
+      // ✅ 저장: 현재 시간을 로컬스토리지에 (임시)
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      localStorage.setItem("worker_attend_time", timeStr);
+
+      await attend(); // ✅ 출근 처리
+      navigate("/worker/home"); // ✅ 홈으로 이동
     } catch (e) {
       console.error("출근 처리 실패", e);
       alert("출근 처리에 실패했어요.");
