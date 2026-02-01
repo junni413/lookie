@@ -12,7 +12,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Map;
+import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 import lookie.backend.domain.webrtc.event.CallEndedEvent;
 import lookie.backend.domain.webrtc.event.CallRejectedEvent;
@@ -37,7 +37,7 @@ public class OpenViduService {
     @Transactional
     public WebRtcDto.CallResponse makeCall(WebRtcDto.CallRequest request) throws OpenViduJavaClientException, OpenViduHttpException {
 
-        // 1. [변경] 받는 사람 상태 검증 (통화 중, 자리 비움 등 체크)
+        // 1. 받는 사람 상태 검증 (통화 중, 자리 비움 등 체크)
         validateUserAvailable(request.getCalleeId());
 
         // 2. OpenVidu 세션 생성
@@ -49,8 +49,9 @@ public class OpenViduService {
                 .openViduSessionId(session.getSessionId())
                 .callerId(request.getCallerId())
                 .calleeId(request.getCalleeId())
-                .issueId(request.getIssueId())
+                .issueId(request.getIssueId()) // Nullable
                 .status("WAITING")
+                .createdAt(LocalDateTime.now()) // 생성 시간 명시적 설정
                 .build();
 
         callHistoryMapper.save(call);
@@ -82,8 +83,9 @@ public class OpenViduService {
             throw new ApiException(ErrorCode.WEBRTC_CLIENT_ERROR, "대기 중인 통화가 아닙니다.");
         }
 
-        // 3. [MyBatis] 상태 업데이트 (Active)
-        call.updateStatus("ACTIVE");
+        // 3. [Refactor] VO 로직 분리: 서비스에서 직접 상태 변경
+        call.setStatus("ACTIVE");
+        call.setStartTime(LocalDateTime.now()); // 통화 시작 시간 기록
         callHistoryMapper.update(call);
 
         // 4. OpenVidu 세션 가져오기 & 토큰 발급
@@ -108,14 +110,19 @@ public class OpenViduService {
         CallHistoryVO call = callHistoryMapper.findById(callId)
                 .orElseThrow(() -> new ApiException(ErrorCode.WEBRTC_SESSION_NOT_FOUND));
 
-        // [MyBatis] 상태 업데이트 (Rejected)
-        call.updateStatus("REJECTED");
+        // [Refactor] VO 로직 분리
+        call.setStatus("REJECTED");
+        // 거절은 종료 시간이 필요 없거나, 현재 시간으로 기록 가능 (여기서는 기록 안 함)
         callHistoryMapper.update(call);
 
-        // [Event 발행] "통화가 거절됨"을 알림 (이슈 로직 분리)
+        // [Event 발행] "통화가 거절됨" (reason: REJECTED 추가)
         if (call.getIssueId() != null) {
             eventPublisher.publishEvent(new CallRejectedEvent(
-                    call.getId(), call.getIssueId(), call.getCallerId(), call.getCalleeId()
+                    call.getId(),
+                    call.getIssueId(),
+                    call.getCallerId(),
+                    call.getCalleeId(),
+                    "REJECTED" // 사유 명시
             ));
         }
 
@@ -132,11 +139,12 @@ public class OpenViduService {
         CallHistoryVO call = callHistoryMapper.findById(callId)
                 .orElseThrow(() -> new ApiException(ErrorCode.WEBRTC_SESSION_NOT_FOUND));
 
-        // [MyBatis] 상태 업데이트 (Ended)
-        call.updateStatus("ENDED");
+        // [Refactor] VO 로직 분리
+        call.setStatus("ENDED");
+        call.setEndTime(LocalDateTime.now()); // 통화 종료 시간 기록
         callHistoryMapper.update(call);
 
-        // [Event 발행] "통화가 정상 종료됨"을 알림 (이슈 로직 분리)
+        // [Event 발행] "통화 정상 종료"
         if (call.getIssueId() != null) {
             eventPublisher.publishEvent(new CallEndedEvent(
                     call.getId(), call.getIssueId(), call.getCallerId(), call.getCalleeId()
@@ -163,20 +171,23 @@ public class OpenViduService {
         // 사유에 따른 분기 처리
         if ("TIMEOUT".equals(request.getReason())) {
             // 시나리오 1: 30초 동안 안 받음 -> "응답 없음"
-            call.updateStatus("NO_ANSWER");
+            call.setStatus("NO_ANSWER");
 
-            // [중요] 응답 없음은 "도움 요청 실패"이므로 긴급도 격상 이벤트 발행
+            // [중요] 응답 없음은 "도움 요청 실패" -> 긴급도 격상 (reason: TIMEOUT 추가)
             if (call.getIssueId() != null) {
-                // 기존 Rejected 이벤트나 새로운 NoAnswer 이벤트를 사용
                 eventPublisher.publishEvent(new CallRejectedEvent(
-                        call.getId(), call.getIssueId(), call.getCallerId(), call.getCalleeId()
+                        call.getId(),
+                        call.getIssueId(),
+                        call.getCallerId(),
+                        call.getCalleeId(),
+                        "TIMEOUT" // 사유 명시
                 ));
             }
 
         } else {
             // 시나리오 2: 잘못 눌러서 취소함 -> "취소됨"
-            call.updateStatus("CANCELED");
-            // 이슈 업데이트 불필요 (이벤트 발행 안 함)
+            call.setStatus("CANCELED");
+            // 이슈 업데이트 불필요
         }
 
         callHistoryMapper.update(call);
@@ -201,11 +212,6 @@ public class OpenViduService {
 
     // --- Redis 메서드 ---
 
-    /**
-     * [변경] 사용자가 '통화 가능(Available)' 상태인지 검증
-     * Key가 없음(Null) -> 가능
-     * BUSY, AWAY, PAUSED -> 불가능
-     */
     private void validateUserAvailable(Long userId) {
         String key = USER_STATUS_KEY + userId;
         String status = redisTemplate.opsForValue().get(key);
@@ -219,7 +225,6 @@ public class OpenViduService {
                 case "PAUSED":
                     throw new ApiException(ErrorCode.WEBRTC_USER_PAUSED);
                 default:
-                    // 알 수 없는 상태도 일단 BUSY로 처리
                     throw new ApiException(ErrorCode.WEBRTC_MANAGER_BUSY);
             }
         }
@@ -227,7 +232,8 @@ public class OpenViduService {
 
     private void setUserBusy(Long userId) {
         String key = USER_STATUS_KEY + userId;
-        redisTemplate.opsForValue().set(key, STATUS_BUSY, 1, TimeUnit.HOURS);
+        // [Refactor] 만료 시간 1시간 -> 10분으로 단축 (안전장치 강화)
+        redisTemplate.opsForValue().set(key, STATUS_BUSY, 10, TimeUnit.MINUTES);
     }
 
     private void clearUserStatus(Long userId) {

@@ -10,4 +10,5 @@ public class CallRejectedEvent {
     private Long issueId;  // Nullable
     private Long callerId;
     private Long calleeId;
+    private String reason; // "REJECTED" or "TIMEOUT" 추가!
 }
