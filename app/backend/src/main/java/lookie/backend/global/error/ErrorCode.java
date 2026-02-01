@@ -62,6 +62,7 @@ public enum ErrorCode {
 	// ===== ISSUE =====
 	ISSUE_RECAPTURE_REQUIRED("ISSUE_001", HttpStatus.BAD_REQUEST, "재촬영이 필요합니다"),
 	ISSUE_ITEM_NOT_FOUND("ISSUE_002", HttpStatus.NOT_FOUND, "작업 아이템을 찾을 수 없습니다"),
+	ISSUE_TASK_NOT_ASSIGNED("ISSUE_003", HttpStatus.FORBIDDEN, "해당 작업이 현재 작업자에게 할당되지 않았습니다"),
 
 	// ==== PRODUCT ====
 	PRODUCT_NOT_FOUND("PROD_001", HttpStatus.NOT_FOUND, "상품 정보를 찾을 수 없습니다"),

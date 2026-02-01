@@ -94,4 +94,20 @@ public class TaskItemService {
     public List<TaskItemVO> getAllItems(Long taskId) {
         return taskItemMapper.findAllByTaskId(taskId);
     }
+
+    /**
+     * [이슈] 아이템 상태를 ISSUE로 변경
+     * - 작업 흐름상 완료로 간주됨 (DONE과 동일)
+     */
+    @Transactional
+    public void markAsIssue(Long itemId) {
+        taskItemMapper.updateStatus(itemId, "ISSUE");
+    }
+
+    /**
+     * [이슈] 아이템 단건 조회 (Issue 도메인 연계용)
+     */
+    public TaskItemVO getTaskItem(Long itemId) {
+        return taskItemMapper.findById(itemId);
+    }
 }
