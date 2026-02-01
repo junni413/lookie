@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="lookie.backend.domain.webrtc.mapper.CallHistoryMapper">
+
+    <insert id="save" parameterType="lookie.backend.domain.webrtc.vo.CallHistoryVO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO call_history (
+        open_vidu_session_id, caller_id, callee_id, issue_id, status, created_at
+        ) VALUES (
+        #{openViduSessionId}, #{callerId}, #{calleeId}, #{issueId}, #{status}, NOW()
+        )
+    </insert>
+
+    <select id="findById" resultType="lookie.backend.domain.webrtc.vo.CallHistoryVO">
+        SELECT * FROM call_history WHERE id = #{id}
+    </select>
+
+    <update id="update" parameterType="lookie.backend.domain.webrtc.vo.CallHistoryVO">
+        UPDATE call_history
+        SET
+        status = #{status},
+        start_time = #{startTime},
+        end_time = #{endTime}
+        WHERE id = #{id}
+    </update>
+
+</mapper>
