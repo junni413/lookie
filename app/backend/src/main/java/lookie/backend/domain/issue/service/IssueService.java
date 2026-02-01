@@ -60,7 +60,7 @@ public class IssueService {
         }
 
         // 3. Issue 생성
-        IssueVO issue = IssueVO.createInitial(workerId, item);
+        IssueVO issue = IssueVO.createInitial(workerId, item, request.getIssueType());
 
         issueMapper.insertIssue(issue);
         log.info("[IssueService] Issue created. issueId={}", issue.getIssueId());

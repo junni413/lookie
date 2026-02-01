@@ -52,6 +52,7 @@ class IssueServiceTest {
         CreateIssueRequest request = new CreateIssueRequest();
         request.setBatchTaskId(taskId);
         request.setBatchTaskItemId(itemId);
+        request.setIssueType("DAMAGED");
         request.setImageUrl("https://example.com/image.jpg");
 
         TaskItemVO item = new TaskItemVO();
@@ -109,6 +110,42 @@ class IssueServiceTest {
     }
 
     @Test
+    @DisplayName("이슈 생성 성공 - OUT_OF_STOCK")
+    void createIssue_Success_OutOfStock() {
+        // given
+        Long workerId = 1L;
+        Long taskId = 100L;
+        Long itemId = 200L;
+
+        CreateIssueRequest request = new CreateIssueRequest();
+        request.setBatchTaskId(taskId);
+        request.setBatchTaskItemId(itemId);
+        request.setIssueType("OUT_OF_STOCK");
+        request.setImageUrl("https://example.com/image.jpg");
+
+        TaskItemVO item = new TaskItemVO();
+        item.setBatchTaskItemId(itemId);
+        item.setBatchTaskId(taskId);
+        item.setStatus("PENDING");
+
+        TaskVO task = new TaskVO();
+        task.setBatchTaskId(taskId);
+        task.setWorkerId(workerId);
+
+        when(taskItemService.getTaskItem(itemId)).thenReturn(item);
+        when(taskMapper.findById(taskId)).thenReturn(task);
+
+        // when
+        IssueResponse response = issueService.createIssue(workerId, request);
+
+        // then
+        assertNotNull(response);
+        ArgumentCaptor<IssueVO> issueCaptor = ArgumentCaptor.forClass(IssueVO.class);
+        verify(issueMapper, atLeastOnce()).insertIssue(issueCaptor.capture());
+        assertEquals("OUT_OF_STOCK", issueCaptor.getValue().getIssueType());
+    }
+
+    @Test
     @DisplayName("이슈 생성 실패: TaskItem이 존재하지 않음")
     void createIssue_Fail_ItemNotFound() {
         // given
@@ -118,6 +155,7 @@ class IssueServiceTest {
         CreateIssueRequest request = new CreateIssueRequest();
         request.setBatchTaskId(100L);
         request.setBatchTaskItemId(itemId);
+        request.setIssueType("DAMAGED");
         request.setImageUrl("https://example.com/image.jpg");
 
         when(taskItemService.getTaskItem(itemId)).thenReturn(null);
@@ -148,6 +186,7 @@ class IssueServiceTest {
         CreateIssueRequest request = new CreateIssueRequest();
         request.setBatchTaskId(taskId);
         request.setBatchTaskItemId(itemId);
+        request.setIssueType("DAMAGED");
         request.setImageUrl("https://example.com/image.jpg");
 
         TaskItemVO item = new TaskItemVO();
@@ -184,6 +223,7 @@ class IssueServiceTest {
         CreateIssueRequest request = new CreateIssueRequest();
         request.setBatchTaskId(100L);
         request.setBatchTaskItemId(200L);
+        request.setIssueType("DAMAGED");
         request.setImageUrl("https://example.com/image.jpg");
 
         TaskItemVO item = new TaskItemVO();

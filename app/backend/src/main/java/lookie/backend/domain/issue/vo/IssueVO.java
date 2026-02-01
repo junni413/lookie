@@ -34,11 +34,11 @@ public class IssueVO {
     /**
      * 이슈 초기 생성
      */
-    public static IssueVO createInitial(Long workerId, TaskItemVO item) {
+    public static IssueVO createInitial(Long workerId, TaskItemVO item, String issueType) {
         IssueVO issue = new IssueVO();
 
         // 기본 정책 (Issue Core 설계 문서 기준)
-        issue.setIssueType("DAMAGED"); // 기본값: 파손
+        issue.setIssueType(issueType); // 입력받은 유형으로 설정 (DAMAGED 또는 OUT_OF_STOCK)
         issue.setStatus("OPEN"); // 상태: 열림
         issue.setPriority("MEDIUM"); // 우선순위: 중간
         issue.setIssueHandling("NON_BLOCKING"); // 처리 방식: 비차단
