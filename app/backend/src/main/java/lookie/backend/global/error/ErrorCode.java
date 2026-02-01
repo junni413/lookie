@@ -48,6 +48,13 @@ public enum ErrorCode {
 	// ===== ISSUE =====
 	ISSUE_RECAPTURE_REQUIRED("ISSUE_001", HttpStatus.BAD_REQUEST, "재촬영이 필요합니다"),
 
+	// ===== WEBRTC (OpenVidu) =====
+	WEBRTC_SESSION_NOT_FOUND("RTC_001", HttpStatus.NOT_FOUND, "존재하지 않거나 이미 종료된 세션입니다"),
+	WEBRTC_MANAGER_BUSY("RTC_002", HttpStatus.CONFLICT, "관리자가 현재 부재중입니다"),
+	WEBRTC_SERVER_ERROR("RTC_003", HttpStatus.INTERNAL_SERVER_ERROR, "OpenVidu 서버와 통신 중 오류가 발생했습니다"),
+	WEBRTC_CLIENT_ERROR("RTC_004", HttpStatus.BAD_REQUEST, "잘못된 WebRTC 요청입니다"),
+	WEBRTC_USER_AWAY("RTC_005", HttpStatus.CONFLICT, "상대방이 자리 비움 상태입니다"),
+	WEBRTC_USER_PAUSED("RTC_006", HttpStatus.CONFLICT, "상대방이 작업 중지 상태입니다"),
 	// ==== SYSTEM =====
 	SYSTEM_TEMPORARY_LOCK_FAILED("SYS_001", HttpStatus.TOO_MANY_REQUESTS, "요청이 많아 잠시 후 다시 시도해주세요");
 
