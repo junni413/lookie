@@ -41,12 +41,29 @@ public enum ErrorCode {
 	TASK_NOT_FOUND("TASK_003", HttpStatus.NOT_FOUND, "작업을 찾을 수 없습니다"),
 	TASK_NO_AVAILABLE("TASK_004", HttpStatus.CONFLICT, "할당 가능한 작업이 없습니다"),
 	TASK_INVALID_STATE("TASK_005", HttpStatus.CONFLICT, "작업 상태 전이가 올바르지 않습니다"),
+	TASK_TOTE_MISMATCH("TASK_006", HttpStatus.BAD_REQUEST, "토트 바코드가 일치하지 않습니다"),
+	TASK_LOCATION_MISMATCH("TASK_007", HttpStatus.BAD_REQUEST, "지시된 지번과 일치하지 않습니다"),
+	TASK_NOT_RELEASABLE("TASK_009", HttpStatus.BAD_REQUEST, "미완료된 아이템이 있어 작업을 완료할 수 없습니다"),
+	WORKER_ALREADY_HAS_TASK("TASK_010", HttpStatus.CONFLICT, "이미 진행 중인 작업이 있습니다"),
+	TASK_ITEM_QUANTITY_EXCEEDED("TASK_011", HttpStatus.BAD_REQUEST, "요구 수량을 초과하여 집품할 수 없습니다"),
+	TASK_ITEM_QUANTITY_NOT_SUFFICIENT("TASK_012", HttpStatus.BAD_REQUEST, "요구 수량을 모두 채워야 완료할 수 있습니다"),
+	TASK_ITEM_NOT_ASSIGNED("TASK_013", HttpStatus.BAD_REQUEST, "현재 작업에 할당된 상품이 아닙니다"),
+
+	// ==== LOCATION ====
+	LOCATION_NOT_FOUND("LOC_001", HttpStatus.NOT_FOUND, "존재하지 않는 지번 코드입니다"),
+	LOCATION_ZONE_MISMATCH("LOC_002", HttpStatus.BAD_REQUEST, "현재 작업 구역과 일치하지 않는 지번입니다"),
 
 	// ==== ZONE ====
 	WORKER_ZONE_NOT_ASSIGNED("ZONE_001", HttpStatus.BAD_REQUEST, "작업자에게 배정된 작업 구역이 없습니다"),
 
+	// ==== TOTE ====
+	TOTE_ALREADY_IN_USE("TOTE_001", HttpStatus.CONFLICT, "이미 다른 작업에 사용 중인 토트입니다"),
+
 	// ===== ISSUE =====
 	ISSUE_RECAPTURE_REQUIRED("ISSUE_001", HttpStatus.BAD_REQUEST, "재촬영이 필요합니다"),
+
+	// ==== PRODUCT ====
+	PRODUCT_NOT_FOUND("PROD_001", HttpStatus.NOT_FOUND, "상품 정보를 찾을 수 없습니다"),
 
 	// ===== WEBRTC (OpenVidu) =====
 	WEBRTC_SESSION_NOT_FOUND("RTC_001", HttpStatus.NOT_FOUND, "존재하지 않거나 이미 종료된 세션입니다"),

@@ -13,10 +13,13 @@
             zone_id AS zoneId,
             worker_id AS workerId,
             status,
+            action_status AS actionStatus,
             started_at AS startedAt,
             completed_at AS completedAt,
             tote_id AS toteId,
+            current_location_id AS currentLocationId,
             tote_scanned_at AS toteScannedAt,
+            location_scanned_at AS locationScannedAt,
             tote_released_at AS toteReleasedAt
         FROM batch_tasks
         WHERE batch_task_id = #{batchTaskId}
@@ -41,12 +44,26 @@
         FOR UPDATE
     </select>
 
+    <!--[조회] 작업자가 현재 진행 중인 작업이 있는지 확인-->
+    <select id="findInProgressByWorkerId" resultType="TaskVO">
+        SELECT
+            batch_task_id AS batchTaskId,
+            worker_id AS workerId,
+            status,
+            action_status AS actionStatus
+        FROM batch_tasks
+        WHERE worker_id = #{workerId}
+          AND status = 'IN_PROGRESS'
+        LIMIT 1
+    </select>
+
     <!--[수정] 할당된 작업 상태 변경 -->
     <update id="updateAssignToInProgress">
         UPDATE batch_tasks
         SET
             worker_id = #{workerId},
             status = 'IN_PROGRESS',
+            action_status = 'SCAN_TOTE',
             started_at = NOW()
         WHERE
             batch_task_id = #{batchTaskId}
@@ -58,7 +75,42 @@
         UPDATE batch_tasks
         SET
             status = 'COMPLETED',
-            completed_at = NOW()
+            completed_at = NOW(),
+            action_status = 'COMPLETE_TASK'
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
+
+    <!--[수정] 토트 스캔 결과 업데이트 -->
+    <update id="updateToteScanResult">
+        UPDATE batch_tasks
+        SET
+            tote_id = #{toteId},
+            action_status = 'SCAN_LOCATION',
+            tote_scanned_at = NOW()
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
+
+    <!--[수정] 지번 스캔 결과 업데이트 -->
+    <update id="updateLocationScanResult">
+        UPDATE batch_tasks
+        SET
+            current_location_id = #{locationId},
+            action_status = 'SCAN_ITEM',
+            location_scanned_at = NOW()
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
+
+    <!--[수정] 작업 액션 상태 강제 업데이트 -->
+    <update id="updateActionStatus">
+        UPDATE batch_tasks
+        SET
+            action_status = #{actionStatus}
         WHERE
             batch_task_id = #{batchTaskId}
             AND status = 'IN_PROGRESS'

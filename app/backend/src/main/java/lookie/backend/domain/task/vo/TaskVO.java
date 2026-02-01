@@ -25,6 +25,10 @@ public class TaskVO {
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
 
+    private Long currentLocationId; // [New] 현재 스캔된 지번 ID
     private LocalDateTime toteScannedAt;
     private LocalDateTime toteReleasedAt;
+
+    private TaskActionStatus actionStatus; // SCAN_TOTE / SCAN_LOCATION / SCAN_ITEM / COMPLETE_TASK
+    private LocalDateTime locationScannedAt; // 지번 스캔 완료 시각
 }
