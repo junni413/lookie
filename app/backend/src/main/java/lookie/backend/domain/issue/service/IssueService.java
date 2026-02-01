@@ -2,7 +2,10 @@ package lookie.backend.domain.issue.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.issue.dto.AiResultRequest;
+import lookie.backend.domain.issue.dto.AiResultResponse;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
+import lookie.backend.domain.issue.dto.IssueNextAction;
 import lookie.backend.domain.issue.dto.IssueResponse;
 import lookie.backend.domain.issue.mapper.IssueMapper;
 import lookie.backend.domain.issue.vo.AiJudgmentVO;
@@ -82,5 +85,194 @@ public class IssueService {
         // TODO: AI 서버로 이미지 판정 요청 (비동기)
 
         return IssueResponse.from(issue);
+    }
+
+    /**
+     * AI 판정 결과 반영
+     * - AI 서버로부터 판정 결과 수신 시 호출
+     * - AI 결과에 따라 Issue 정책 자동 업데이트
+     * - PASS 케이스는 자동 해결 처리
+     */
+    @Transactional
+    public AiResultResponse processAiResult(Long issueId, AiResultRequest request) {
+        log.info("[IssueService] processAiResult started. issueId={}, aiDecision={}",
+                issueId, request.getAiDecision());
+
+        // 1. Issue 존재 확인
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 2. AI 판정 결과 업데이트
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setIssueId(issueId);
+        judgment.setAiDecision(request.getAiDecision());
+        judgment.setConfidence(request.getConfidence());
+        judgment.setSummary(request.getSummary());
+        judgment.setAiResult(request.getAiResult());
+        issueMapper.updateAiJudgment(judgment);
+
+        // 3. AI 결과 → Issue 정책 매핑
+        applyAiResultPolicy(issue, request.getAiDecision());
+
+        // 4. Issue 업데이트
+        issueMapper.updateIssueStatus(issue);
+        log.info("[IssueService] Issue updated by AI result. issueId={}, status={}, priority={}",
+                issueId, issue.getStatus(), issue.getPriority());
+
+        // 5. nextAction 계산
+        IssueNextAction nextAction = calculateNextAction(issue);
+
+        return AiResultResponse.from(issue, nextAction);
+    }
+
+    /**
+     * AI 판정 결과에 따른 Issue 정책 매핑
+     * - issue_type과 ai_decision 조합으로 정책 결정
+     * 
+     * @param issue      Issue VO (업데이트할 객체)
+     * @param aiDecision AI 판정 결과 (PASS, FAIL, NEED_CHECK, UNKNOWN)
+     */
+    private void applyAiResultPolicy(IssueVO issue, String aiDecision) {
+        String issueType = issue.getIssueType();
+
+        // DAMAGED 케이스
+        if ("DAMAGED".equals(issueType)) {
+            applyDamagedPolicy(issue, aiDecision);
+        }
+        // OUT_OF_STOCK 케이스
+        else if ("OUT_OF_STOCK".equals(issueType)) {
+            applyOutOfStockPolicy(issue, aiDecision);
+        } else {
+            log.warn("[IssueService] Unknown issue_type={}. Applying default policy.", issueType);
+            applyDefaultPolicy(issue);
+        }
+    }
+
+    /**
+     * DAMAGED 타입 정책
+     */
+    private void applyDamagedPolicy(IssueVO issue, String aiDecision) {
+        switch (aiDecision) {
+            case "PASS":
+                // 정상: 자동 해결
+                issue.setStatus("RESOLVED");
+                issue.setPriority("LOW");
+                issue.setIssueHandling("NON_BLOCKING");
+                issue.setAdminRequired(false);
+                issue.setReasonCode("AUTO_RESOLVED");
+                issue.setResolvedAt(java.time.LocalDateTime.now());
+                log.info("[IssueService] DAMAGED + PASS → Auto-resolved. issueId={}", issue.getIssueId());
+                break;
+
+            case "NEED_CHECK":
+                // 확인 필요: 관리자 검토 필요 (BLOCKING)
+                issue.setStatus("OPEN");
+                issue.setPriority("HIGH");
+                issue.setIssueHandling("BLOCKING");
+                issue.setAdminRequired(true);
+                issue.setReasonCode("UNKNOWN");
+                log.info("[IssueService] DAMAGED + NEED_CHECK → Admin required (BLOCKING). issueId={}",
+                        issue.getIssueId());
+                break;
+
+            case "FAIL":
+                // 명확한 파손
+                issue.setStatus("OPEN");
+                issue.setPriority("MEDIUM");
+                issue.setIssueHandling("NON_BLOCKING");
+                issue.setAdminRequired(false);
+                issue.setReasonCode("DAMAGED");
+                log.info("[IssueService] DAMAGED + FAIL → Damaged confirmed. issueId={}", issue.getIssueId());
+                break;
+
+            case "UNKNOWN":
+            default:
+                applyDefaultPolicy(issue);
+                break;
+        }
+    }
+
+    /**
+     * OUT_OF_STOCK 타입 정책
+     */
+    private void applyOutOfStockPolicy(IssueVO issue, String aiDecision) {
+        switch (aiDecision) {
+            case "PASS":
+                // 지번 이동
+                issue.setStatus("RESOLVED");
+                issue.setPriority("LOW");
+                issue.setIssueHandling("NON_BLOCKING");
+                issue.setAdminRequired(false);
+                issue.setReasonCode("MOVE_LOCATION");
+                issue.setResolvedAt(java.time.LocalDateTime.now());
+                log.info("[IssueService] OUT_OF_STOCK + PASS → Move location. issueId={}", issue.getIssueId());
+                break;
+
+            case "NEED_CHECK":
+                // 전산상 재고 있음 (BLOCKING)
+                issue.setStatus("OPEN");
+                issue.setPriority("HIGH");
+                issue.setIssueHandling("BLOCKING");
+                issue.setAdminRequired(true);
+                issue.setReasonCode("STOCK_EXISTS");
+                log.info("[IssueService] OUT_OF_STOCK + NEED_CHECK → Stock exists (BLOCKING). issueId={}",
+                        issue.getIssueId());
+                break;
+
+            case "FAIL":
+                // 파손 원인 (1단계: DAMAGED 통합)
+                issue.setStatus("OPEN");
+                issue.setPriority("MEDIUM");
+                issue.setIssueHandling("NON_BLOCKING");
+                issue.setAdminRequired(false);
+                issue.setReasonCode("DAMAGED");
+                log.info("[IssueService] OUT_OF_STOCK + FAIL → Damaged cause. issueId={}", issue.getIssueId());
+                break;
+
+            case "UNKNOWN":
+            default:
+                applyDefaultPolicy(issue);
+                break;
+        }
+    }
+
+    /**
+     * 기본 정책 (UNKNOWN 등)
+     */
+    private void applyDefaultPolicy(IssueVO issue) {
+        issue.setStatus("OPEN");
+        issue.setPriority("MEDIUM");
+        issue.setIssueHandling("NON_BLOCKING");
+        issue.setAdminRequired(false);
+        issue.setReasonCode("UNKNOWN");
+        log.warn("[IssueService] Applying default policy. issueId={}", issue.getIssueId());
+    }
+
+    /**
+     * Issue 상태 조합으로 nextAction 계산
+     * 
+     * @param issue Issue VO
+     * @return 프론트엔드 권고 행동
+     */
+    private IssueNextAction calculateNextAction(IssueVO issue) {
+        // BLOCKING → WAIT_ADMIN
+        if ("BLOCKING".equals(issue.getIssueHandling())) {
+            return IssueNextAction.WAIT_ADMIN;
+        }
+
+        // RESOLVED + MOVE_LOCATION → MOVE_LOCATION
+        if ("RESOLVED".equals(issue.getStatus()) && "MOVE_LOCATION".equals(issue.getReasonCode())) {
+            return IssueNextAction.MOVE_LOCATION;
+        }
+
+        // RESOLVED + AUTO_RESOLVED → AUTO_RESOLVED
+        if ("RESOLVED".equals(issue.getStatus()) && "AUTO_RESOLVED".equals(issue.getReasonCode())) {
+            return IssueNextAction.AUTO_RESOLVED;
+        }
+
+        // 나머지 → CONTINUE_PICKING
+        return IssueNextAction.CONTINUE_PICKING;
     }
 }

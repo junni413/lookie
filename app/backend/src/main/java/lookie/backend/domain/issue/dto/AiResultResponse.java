@@ -22,11 +22,12 @@ public class AiResultResponse {
     private Boolean adminRequired; // 관리자 확인 필요 여부
     private String reasonCode; // 이슈 사유 코드
     private LocalDateTime resolvedAt; // 자동 해결 시각 (PASS 케이스)
+    private IssueNextAction nextAction; // 다음 권고 행동
 
     /**
-     * IssueVO로부터 응답 생성
+     * IssueVO와 nextAction으로부터 응답 생성
      */
-    public static AiResultResponse from(IssueVO issue) {
+    public static AiResultResponse from(IssueVO issue, IssueNextAction nextAction) {
         return new AiResultResponse(
                 issue.getIssueId(),
                 issue.getStatus(),
@@ -34,6 +35,7 @@ public class AiResultResponse {
                 issue.getIssueHandling(),
                 issue.getAdminRequired(),
                 issue.getReasonCode(),
-                issue.getResolvedAt());
+                issue.getResolvedAt(),
+                nextAction);
     }
 }

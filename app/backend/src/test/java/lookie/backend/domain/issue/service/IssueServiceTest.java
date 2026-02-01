@@ -1,5 +1,7 @@
 package lookie.backend.domain.issue.service;
 
+import lookie.backend.domain.issue.dto.AiResultRequest;
+import lookie.backend.domain.issue.dto.AiResultResponse;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
 import lookie.backend.domain.issue.dto.IssueResponse;
 import lookie.backend.domain.issue.mapper.IssueMapper;
@@ -205,5 +207,113 @@ class IssueServiceTest {
         inOrder.verify(issueMapper).insertIssueImage(any(IssueImageVO.class));
         inOrder.verify(issueMapper).insertAiJudgment(any(AiJudgmentVO.class));
         inOrder.verify(taskItemService).markAsIssue(200L);
+    }
+
+    // ================================================================
+    // AI 판정 결과 처리 테스트
+    // ================================================================
+
+    @Test
+    @DisplayName("AI 결과 처리 성공 - PASS (자동 해결)")
+    void processAiResult_Pass_AutoResolved() {
+        // given
+        Long issueId = 1L;
+        AiResultRequest request = new AiResultRequest();
+        request.setAiDecision("PASS");
+        request.setConfidence(0.95f);
+        request.setSummary("정상 상품으로 판정됨");
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        AiResultResponse response = issueService.processAiResult(issueId, request);
+
+        // then
+        assertNotNull(response);
+        assertEquals("RESOLVED", response.getStatus());
+        assertEquals("LOW", response.getPriority());
+        assertEquals("NON_BLOCKING", response.getIssueHandling());
+        assertEquals(false, response.getAdminRequired());
+        assertEquals("AUTO_RESOLVED", response.getReasonCode());
+        assertNotNull(response.getResolvedAt());
+
+        verify(issueMapper).updateAiJudgment(any(AiJudgmentVO.class));
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("AI 결과 처리 성공 - NEED_CHECK (관리자 확인 필요)")
+    void processAiResult_NeedCheck_AdminRequired() {
+        // given
+        Long issueId = 1L;
+        AiResultRequest request = new AiResultRequest();
+        request.setAiDecision("NEED_CHECK");
+        request.setConfidence(0.6f);
+        request.setSummary("확인 필요");
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        AiResultResponse response = issueService.processAiResult(issueId, request);
+
+        // then
+        assertEquals("OPEN", response.getStatus());
+        assertEquals("HIGH", response.getPriority());
+        assertEquals(true, response.getAdminRequired());
+        assertEquals("UNKNOWN", response.getReasonCode());
+    }
+
+    @Test
+    @DisplayName("AI 결과 처리 성공 - FAIL (파손 확정)")
+    void processAiResult_Fail_Damaged() {
+        // given
+        Long issueId = 1L;
+        AiResultRequest request = new AiResultRequest();
+        request.setAiDecision("FAIL");
+        request.setConfidence(0.88f);
+        request.setSummary("명확한 파손 감지");
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        AiResultResponse response = issueService.processAiResult(issueId, request);
+
+        // then
+        assertEquals("MEDIUM", response.getPriority());
+        assertEquals(false, response.getAdminRequired());
+        assertEquals("DAMAGED", response.getReasonCode());
+    }
+
+    @Test
+    @DisplayName("AI 결과 처리 실패 - Issue 없음")
+    void processAiResult_Fail_IssueNotFound() {
+        // given
+        Long issueId = 999L;
+        AiResultRequest request = new AiResultRequest();
+        request.setAiDecision("PASS");
+
+        when(issueMapper.findById(issueId)).thenReturn(null);
+
+        // when & then
+        ApiException exception = assertThrows(ApiException.class, () -> {
+            issueService.processAiResult(issueId, request);
+        });
+
+        assertEquals(ErrorCode.ISSUE_NOT_FOUND, exception.getErrorCode());
+        verify(issueMapper, never()).updateAiJudgment(any());
+        verify(issueMapper, never()).updateIssueStatus(any());
     }
 }
