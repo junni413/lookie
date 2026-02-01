@@ -1,0 +1,14 @@
+package lookie.backend.domain.webrtc.event;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+@Getter
+@AllArgsConstructor
+public class CallRejectedEvent {
+    private Long callId;
+    private Long issueId;  // Nullable
+    private Long callerId;
+    private Long calleeId;
+    private String reason; // "REJECTED" or "TIMEOUT" 추가!
+}

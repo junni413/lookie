@@ -1,35 +1,61 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
+import { useAuthStore } from "../../stores/authStore";
 
 type Ctx = { setTitle: (t: string) => void };
+
+function formatPhone(digits?: string) {
+  if (!digits) return "-";
+  const d = digits.replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+}
 
 export default function MyPage() {
   const { setTitle } = useOutletContext<Ctx>();
   const navigate = useNavigate();
 
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const fetchMe = useAuthStore((s) => s.fetchMe);
+
   useEffect(() => setTitle("마이페이지"), [setTitle]);
 
-  const user = useMemo(
+  // 로그인 안 됨
+  useEffect(() => {
+    if (!token) navigate("/login", { replace: true });
+  }, [token, navigate]);
+
+  // 새로고침 대응
+  useEffect(() => {
+    if (token && !user) {
+      fetchMe().catch(() => {});
+    }
+  }, [token, user, fetchMe]);
+
+  if (!token || !user) return null;
+
+  const view = useMemo(
     () => ({
-      name: "김싸피",
-      phone: "010-0000-0000",
-      birth: "2000.00.00",
-      email: "ssafy@gmail.com",
+      name: user.name,
+      phone: formatPhone(user.phoneNumber),
+      birth: user.birthDate ?? "-",
+      email: user.email,
     }),
-    []
+    [user]
   );
 
   return (
     <div className="space-y-4">
       <div className="rounded-2xl bg-white p-4 shadow-sm border">
         <div className="space-y-4">
-          <Field label="이름" value={user.name} />
-          <Field label="전화번호" value={user.phone} />
-          <Field label="생년월일" value={user.birth} />
-          <Field label="이메일" value={user.email} />
+          <Field label="이름" value={view.name} />
+          <Field label="전화번호" value={view.phone} />
+          <Field label="생년월일" value={view.birth} />
+          <Field label="이메일" value={view.email} />
         </div>
 
-        {/* ✅ 여기: 마이페이지 하단 버튼은 '내 정보 수정'으로 이동 */}
         <button
           type="button"
           onClick={() => navigate("/worker/profile/edit")}

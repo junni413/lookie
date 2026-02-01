@@ -1,5 +1,7 @@
 package lookie.backend.global.error;
 
+import io.openvidu.java.client.OpenViduHttpException;
+import io.openvidu.java.client.OpenViduJavaClientException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +35,27 @@ public class GlobalExceptionHandler {
 		return ResponseEntity
 				.status(errorCode.getStatus())
 				.body(response);
+	}
+
+	// [추가] OpenVidu 서버 통신 에러 (Http Status가 넘어오는 경우)
+	@ExceptionHandler(OpenViduHttpException.class)
+	public ResponseEntity<ApiResponse<Void>> handleOpenViduHttpException(OpenViduHttpException e) {
+		log.error("[OpenVidu Http Error] Status: {}, Message: {}", e.getStatus(), e.getMessage());
+
+		// 404인 경우 세션 없음 처리
+		if (e.getStatus() == 404) {
+			return handleApiException(new ApiException(ErrorCode.WEBRTC_SESSION_NOT_FOUND));
+		}
+
+		// 그 외는 서버 에러로 처리
+		return handleApiException(new ApiException(ErrorCode.WEBRTC_SERVER_ERROR));
+	}
+
+	// [추가] OpenVidu 자바 클라이언트 내부 에러
+	@ExceptionHandler(OpenViduJavaClientException.class)
+	public ResponseEntity<ApiResponse<Void>> handleOpenViduJavaClientException(OpenViduJavaClientException e) {
+		log.error("[OpenVidu Client Error] ", e);
+		return handleApiException(new ApiException(ErrorCode.WEBRTC_CLIENT_ERROR));
 	}
 
 	// 예상치 못한 서버 오류 처리
