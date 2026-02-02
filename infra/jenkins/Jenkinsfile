@@ -301,33 +301,32 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         }
       }
     }
-
-    // [ADD] AI Server CI (Unit Test)
-    // - 도커 이미지 빌드 전에 코드가 정상인지 먼저 검증
-    stage('AI Server Test') {
-      when { 
-        expression { 
-          // MR이거나 develop 브랜치 푸시일 때 실행
-          (env.EVENT_KIND == 'merge_request' || env.PUSH_BRANCH == 'develop') 
-        } 
-      }
+    // ============================================================
+    // MR: AI Server Test (Only Build & Test, No Push)
+    // - MR 단계에서는 도커 허브에 올리지 않고, 빌드/테스트만 검증합니다.
+    // ============================================================
+    stage('AI Test (MR only)') {
+      when { expression { env.EVENT_KIND == 'merge_request' } }
       steps {
-        dir('app/ai-server') {
-          sh '''
-            bash -lc '
-              set -euo pipefail
-              echo "[INFO] Start AI Unit Test..."
-              
-              # Python 컨테이너를 일회용으로 띄워서 테스트 수행 (호스트 오염 방지)
-              docker run --rm \
-                -v "$PWD":/app -w /app \
-                python:3.9-slim sh -c "
-                  pip install --no-cache-dir -r requirements.txt && \
-                  pip install pytest httpx && \
-                  pytest
-                "
-            '
-          '''
+        script {
+            // MR에서는 태그를 고정(test)해서 덮어쓰기 (용량 절약)
+            def testTag = "test"
+            
+            // Build (캐시 활용) -> Test (컨테이너 내부 실행)
+            sh """
+              bash -lc '
+                set -euo pipefail
+                echo "[INFO] AI Server MR Test Start..."
+                
+                # 1. 빌드 (Push 안 함)
+                docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${testTag}" "${AI_CONTEXT}"
+                
+                # 2. 테스트 (이미지 내부 pytest 실행)
+                docker run --rm "${REGISTRY_IMAGE_AI}:${testTag}" pytest /app/test_main.py
+                
+                echo "[INFO] MR Test Passed! (Ready to Merge)"
+              '
+            """
         }
       }
     }
@@ -405,8 +404,21 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
                 "${NGINX_CONTEXT}"
               docker push "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}"
 
-              # ✅ AI Server Build & Push (테스트 통과 시에만 여기까지 옴)
+              # -------------------------------------------------------
+              # [2] AI Server: 빌드 -> 테스트 -> 푸시 (순서 중요!)
+              # -------------------------------------------------------
+              echo "[INFO] AI Server Docker Build..."
+              # 캐시를 활용해 빠르게 빌드 (태그는 임시로 latest 사용하거나 SHA 사용)
               docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" "${AI_CONTEXT}"
+
+              echo "[INFO] AI Server Test Running (Inside Container)..."
+              # ✅ 리뷰어 피드백 반영: 빌드된 이미지 안에서 테스트 실행
+              # --entrypoint를 덮어씌워서 서버 실행 대신 pytest 실행
+              # requirements 설치 과정이 없으므로 매우 빠름!
+              docker run --rm "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" \
+                pytest /app/test_main.py
+
+              echo "[INFO] Test Passed! Pushing image..."
               docker push "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}"
             '
           '''

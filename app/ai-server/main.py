@@ -4,14 +4,14 @@ import json
 import logging
 import time
 import httpx
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
+from contextlib import asynccontextmanager  # [추가 1] Lifespan용
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks, Response, status # [추가 2] Response, status 추가
 from ultralytics import YOLO
 from PIL import Image, UnidentifiedImageError
 
 # ==========================================
-# 0. 로깅 설정 (터미널 출력용 포맷팅)
+# 0. 로깅 설정
 # ==========================================
-# 시간, 레벨, 메시지를 깔끔하게 출력
 logging.basicConfig(
     level=logging.INFO, 
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -19,50 +19,113 @@ logging.basicConfig(
 )
 logger = logging.getLogger("AI_SERVER")
 
-app = FastAPI()
-
 # ==========================================
-# 1. 설정 및 매핑 (Configuration)
+# 1. 설정 및 전역 변수 (Configuration)
 # ==========================================
-
-# [리뷰 반영 1] 환경변수 우선 적용
 BACKEND_URL = os.getenv("BACKEND_URL", "http://host.docker.internal:8080")
 
-# 문지기 모델 (공통)
-gate_model = YOLO("model/yolov8n.onnx", task="detect")
+# 모델 및 상태 관리를 위한 전역 변수 선언
+gate_model = None
+DEFECT_MODELS = {}
+model_loaded = False  # [핵심] 모델 로딩 상태 플래그
 
-# [리뷰 반영 2] 상품 ID 매핑 설정
+# 상품 설정 (Config)
 PRODUCT_CONFIG = {
     46: {
         "target_name": "banana",
-        "gate_class_id": 46,  # COCO Dataset: 46=banana
+        "gate_class_id": 46,
         "model_path": "model/best.onnx"
     },
 }
 
-# 모델 로드
-DEFECT_MODELS = {}
-for pid, config in PRODUCT_CONFIG.items():
-    if os.path.exists(config["model_path"]):
-        DEFECT_MODELS[pid] = YOLO(config["model_path"], task="detect")
-        logger.info(f"✅ Model loaded for Product ID {pid}: {config['model_path']}")
-    else:
-        logger.warning(f"⚠️ Model file missing for Product ID {pid}: {config['model_path']}")
+# ==========================================
+# Lifespan: 서버 시작 시 모델 로딩 및 검증
+# ==========================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global gate_model, DEFECT_MODELS, model_loaded
+    
+    logger.info("🔄 [Startup] Loading AI Models...")
+    
+    try:
+        # 1. 문지기 모델 로드
+        gate_model = YOLO("model/yolov8n.onnx", task="detect")
+        logger.info("✅ Gatekeeper Model Loaded")
 
-@app.get("/")
-def health_check():
-    return {"status": "ok", "env": BACKEND_URL}
+        # 2. 전문가 모델 로드
+        success_count = 0
+        for pid, config in PRODUCT_CONFIG.items():
+            if os.path.exists(config["model_path"]):
+                DEFECT_MODELS[pid] = YOLO(config["model_path"], task="detect")
+                logger.info(f"✅ Defect Model Loaded: Product {pid}")
+                success_count += 1
+            else:
+                logger.warning(f"⚠️ Model Missing: Product {pid} ({config['model_path']})")
+        
+        # [핵심 로직] 필수 모델(문지기)이 로드되었는지 확인
+        if gate_model is not None:
+            model_loaded = True
+            logger.info(f"🚀 AI Server Ready! (Expert Models: {success_count})")
+        else:
+            logger.error("❌ Gatekeeper Model Load Failed!")
+            model_loaded = False
+
+    except Exception as e:
+        logger.error(f"🔥 Critical Error during Model Loading: {e}")
+        model_loaded = False
+        
+    yield  # 서버 실행 중...
+    
+    # 서버 종료 시 정리 (필요하면 추가)
+    logger.info("🛑 [Shutdown] AI Server stopping...")
+    gate_model = None
+    DEFECT_MODELS.clear()
+
+# FastAPI 앱 생성 (lifespan 연결)
+app = FastAPI(lifespan=lifespan)
+
 
 # ==========================================
-# 2. 핵심 로직 (로깅 & 예외 처리 강화)
+# Health Check: 모델 상태 검증 포함
+# ==========================================
+@app.get("/health")
+def health_check(response: Response):
+    """
+    서버 상태 및 모델 로딩 여부를 확인합니다.
+    모델이 로딩되지 않았으면 503 에러를 반환합니다.
+    """
+    global model_loaded
+
+    if model_loaded:
+        return {
+            "status": "ok", 
+            "model_status": "loaded", 
+            "env": BACKEND_URL
+        }
+    else:
+        # 모델 로딩 실패 시 503 반환 -> Docker/K8s가 비정상 상태로 인지하고 재시작 유도 가능
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        logger.error("Health Check Failed: Models not loaded.")
+        return {
+            "status": "error", 
+            "model_status": "not_loaded",
+            "detail": "AI Models failed to initialize"
+        }
+
+
+# ==========================================
+# 2. 핵심 로직 (Inference)
 # ==========================================
 async def run_inference_and_send_webhook(image_bytes: bytes, product_id: int, issue_id: int):
+    # [방어 로직] 모델이 로드되지 않았으면 실행 불가
+    if not model_loaded or gate_model is None:
+        logger.error("❌ Inference blocked: Models are not loaded.")
+        return
+
     start_time = time.perf_counter()
     
-    # ▶ [로그] 분석 시작
     logger.info(f"============ [Start Analysis] IssueID: {issue_id} / ProductID: {product_id} ============")
 
-    # 기본 응답 포맷
     webhook_payload = {
         "issueId": issue_id,
         "aiDecision": "UNKNOWN",
@@ -74,9 +137,7 @@ async def run_inference_and_send_webhook(image_bytes: bytes, product_id: int, is
     detail_data = {"detections": [], "time_info": {}, "error_log": None}
 
     try:
-        # -------------------------------------------------
-        # (Step A) 이미지 로드 단계
-        # -------------------------------------------------
+        # (Step A) 이미지 로드
         try:
             img = Image.open(io.BytesIO(image_bytes))
             img.verify()
@@ -86,9 +147,7 @@ async def run_inference_and_send_webhook(image_bytes: bytes, product_id: int, is
         except Exception as e:
             raise ValueError(f"IMAGE_LOAD_ERROR: {str(e)}")
 
-        # -------------------------------------------------
         # (Step B) 상품 설정 확인
-        # -------------------------------------------------
         if product_id not in PRODUCT_CONFIG:
             webhook_payload["aiDecision"] = "UNKNOWN"
             webhook_payload["summary"] = f"지원하지 않는 상품입니다. (ID: {product_id})"
@@ -100,34 +159,30 @@ async def run_inference_and_send_webhook(image_bytes: bytes, product_id: int, is
             logger.error(f"❌ Model not loaded for ID {product_id}")
 
         else:
-            # 설정 가져오기
             config = PRODUCT_CONFIG[product_id]
             target_gate_class_id = config["gate_class_id"]
             target_model = DEFECT_MODELS[product_id]
 
-            # -------------------------------------------------
-            # (Step C) 문지기 추론 (Gatekeeper)
-            # -------------------------------------------------
+            # (Step C) 문지기 추론
             t0 = time.perf_counter()
             gate_results = gate_model(img, verbose=False, conf=0.25)
             detail_data["time_info"]["gate"] = round(time.perf_counter() - t0, 4)
 
             is_gate_pass = False
             max_gate_conf = 0.0
-            detected_names = [] # 로그용 이름 저장
+            detected_names = []
 
             for res in gate_results:
                 for box in res.boxes:
                     cls_id = int(box.cls[0])
                     conf = float(box.conf[0])
                     name = gate_model.names[cls_id]
-                    detected_names.append(f"{name}({conf:.2f})") # 이름+점수 로깅
+                    detected_names.append(f"{name}({conf:.2f})")
 
                     if cls_id == target_gate_class_id:
                         is_gate_pass = True
                         max_gate_conf = max(max_gate_conf, conf)
 
-            # ▶ [로그] 문지기 결과
             logger.info(f"🚪  Gatekeeper Result: {'PASS' if is_gate_pass else 'REJECT'}")
             logger.info(f"    └ Detected: {detected_names}")
 
@@ -136,9 +191,7 @@ async def run_inference_and_send_webhook(image_bytes: bytes, product_id: int, is
                 webhook_payload["summary"] = f"상품 인식 실패. (감지됨: {detected_names})"
             
             else:
-                # -------------------------------------------------
-                # (Step D) 전문가 추론 (Defect Model)
-                # -------------------------------------------------
+                # (Step D) 전문가 추론
                 t1 = time.perf_counter()
                 defect_results = target_model(img, conf=0.5)
                 detail_data["time_info"]["defect"] = round(time.perf_counter() - t1, 4)
@@ -150,11 +203,10 @@ async def run_inference_and_send_webhook(image_bytes: bytes, product_id: int, is
                     for box in res.boxes:
                         conf = float(box.conf[0])
                         cls = int(box.cls[0])
-                        # 커스텀 모델의 클래스 이름 안전하게 가져오기
                         label = target_model.names[cls] if hasattr(target_model, 'names') else "defect"
                         
                         max_defect_conf = max(max_defect_conf, conf)
-                        defect_labels.append(f"{label}({conf:.2f})") # 로그용
+                        defect_labels.append(f"{label}({conf:.2f})")
                         
                         detail_data["detections"].append({
                             "label": label,
@@ -162,7 +214,6 @@ async def run_inference_and_send_webhook(image_bytes: bytes, product_id: int, is
                             "bbox": box.xyxy[0].tolist()
                         })
 
-                # ▶ [로그] 전문가 결과
                 if defect_labels:
                     logger.info(f"🔍  Expert Defect Found!: {defect_labels}")
                     webhook_payload["aiDecision"] = "FAIL"
@@ -174,7 +225,6 @@ async def run_inference_and_send_webhook(image_bytes: bytes, product_id: int, is
                     webhook_payload["confidence"] = round(max_gate_conf, 2)
                     webhook_payload["summary"] = "정상 상품입니다."
 
-    # [리뷰 반영 3] 예외 처리 세분화
     except ValueError as ve:
         logger.warning(f"⚠️ Validation Error: {ve}")
         webhook_payload["aiDecision"] = "UNKNOWN"
@@ -185,14 +235,11 @@ async def run_inference_and_send_webhook(image_bytes: bytes, product_id: int, is
         webhook_payload["summary"] = "AI Server Internal Error"
         detail_data["error_log"] = str(e)
 
-    # -------------------------------------------------
     # (Step E) Webhook 전송
-    # -------------------------------------------------
     total_time = round(time.perf_counter() - start_time, 4)
     detail_data["time_info"]["total"] = total_time
     webhook_payload["aiResult"] = json.dumps(detail_data, ensure_ascii=False)
     
-    # ▶ [로그] 최종 요약
     logger.info(f"📊  [Final Decision]: {webhook_payload['aiDecision']} (Time: {total_time}s)")
     
     target_url = f"{BACKEND_URL}/api/issues/{issue_id}/ai/result"
