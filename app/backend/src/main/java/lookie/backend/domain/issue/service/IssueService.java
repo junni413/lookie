@@ -223,13 +223,13 @@ public class IssueService {
                 break;
 
             case "NEED_CHECK":
-                // 확인 필요: 관리자 검토 필요 (NON_BLOCKING - UX 개선)
+                // 확인 필요: 관리자 검토 필요 (일단 BLOCKING 진입)
                 issue.setStatus("OPEN");
                 issue.setPriority("HIGH");
-                issue.setIssueHandling("NON_BLOCKING");
+                issue.setIssueHandling("BLOCKING");
                 issue.setAdminRequired(true);
                 issue.setReasonCode("UNKNOWN");
-                log.info("[IssueService] DAMAGED + NEED_CHECK → Admin required (BLOCKING). issueId={}",
+                log.info("[IssueService] DAMAGED + NEED_CHECK → Initial Admin required (BLOCKING). issueId={}",
                         issue.getIssueId());
                 break;
 
@@ -267,13 +267,15 @@ public class IssueService {
                 break;
 
             case "NEED_CHECK":
-                // 전산상 재고 있음 (NON_BLOCKING - UX 개선)
+                // 전산상 재고 있음 (140 브랜치: 일단 BLOCKING 진입)
                 issue.setStatus("OPEN");
                 issue.setPriority("HIGH");
-                issue.setIssueHandling("NON_BLOCKING");
+                issue.setIssueHandling("BLOCKING");
                 issue.setAdminRequired(true);
                 issue.setReasonCode("STOCK_EXISTS");
-                log.info("[IssueService] OUT_OF_STOCK + NEED_CHECK → Stock exists (BLOCKING). issueId={}",
+                // WebRTC 결과 수신 구현 후 달라질 수 있음
+                issue.setReasonCode("UNKNOWN");
+                log.info("[IssueService] OUT_OF_STOCK + NEED_CHECK → Initial Stock check (BLOCKING). issueId={}",
                         issue.getIssueId());
                 break;
 
@@ -313,7 +315,12 @@ public class IssueService {
      * @return 프론트엔드 권고 행동
      */
     private IssueNextAction calculateNextAction(IssueVO issue) {
-        // BLOCKING → WAIT_ADMIN
+        // [140 가이드 반영] adminRequired가 true이면 항상 WAIT_ADMIN
+        if (Boolean.TRUE.equals(issue.getAdminRequired())) {
+            return IssueNextAction.WAIT_ADMIN;
+        }
+
+        // BLOCKING → WAIT_ADMIN (adminRequired가 false인데 BLOCKING인 경우 대비한 백업)
         if ("BLOCKING".equals(issue.getIssueHandling())) {
             return IssueNextAction.WAIT_ADMIN;
         }

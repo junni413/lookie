@@ -13,6 +13,8 @@ import lookie.backend.domain.task.mapper.TaskMapper;
 import lookie.backend.domain.task.service.TaskItemService;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
+import lookie.backend.infra.ai.AiAnalysisClient;
+import lookie.backend.infra.ai.dto.AiAnalysisRequest;
 import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
@@ -37,6 +39,9 @@ class IssueServiceTest {
 
     @Mock
     private TaskMapper taskMapper;
+
+    @Mock
+    private AiAnalysisClient aiAnalysisClient;
 
     @InjectMocks
     private IssueService issueService;
@@ -108,6 +113,9 @@ class IssueServiceTest {
 
         // TaskItem 상태 변경 검증
         verify(taskItemService).markAsIssue(itemId);
+
+        // AI 분석 요청 검증 추가
+        verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
     }
 
     @Test
@@ -142,8 +150,11 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
         ArgumentCaptor<IssueVO> issueCaptor = ArgumentCaptor.forClass(IssueVO.class);
-        verify(issueMapper, atLeastOnce()).insertIssue(issueCaptor.capture());
+        verify(issueMapper).insertIssue(issueCaptor.capture()); // 누락된 캡처 코드 복구
         assertEquals("OUT_OF_STOCK", issueCaptor.getValue().getIssueType());
+
+        // AI 분석 요청 검증 추가
+        verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
     }
 
     @Test
@@ -173,6 +184,7 @@ class IssueServiceTest {
         verify(issueMapper, never()).insertIssueImage(any());
         verify(issueMapper, never()).insertAiJudgment(any());
         verify(taskItemService, never()).markAsIssue(any());
+        verify(aiAnalysisClient, never()).requestAnalysis(any());
     }
 
     @Test
@@ -248,6 +260,9 @@ class IssueServiceTest {
         inOrder.verify(issueMapper).insertIssueImage(any(IssueImageVO.class));
         inOrder.verify(issueMapper).insertAiJudgment(any(AiJudgmentVO.class));
         inOrder.verify(taskItemService).markAsIssue(200L);
+
+        // requestAnalysis는 비동기 호출이므로 InOrder에서 제외될 수도 있지만 일단 마지막에 검증
+        verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
     }
 
     // ================================================================
@@ -309,6 +324,7 @@ class IssueServiceTest {
         // then
         assertEquals("OPEN", response.getStatus());
         assertEquals("HIGH", response.getPriority());
+        assertEquals("BLOCKING", response.getIssueHandling()); // 가이드에 따라 BLOCKING으로 변경됨
         assertEquals(true, response.getAdminRequired());
         assertEquals("UNKNOWN", response.getReasonCode());
     }
