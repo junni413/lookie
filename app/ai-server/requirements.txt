@@ -9,8 +9,11 @@ opencv-python-headless
 onnx
 onnxruntime
 
+# http
+httpx
+
+# 테스트 도구 추가 (이미지에 포함시켜서 테스트 속도 향상)
+pytest
+
 # 3. Ultralytics (맨 마지막에)
 ultralytics
-
-# 백엔드로 요청 보내기
-httpx
