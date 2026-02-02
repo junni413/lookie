@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="lookie.backend.domain.worklog.mapper.WorkLogMapper">
+
+    <resultMap id="WorkLogResultMap" type="lookie.backend.domain.worklog.entity.WorkLog">
+        <id property="workLogId" column="work_log_id"/>
+        <result property="workerId" column="worker_id"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="plannedEndAt" column="planned_end_at"/>
+        <result property="endedAt" column="ended_at"/>
+    </resultMap>
+
+    <resultMap id="WorkLogEventResultMap" type="lookie.backend.domain.worklog.entity.WorkLogEvent">
+        <id property="eventId" column="event_id"/>
+        <result property="workLogId" column="work_log_id"/>
+        <result property="eventType" column="event_type"/>
+        <result property="reason" column="reason"/>
+        <result property="occurredAt" column="occurred_at"/>
+    </resultMap>
+
+    <!-- 1. 출근 생성 -->
+    <insert id="insertWorkLog" useGeneratedKeys="true" keyProperty="workLogId">
+        INSERT INTO work_logs (worker_id, started_at, planned_end_at)
+        VALUES (#{workerId}, #{startedAt}, #{plannedEndAt})
+    </insert>
+
+    <!-- 2. 퇴근 업데이트 -->
+    <update id="updateWorkLogEnd">
+        UPDATE work_logs
+        SET ended_at = #{endedAt}
+        WHERE work_log_id = #{workLogId}
+    </update>
+
+    <!-- 3. 현재 진행중인 세션 조회 -->
+    <select id="findActiveWorkLogByWorkerId" resultMap="WorkLogResultMap">
+        SELECT * FROM work_logs
+        WHERE worker_id = #{workerId} AND ended_at IS NULL
+        ORDER BY started_at DESC
+        LIMIT 1
+    </select>
+
+    <!-- 4. 상태 변경 이벤트 기록 -->
+    <insert id="insertWorkLogEvent">
+        INSERT INTO work_log_events (work_log_id, event_type, reason, occurred_at)
+        VALUES (#{workLogId}, #{eventType}, #{reason}, #{occurredAt})
+    </insert>
+
+    <!-- 5. 가장 최근 이벤트 조회 -->
+    <select id="findLastEventByWorkLogId" resultMap="WorkLogEventResultMap">
+        SELECT * FROM work_log_events
+        WHERE work_log_id = #{workLogId}
+        ORDER BY occurred_at DESC
+        LIMIT 1
+    </select>
+
+</mapper>
