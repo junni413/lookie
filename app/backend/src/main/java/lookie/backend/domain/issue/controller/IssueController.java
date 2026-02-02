@@ -59,14 +59,12 @@ public class IssueController {
 
     /**
      * AI 판정 결과 수신 (Webhook)
-     * - AI 서버가 이미지 분석 완료 후 호출
+     * - AI 서버가 이미지 분석 완료 후 호출 (POST /api/issues/{issueId}/ai/result)
      * - Issue 상태 및 정책 자동 업데이트
      * 
-     * ⚠️ AI 서버 연동 상태:
-     * - AI 서버: app/ai-server (FastAPI, POST /predict)
-     * - Webhook 구현: 미완료 (AI 팀 작업 필요)
-     * - 현재 상태: 엔드포인트만 준비됨
-     * 
+     * [Webhook Contract]
+     * - aiDecision: PASS | FAIL | NEED_CHECK | UNKNOWN
+     * - confidence: Float (0.0 ~ 1.0)
      */
     @Operation(summary = "AI 판정 결과 수신", description = "AI 서버로부터 이미지 분석 결과를 수신하여 Issue 상태를 업데이트합니다. (Webhook)")
     @PostMapping("/{issueId}/ai/result")

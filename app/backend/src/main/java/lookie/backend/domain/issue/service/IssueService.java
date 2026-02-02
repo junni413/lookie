@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
+import lookie.backend.infra.ai.AiAnalysisClient;
+import lookie.backend.infra.ai.dto.AiAnalysisRequest;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
 import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueNextAction;
@@ -37,6 +39,7 @@ public class IssueService {
     private final IssueMapper issueMapper;
     private final TaskItemService taskItemService;
     private final TaskMapper taskMapper;
+    private final AiAnalysisClient aiAnalysisClient;
 
     /**
      * 이슈 생성
@@ -86,7 +89,12 @@ public class IssueService {
         taskItemService.markAsIssue(item.getBatchTaskItemId());
         log.info("[IssueService] TaskItem marked as ISSUE. itemId={}", item.getBatchTaskItemId());
 
-        // TODO: AI 서버로 이미지 판정 요청 (비동기)
+        // 6. AI 서버로 이미지 판정 요청 (비동기)
+        AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
+                issue.getIssueId(),
+                item.getProductId(),
+                request.getImageUrl());
+        aiAnalysisClient.requestAnalysis(aiRequest);
 
         return IssueResponse.from(issue);
     }
@@ -127,8 +135,16 @@ public class IssueService {
      */
     @Transactional
     public AiResultResponse processAiResult(Long issueId, AiResultRequest request) {
-        log.info("[IssueService] processAiResult started. issueId={}, aiDecision={}",
+        log.info("[IssueService] processAiResult started. issueId={}, aoDecision={}",
                 issueId, request.getAiDecision());
+
+        // 0. Confidence == 0.0 처리 (신뢰 불가 → NEED_CHECK 강제)
+        String decision = request.getAiDecision();
+        if (request.getConfidence() != null && request.getConfidence() == 0.0f) {
+            decision = "NEED_CHECK";
+            request.setAiDecision(decision); // DB 업데이트를 위해 request 객체 수정
+            log.warn("[IssueService] Confidence is 0.0. Forced decision to NEED_CHECK. issueId={}", issueId);
+        }
 
         // 1. Issue 존재 확인
         IssueVO issue = issueMapper.findById(issueId);
@@ -207,13 +223,13 @@ public class IssueService {
                 break;
 
             case "NEED_CHECK":
-                // 확인 필요: 관리자 검토 필요 (BLOCKING)
+                // 확인 필요: 관리자 검토 필요 (일단 BLOCKING 진입)
                 issue.setStatus("OPEN");
                 issue.setPriority("HIGH");
                 issue.setIssueHandling("BLOCKING");
                 issue.setAdminRequired(true);
                 issue.setReasonCode("UNKNOWN");
-                log.info("[IssueService] DAMAGED + NEED_CHECK → Admin required (BLOCKING). issueId={}",
+                log.info("[IssueService] DAMAGED + NEED_CHECK → Initial Admin required (BLOCKING). issueId={}",
                         issue.getIssueId());
                 break;
 
@@ -251,13 +267,15 @@ public class IssueService {
                 break;
 
             case "NEED_CHECK":
-                // 전산상 재고 있음 (BLOCKING)
+                // 전산상 재고 있음 (140 브랜치: 일단 BLOCKING 진입)
                 issue.setStatus("OPEN");
                 issue.setPriority("HIGH");
                 issue.setIssueHandling("BLOCKING");
                 issue.setAdminRequired(true);
                 issue.setReasonCode("STOCK_EXISTS");
-                log.info("[IssueService] OUT_OF_STOCK + NEED_CHECK → Stock exists (BLOCKING). issueId={}",
+                // WebRTC 결과 수신 구현 후 달라질 수 있음
+                issue.setReasonCode("UNKNOWN");
+                log.info("[IssueService] OUT_OF_STOCK + NEED_CHECK → Initial Stock check (BLOCKING). issueId={}",
                         issue.getIssueId());
                 break;
 
@@ -297,7 +315,12 @@ public class IssueService {
      * @return 프론트엔드 권고 행동
      */
     private IssueNextAction calculateNextAction(IssueVO issue) {
-        // BLOCKING → WAIT_ADMIN
+        // [140 가이드 반영] adminRequired가 true이면 항상 WAIT_ADMIN
+        if (Boolean.TRUE.equals(issue.getAdminRequired())) {
+            return IssueNextAction.WAIT_ADMIN;
+        }
+
+        // BLOCKING → WAIT_ADMIN (adminRequired가 false인데 BLOCKING인 경우 대비한 백업)
         if ("BLOCKING".equals(issue.getIssueHandling())) {
             return IssueNextAction.WAIT_ADMIN;
         }
