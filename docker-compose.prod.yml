@@ -112,6 +112,7 @@ services:
     volumes:
       # ✅ [추가] Nginx 접근/에러 로그를 EC2에서 확인
       - ./data/logs/nginx:/var/log/nginx
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     networks:
       - lookie
     depends_on:
