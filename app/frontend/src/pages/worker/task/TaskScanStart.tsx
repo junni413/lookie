@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { TaskVO } from "@/types/task";
-import { MapPin, Layers, Package, Bell, LayoutGrid, ChevronRight } from "lucide-react";
+import { MapPin, Layers, Package, ChevronRight } from "lucide-react";
 
 export default function TaskScanStart() {
   const navigate = useNavigate();
@@ -8,10 +9,11 @@ export default function TaskScanStart() {
 
   const task = (state as { task?: TaskVO })?.task;
 
-  if (!task) {
-    navigate("/worker/home", { replace: true });
-    return null;
-  }
+  useEffect(() => {
+    if (!task) navigate("/worker/home", { replace: true });
+  }, [task, navigate]);
+
+  if (!task) return null;
 
   return (
     <div className="mx-auto w-full max-w-[430px] space-y-12 pb-6 px-4">
