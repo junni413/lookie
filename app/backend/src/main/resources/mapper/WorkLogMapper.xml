@@ -3,7 +3,7 @@
 
 <mapper namespace="lookie.backend.domain.worklog.mapper.WorkLogMapper">
 
-    <resultMap id="WorkLogResultMap" type="lookie.backend.domain.worklog.entity.WorkLog">
+    <resultMap id="WorkLogResultMap" type="lookie.backend.domain.worklog.vo.WorkLog">
         <id property="workLogId" column="work_log_id"/>
         <result property="workerId" column="worker_id"/>
         <result property="startedAt" column="started_at"/>
@@ -11,7 +11,7 @@
         <result property="endedAt" column="ended_at"/>
     </resultMap>
 
-    <resultMap id="WorkLogEventResultMap" type="lookie.backend.domain.worklog.entity.WorkLogEvent">
+    <resultMap id="WorkLogEventResultMap" type="lookie.backend.domain.worklog.vo.WorkLogEvent">
         <id property="eventId" column="event_id"/>
         <result property="workLogId" column="work_log_id"/>
         <result property="eventType" column="event_type"/>
