@@ -25,4 +25,9 @@ export const ADMIN_MENU: AdminMenuItem[] = [
     path: "/admin/map",
     description: "공장 전체의 구역 배치와 작업자 현황을 시각적으로 모니터링합니다."
   },
+  {
+    label: "Contact",
+    path: "/admin/contact",
+    description: "작업자와 실시간 화상 통화를 진행합니다."
+  },
 ];
