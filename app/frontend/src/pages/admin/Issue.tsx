@@ -5,13 +5,14 @@ import IssueList from "./components/issue/IssueList";
 import IssueDetail from "./components/issue/IssueDetail";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+
 import { cn } from "@/utils/cn";
 
 const priorityMap = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
 export default function Issue() {
     const [issues, setIssues] = useState<IssueResponse[]>([]);
-    const [selectedId, setSelectedId] = useState<number | null>(null);
+    const [selectedId, setSelectedId] = useState<number | null>(null); // null means no selection
     const [listSortKey, setListSortKey] = useState<"TIME" | "PRIORITY">("TIME");
 
     // Track mounted state for async safety
@@ -61,9 +62,9 @@ export default function Issue() {
     const showDetailOnRight = selectedIssue && selectedIssue.status === "OPEN";
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[calc(100vh-theme(spacing.24))]">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
             {/* LEFT COLUMN: Open List OR Resolved Detail */}
-            <section className="col-span-1 h-full">
+            <section className="col-span-1 h-full flex flex-col min-h-0">
                 {showDetailOnLeft ? (
                     <IssueDetail
                         issue={selectedIssue}
@@ -73,9 +74,9 @@ export default function Issue() {
                         onClose={() => setSelectedId(null)}
                     />
                 ) : (
-                    <div className="flex flex-col h-full bg-card rounded-xl shadow-sm border overflow-hidden">
+                    <Card className="h-full border-0 shadow-sm border rounded-xl flex flex-col overflow-hidden bg-card">
                         <div className="flex items-center justify-between p-6 border-b shrink-0">
-                            <h2 className="text-xl font-bold">판정 요청 목록</h2>
+                            <CardTitle className="text-xl">판정 요청 목록</CardTitle>
                             <div className="flex bg-muted rounded-lg p-1">
                                 <Button
                                     variant="ghost"
@@ -95,19 +96,19 @@ export default function Issue() {
                                 </Button>
                             </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 bg-muted/10">
+                        <CardContent className="flex-1 overflow-y-auto p-4 bg-muted/10">
                             <IssueList
                                 issues={sortedOpen}
                                 selectedId={selectedId}
                                 onSelect={setSelectedId}
                             />
-                        </div>
-                    </div>
+                        </CardContent>
+                    </Card>
                 )}
             </section>
 
             {/* RIGHT COLUMN: Resolved List OR Open Detail */}
-            <section className="col-span-1 h-full">
+            <section className="col-span-1 h-full flex flex-col min-h-0">
                 {showDetailOnRight ? (
                     <IssueDetail
                         issue={selectedIssue}
@@ -133,5 +134,6 @@ export default function Issue() {
                 )}
             </section>
         </div>
+
     );
 }
