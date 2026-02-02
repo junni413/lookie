@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
-import { useToast } from "@/components/ui/use-toast";
 import type { IssueType, AiVerdict } from "./IssueReport";
+import VideoCallModal from "./VideoCallModal";
 
 type NavState = {
   issueType: IssueType;
@@ -70,7 +70,7 @@ export default function IssueResult() {
   const { setTitle } = useOutletContext<MobileLayoutContext>();
   const nav = useLocation().state as NavState | undefined;
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const [showVideoCall, setShowVideoCall] = useState(false);
 
   useEffect(() => {
     if (!nav) navigate("/worker/home", { replace: true });
@@ -88,12 +88,8 @@ export default function IssueResult() {
     navigate(-2);
   };
 
-  const connectAdmin = async () => {
-    // TODO: 실제 “관리자 연결” 또는 “신고 확정 API” 호출
-    toast({
-      title: "관리자에게 전달했습니다.",
-      description: "관리자가 확인 후 처리합니다.",
-    });
+  const connectAdmin = () => {
+    setShowVideoCall(true);
   };
 
   return (
@@ -144,6 +140,9 @@ export default function IssueResult() {
           </button>
         )}
       </div>
+
+      {/* Video Call Modal */}
+      <VideoCallModal isOpen={showVideoCall} onClose={() => setShowVideoCall(false)} />
     </div>
   );
 }
