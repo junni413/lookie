@@ -1,6 +1,7 @@
 package lookie.backend.domain.worklog.controller;
 
 import lombok.RequiredArgsConstructor;
+import lookie.backend.domain.worklog.dto.DailyWorkLogStats;
 import lookie.backend.domain.worklog.dto.WorkLogRequestDto;
 import lookie.backend.domain.worklog.dto.WorkLogResponseDto;
 import lookie.backend.domain.worklog.service.WorkLogService;
@@ -78,6 +79,16 @@ public class WorkLogController {
     @GetMapping
     public ApiResponse<List<WorkLogResponseDto>> getMyWorkHistories(@AuthenticationPrincipal String userId) {
         List<WorkLogResponseDto> response = workLogService.getMyWorkHistories(Long.parseLong(userId));
+        return ApiResponse.success(response);
+    }
+
+    /**
+     * 7. 근무 이력 통계 조회 API (본인용 - Calendar Stats)
+     * GET /api/work-logs/stats
+     */
+    @GetMapping("/stats")
+    public ApiResponse<List<DailyWorkLogStats>> getWorkLogStats(@AuthenticationPrincipal String userId) {
+        List<DailyWorkLogStats> response = workLogService.getDailyStats(Long.parseLong(userId));
         return ApiResponse.success(response);
     }
 }
