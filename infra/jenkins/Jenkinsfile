@@ -24,6 +24,7 @@ pipeline {
     DOCKERHUB_CRED_ID      = 'dockerhub-cred'           // ✅ Jenkins에 등록된 DockerHub credential
     REGISTRY_IMAGE_BACKEND = 'sheonj/lookie-backend'    // ✅ 백엔드 이미지 레포명
     REGISTRY_IMAGE_NGINX   = 'sheonj/lookie-nginx'      // ✅ nginx 이미지 레포명
+    REGISTRY_IMAGE_AI      = 'sheonj/lookie-ai'         // ✅ ai 이미지 레포명
 
     // ============================================================
     // [BUILD PATH] repo 구조에 맞는 build context / Dockerfile 경로
@@ -32,6 +33,8 @@ pipeline {
     BACKEND_DOCKERFILE = 'app/backend/Dockerfile'       // ✅ backend Dockerfile 경로
     NGINX_CONTEXT      = '.'                            // ✅ docker build context (nginx는 루트 기준)
     NGINX_DOCKERFILE   = 'infra/nginx/Dockerfile'       // ✅ nginx Dockerfile 경로
+    AI_CONTEXT         = 'app/ai-server'                // ✅ AI 소스 경로
+    AI_DOCKERFILE      = 'app/ai-server/Dockerfile'     // ✅ AI Dockerfile 경로
 
     // ============================================================
     // [NOTIFY] Mattermost 알림
@@ -299,6 +302,36 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       }
     }
 
+    // [ADD] AI Server CI (Unit Test)
+    // - 도커 이미지 빌드 전에 코드가 정상인지 먼저 검증
+    stage('AI Server Test') {
+      when { 
+        expression { 
+          // MR이거나 develop 브랜치 푸시일 때 실행
+          (env.EVENT_KIND == 'merge_request' || env.PUSH_BRANCH == 'develop') 
+        } 
+      }
+      steps {
+        dir('app/ai-server') {
+          sh '''
+            bash -lc '
+              set -euo pipefail
+              echo "[INFO] Start AI Unit Test..."
+              
+              # Python 컨테이너를 일회용으로 띄워서 테스트 수행 (호스트 오염 방지)
+              docker run --rm \
+                -v "$PWD":/app -w /app \
+                python:3.9-slim sh -c "
+                  pip install --no-cache-dir -r requirements.txt && \
+                  pip install pytest httpx && \
+                  pytest
+                "
+            '
+          '''
+        }
+      }
+    }
+
     // ============================================================
     // 4) MR: Frontend Build
     //  - node 컨테이너로 npm ci / build 수행 → Jenkins 노드의 node 환경 의존 제거
@@ -371,6 +404,10 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
                 -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" \
                 "${NGINX_CONTEXT}"
               docker push "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}"
+
+              # ✅ AI Server Build & Push (테스트 통과 시에만 여기까지 옴)
+              docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" "${AI_CONTEXT}"
+              docker push "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}"
             '
           '''
         }
@@ -427,6 +464,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
                   #    (배포 서버 .env에는 IMAGE_TAG를 두지 않는 것이 원칙)
                   export REGISTRY_IMAGE_BACKEND='${REGISTRY_IMAGE_BACKEND}'
                   export REGISTRY_IMAGE_NGINX='${REGISTRY_IMAGE_NGINX}'
+                  export REGISTRY_IMAGE_AI='${REGISTRY_IMAGE_AI}'
                   export IMAGE_TAG='${IMAGE_TAG}'
 
                   # ✅ 이미지 pull을 위한 docker hub 로그인

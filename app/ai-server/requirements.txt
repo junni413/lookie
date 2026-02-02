@@ -12,5 +12,5 @@ onnxruntime
 # 3. Ultralytics (맨 마지막에)
 ultralytics
 
-# 백엔드로 요청 보내기
+# http
 httpx
