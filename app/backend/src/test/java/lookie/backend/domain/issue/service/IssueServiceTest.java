@@ -89,6 +89,7 @@ class IssueServiceTest {
         assertEquals("DAMAGED", capturedIssue.getIssueType());
         assertEquals("OPEN", capturedIssue.getStatus());
         assertEquals("MEDIUM", capturedIssue.getPriority());
+        assertEquals(3, capturedIssue.getUrgency()); // 신규 필드 검증
         assertEquals("NON_BLOCKING", capturedIssue.getIssueHandling());
         assertEquals(false, capturedIssue.getAdminRequired());
         assertEquals("UNKNOWN", capturedIssue.getReasonCode());
@@ -270,7 +271,7 @@ class IssueServiceTest {
     // ================================================================
 
     @Test
-    @DisplayName("AI 결과 처리 성공 - PASS (자동 해결)")
+    @DisplayName("AI 결과 처리 성공 - PASS (분기표 D1: OPEN 유지, 사후 확정 필요)")
     void processAiResult_Pass_AutoResolved() {
         // given
         Long issueId = 1L;
@@ -291,12 +292,13 @@ class IssueServiceTest {
 
         // then
         assertNotNull(response);
-        assertEquals("RESOLVED", response.getStatus());
-        assertEquals("LOW", response.getPriority());
+        assertEquals("OPEN", response.getStatus()); // OPEN 유지
+        assertEquals("MEDIUM", response.getPriority());
+        assertEquals(4, response.getUrgency()); // urgency=4
         assertEquals("NON_BLOCKING", response.getIssueHandling());
-        assertEquals(false, response.getAdminRequired());
-        assertEquals("AUTO_RESOLVED", response.getReasonCode());
-        assertNotNull(response.getResolvedAt());
+        assertEquals(true, response.getAdminRequired()); // 관리자 사후 확정 필요
+        assertEquals("UNKNOWN", response.getReasonCode());
+        assertNull(response.getResolvedAt()); // RESOLVED 아님
 
         verify(issueMapper).updateAiJudgment(any(AiJudgmentVO.class));
         verify(issueMapper).updateIssueStatus(issue);
@@ -324,6 +326,7 @@ class IssueServiceTest {
         // then
         assertEquals("OPEN", response.getStatus());
         assertEquals("HIGH", response.getPriority());
+        assertEquals(1, response.getUrgency()); // urgency=1
         assertEquals("BLOCKING", response.getIssueHandling()); // 가이드에 따라 BLOCKING으로 변경됨
         assertEquals(true, response.getAdminRequired());
         assertEquals("UNKNOWN", response.getReasonCode());
@@ -350,7 +353,8 @@ class IssueServiceTest {
 
         // then
         assertEquals("MEDIUM", response.getPriority());
-        assertEquals(false, response.getAdminRequired());
+        assertEquals(3, response.getUrgency()); // urgency=3
+        assertEquals(true, response.getAdminRequired()); // 사후 확정 필요
         assertEquals("DAMAGED", response.getReasonCode());
     }
 
@@ -442,7 +446,7 @@ class IssueServiceTest {
         assertEquals("PASS", response.getAiResult());
         assertEquals(0.95f, response.getConfidence());
         assertEquals("정상 상품으로 판정됨", response.getSummary());
-        assertEquals("AUTO_RESOLVED", response.getNextAction());
+        assertEquals("AUTO_RESOLVED", response.getIssueNextAction());
         assertTrue(response.getAvailableActions().isEmpty());
     }
 
@@ -474,7 +478,7 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
         assertEquals("NEED_CHECK", response.getAiResult());
-        assertEquals("WAIT_ADMIN", response.getNextAction());
+        assertEquals("WAIT_ADMIN", response.getIssueNextAction());
         assertEquals(1, response.getAvailableActions().size());
         assertTrue(response.getAvailableActions().contains("CONNECT_ADMIN"));
     }

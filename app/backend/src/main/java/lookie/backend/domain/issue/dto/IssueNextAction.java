@@ -4,6 +4,7 @@ package lookie.backend.domain.issue.dto;
  * Issue 처리 후 작업자에게 권고하는 다음 행동
  * - Task 도메인의 상태(TaskActionStatus)와 분리된 UI 권고값
  * - 프론트엔드는 이 값을 보고 적절한 Task API를 호출
+ * - 분기표(flow_chart.txt)의 IssueNextAction 컬럼 기준
  */
 public enum IssueNextAction {
 
@@ -12,7 +13,7 @@ public enum IssueNextAction {
      * - 서버 추가 동작 없음
      * - 프론트는 스캔 화면으로 복귀
      */
-    CONTINUE_PICKING,
+    NEXT_ITEM,
 
     /**
      * 지번 이동 필요 (OUT_OF_STOCK + MOVE_LOCATION)
@@ -29,7 +30,15 @@ public enum IssueNextAction {
     WAIT_ADMIN,
 
     /**
-     * 자동 해결됨 (PASS)
+     * 재촬영 대기 (AI 결과 = RETAKE)
+     * - 작업자가 이미지 재촬영 필요
+     * - 재촬영 전까지 진행 불가
+     * - 관리자 개입 없음
+     */
+    WAIT_RETAKE,
+
+    /**
+     * 자동 해결됨 (관리자 확정 완료)
      * - 결과 표시만
      * - 작업 계속 진행
      */

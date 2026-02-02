@@ -17,7 +17,8 @@ public class AiResultResponse {
 
     private Long issueId;
     private String status; // OPEN / RESOLVED
-    private String priority; // LOW / MEDIUM / HIGH
+    private String priority; // LOW / MEDIUM / HIGH (사용 중단 예정)
+    private Integer urgency; // 관제 큐 우선순위 (0-5)
     private String issueHandling; // BLOCKING / NON_BLOCKING
     private Boolean adminRequired; // 관리자 확인 필요 여부
     private String reasonCode; // 이슈 사유 코드
@@ -32,6 +33,7 @@ public class AiResultResponse {
                 issue.getIssueId(),
                 issue.getStatus(),
                 issue.getPriority(),
+                issue.getUrgency(),
                 issue.getIssueHandling(),
                 issue.getAdminRequired(),
                 issue.getReasonCode(),
