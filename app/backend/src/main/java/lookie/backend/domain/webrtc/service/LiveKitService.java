@@ -199,7 +199,11 @@ public class LiveKitService {
             token.setName(identity);
             token.setIdentity(identity);
 
-            // LiveKit SDK 0.5.2 API: RoomJoin + Room 객체 사용
+            // [Security Fix] Token Restrictions
+            // Use RoomJoin(true) AND Room(roomName) to restrict access to the specific room
+            // only.
+            // This is the functional equivalent of configuring VideoGrants with
+            // roomJoin=true and room=roomName.
             token.addGrants(new RoomJoin(true), new Room(roomName));
 
             return token.toJwt();
