@@ -481,16 +481,110 @@ public class IssueService {
             return null;
         }
 
-        // NEED_CHECK는 무조건 통화 필요
-        if (judgment != null && "NEED_CHECK".equals(judgment.getAiDecision())) {
+        // BLOCKING 상태는 즉시 통화 필요 (NEED_CHECK, STOCK_EXISTS)
+        if ("BLOCKING".equals(issue.getIssueHandling())) {
             return AdminNextAction.ADMIN_JOIN_CALL;
         }
 
-        // adminRequired가 true이면 사후 확정 필요
+        // adminRequired가 true이면 사후 확정 필요 (NON_BLOCKING + adminRequired=true)
         if (Boolean.TRUE.equals(issue.getAdminRequired())) {
             return AdminNextAction.ADMIN_CONFIRM_LATER;
         }
 
         return null;
+    }
+
+    // ================================================================
+    // WebRTC 후처리 (분기표 D2~D4, D6~D7, D10~D11, S2~S3)
+    // ================================================================
+
+    /**
+     * WebRTC 통화 연결 성공 처리
+     * - 분기표 D3, D6, D10, S2 노드
+     * - urgency=5 (최하위), adminRequired=false, handling=NON_BLOCKING
+     * - 작업자는 즉시 다음 작업 진행, 관리자는 확정 필요
+     * 
+     * @param issueId Issue ID
+     */
+    @Transactional
+    public void handleWebRtcConnected(Long issueId) {
+        log.info("[IssueService] handleWebRtcConnected started. issueId={}", issueId);
+
+        // 1. Issue 조회
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            log.warn("[IssueService] Issue not found. issueId={}", issueId);
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 2. 이미 RESOLVED면 처리 안 함
+        // NOTE: Issue가 이미 RESOLVED면 WebRTC 결과로 상태를 덮어쓰지 않는다.
+        // (MOVE_LOCATION 등 자동 해결 케이스 포함)
+        if ("RESOLVED".equals(issue.getStatus())) {
+            log.info("[IssueService] Issue already resolved. Skip WebRTC processing. issueId={}", issueId);
+            return;
+        }
+
+        // 3. WebRTC CONNECTED 정책 적용
+        issue.setUrgency(5); // 최하위 우선순위
+        issue.setAdminRequired(false); // 관리자 확인 불필요 (통화 완료)
+        issue.setIssueHandling("NON_BLOCKING"); // 작업자 즉시 진행 가능
+
+        // 4. Issue 업데이트
+        issueMapper.updateIssueStatus(issue);
+        log.info("[IssueService] WebRTC CONNECTED processed. issueId={}, urgency=5, adminRequired=false",
+                issueId);
+    }
+
+    /**
+     * WebRTC 통화 연결 실패 처리 (MISSED/REJECTED/TIMEOUT)
+     * - 분기표 D4, D7, D11, S3 노드
+     * - urgency 조정: NEED_CHECK/STOCK_EXISTS → 1, 나머지 → 2
+     * - adminRequired=true 유지, handling=NON_BLOCKING
+     * - 작업자는 계속 진행, 관제 큐 유지
+     * 
+     * @param issueId Issue ID
+     */
+    @Transactional
+    public void handleWebRtcMissed(Long issueId) {
+        log.info("[IssueService] handleWebRtcMissed started. issueId={}", issueId);
+
+        // 1. Issue 조회
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            log.warn("[IssueService] Issue not found. issueId={}", issueId);
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 2. 이미 RESOLVED면 처리 안 함
+        // NOTE: Issue가 이미 RESOLVED면 WebRTC 결과로 상태를 덮어쓰지 않는다.
+        if ("RESOLVED".equals(issue.getStatus())) {
+            log.info("[IssueService] Issue already resolved. Skip WebRTC processing. issueId={}", issueId);
+            return;
+        }
+
+        // 3. AI 판정 결과 조회
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
+        String aiDecision = judgment != null ? judgment.getAiDecision() : "UNKNOWN";
+        String reasonCode = issue.getReasonCode();
+
+        // 4. WebRTC MISSED 정책 적용
+        // NOTE: OUT_OF_STOCK은 reasonCode만 신뢰 (aiDecision은 참고용)
+        // NEED_CHECK 또는 STOCK_EXISTS는 최상위 urgency=1
+        if ("NEED_CHECK".equals(aiDecision) || "STOCK_EXISTS".equals(reasonCode)) {
+            issue.setUrgency(1); // 관제 큐 최상위
+            log.info("[IssueService] NEED_CHECK/STOCK_EXISTS → urgency=1. issueId={}", issueId);
+        } else {
+            issue.setUrgency(2); // 그 외 → urgency=2
+            log.info("[IssueService] Other cases → urgency=2. issueId={}", issueId);
+        }
+
+        issue.setAdminRequired(true); // 관리자 확인 필요 (연결 실패)
+        issue.setIssueHandling("NON_BLOCKING"); // 작업자는 계속 진행 가능
+
+        // 5. Issue 업데이트
+        issueMapper.updateIssueStatus(issue);
+        log.info("[IssueService] WebRTC MISSED processed. issueId={}, urgency={}, adminRequired=true",
+                issueId, issue.getUrgency());
     }
 }

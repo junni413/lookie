@@ -497,4 +497,210 @@ class IssueServiceTest {
 
         assertEquals(ErrorCode.ISSUE_NOT_FOUND, exception.getErrorCode());
     }
+
+    // ================================================================
+    // WebRTC 후처리 테스트
+    // ================================================================
+
+    @Test
+    @DisplayName("WebRTC CONNECTED - urgency=5, adminRequired=false")
+    void handleWebRtcConnected_Success() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("OPEN");
+        issue.setUrgency(1); // 초기 urgency
+        issue.setAdminRequired(true);
+        issue.setIssueHandling("BLOCKING");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        issueService.handleWebRtcConnected(issueId);
+
+        // then
+        assertEquals(5, issue.getUrgency());
+        assertEquals(false, issue.getAdminRequired());
+        assertEquals("NON_BLOCKING", issue.getIssueHandling());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("WebRTC MISSED (NEED_CHECK) - urgency=1 유지")
+    void handleWebRtcMissed_NeedCheck() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("OPEN");
+        issue.setUrgency(1);
+        issue.setReasonCode("UNKNOWN");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("NEED_CHECK");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        issueService.handleWebRtcMissed(issueId);
+
+        // then
+        assertEquals(1, issue.getUrgency()); // NEED_CHECK → urgency=1
+        assertEquals(true, issue.getAdminRequired());
+        assertEquals("NON_BLOCKING", issue.getIssueHandling());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("WebRTC MISSED (STOCK_EXISTS) - urgency=1")
+    void handleWebRtcMissed_StockExists() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("OPEN");
+        issue.setUrgency(1);
+        issue.setReasonCode("STOCK_EXISTS");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("PASS");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        issueService.handleWebRtcMissed(issueId);
+
+        // then
+        assertEquals(1, issue.getUrgency()); // STOCK_EXISTS → urgency=1
+        assertEquals(true, issue.getAdminRequired());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("WebRTC MISSED (PASS/FAIL) - urgency=2")
+    void handleWebRtcMissed_Other() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("OPEN");
+        issue.setUrgency(4);
+        issue.setReasonCode("UNKNOWN");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("PASS");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        issueService.handleWebRtcMissed(issueId);
+
+        // then
+        assertEquals(2, issue.getUrgency()); // 기타 → urgency=2
+        assertEquals(true, issue.getAdminRequired());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("WebRTC CONNECTED - 이미 RESOLVED면 스킵")
+    void handleWebRtcConnected_AlreadyResolved() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("RESOLVED");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        issueService.handleWebRtcConnected(issueId);
+
+        // then
+        verify(issueMapper, never()).updateIssueStatus(any());
+    }
+
+    // ================================================================
+    // AdminNextAction 검증 테스트
+    // ================================================================
+
+    @Test
+    @DisplayName("AdminNextAction - STOCK_EXISTS는 ADMIN_JOIN_CALL")
+    void calculateAdminNextAction_StockExists() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("OUT_OF_STOCK");
+        issue.setStatus("OPEN");
+        issue.setIssueHandling("BLOCKING");
+        issue.setAdminRequired(true);
+        issue.setReasonCode("STOCK_EXISTS");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("PASS");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertEquals("ADMIN_JOIN_CALL", response.getAdminNextAction());
+    }
+
+    @Test
+    @DisplayName("AdminNextAction - NEED_CHECK는 ADMIN_JOIN_CALL")
+    void calculateAdminNextAction_NeedCheck() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+        issue.setIssueHandling("BLOCKING");
+        issue.setAdminRequired(true);
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("NEED_CHECK");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertEquals("ADMIN_JOIN_CALL", response.getAdminNextAction());
+    }
+
+    @Test
+    @DisplayName("AdminNextAction - NON_BLOCKING + adminRequired는 ADMIN_CONFIRM_LATER")
+    void calculateAdminNextAction_ConfirmLater() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+        issue.setIssueHandling("NON_BLOCKING");
+        issue.setAdminRequired(true);
+        issue.setReasonCode("DAMAGED");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("FAIL");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertEquals("ADMIN_CONFIRM_LATER", response.getAdminNextAction());
+    }
 }
