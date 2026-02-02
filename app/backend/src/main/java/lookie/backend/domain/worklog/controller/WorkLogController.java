@@ -8,6 +8,7 @@ import lookie.backend.domain.worklog.dto.WorkLogRequestDto;
 import lookie.backend.domain.worklog.dto.WorkLogResponseDto;
 import lookie.backend.domain.worklog.service.WorkLogService;
 import lookie.backend.global.response.ApiResponse;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/work-logs")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('WORKER')")
 public class WorkLogController {
 
     private final WorkLogService workLogService;

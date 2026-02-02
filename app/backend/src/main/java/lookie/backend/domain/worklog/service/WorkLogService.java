@@ -146,19 +146,10 @@ public class WorkLogService {
         List<WorkLog> logs = workLogMapper.findAllByWorkerId(workerId);
 
         return logs.stream().map(log -> {
-            // 이미 퇴근한 기록(endedAt != null)은 DB 조회 없이 END 상태로 반환 (성능 최적화)
-            if (log.getEndedAt() != null) {
-                // 가상의 퇴근 이벤트 객체를 만들어 DTO 변환에 사용
-                WorkLogEvent endEvent = WorkLogEvent.builder()
-                        .eventType(WorkLogEventType.END)
-                        .occurredAt(log.getEndedAt())
-                        .build();
-                return WorkLogResponseDto.from(log, endEvent);
-            } else {
-                // 아직 진행 중인 기록은 최신 상태를 정확히 조회
-                WorkLogEvent lastEvent = workLogMapper.findLastEventByWorkLogId(log.getWorkLogId());
-                return WorkLogResponseDto.from(log, lastEvent);
-            }
+            // 퇴근 여부와 상관없이 항상 '실제 마지막 이벤트'를 DB에서 조회하여 매핑
+            // (데이터 일관성 확보)
+            WorkLogEvent lastEvent = workLogMapper.findLastEventByWorkLogId(log.getWorkLogId());
+            return WorkLogResponseDto.from(log, lastEvent);
         }).collect(Collectors.toList());
     }
 

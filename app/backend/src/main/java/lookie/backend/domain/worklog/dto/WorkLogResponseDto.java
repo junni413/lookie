@@ -15,6 +15,7 @@ public class WorkLogResponseDto {
     private Long workerId;              // 작업자(User) 고유 식별자
     private LocalDateTime startedAt;    // 근무 시작 시각 (출근 시각)
     private LocalDateTime endedAt;      // 근무 종료 시각 (퇴근 시각)
+    private String plannedEndAt;        // 퇴근 예정 시각 (정해진 시간, 현재는 출근 시각으로부터 5분뒤로 설정)
     private WorkLogEventType currentStatus; // 현재 근무 상세 상태 (START, PAUSE, RESUME, END)
     private LocalDateTime lastStatusChangedAt;  // 마지막으로 상태가 변경된 시각
 
@@ -35,6 +36,8 @@ public class WorkLogResponseDto {
                 .currentStatus(lastEvent != null ? lastEvent.getEventType() : WorkLogEventType.START)
                 // 최신 이벤트가 없을 경우 상태 변경 시각을 근무 시작 시각으로 설정
                 .lastStatusChangedAt(lastEvent != null ? lastEvent.getOccurredAt() : workLog.getStartedAt())
+                .plannedEndAt(workLog.getPlannedEndAt() != null ?
+                        workLog.getPlannedEndAt().toString() : null)
                 .build();
     }
 }
