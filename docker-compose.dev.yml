@@ -84,6 +84,8 @@ services:
       # (권장) JPA가 테이블을 자동 생성/변경하지 않고, 현재 스키마가 엔티티와 맞는지 검증만
       # - 운영에서는 validate / 개발에서는 update를 쓰는 식으로 분리 가능
       - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
+      # ✅ 백엔드가 AI 서버를 호출할 주소
+      - AI_SERVER_URL=http://ai-server:8000
     env_file:
       - .env                               # DB/JWT/Redis 등 런타임 환경변수 주입
     ports:
@@ -93,6 +95,31 @@ services:
     depends_on:
       mysql:
         condition: service_healthy         # mysql 준비 후 backend 기동(최소한 DB 기동 타이밍 문제 방지)
+
+  # ============================
+  # AI Server (FastAPI)
+  # - 개발용: 소스코드 마운트 + Hot Reload
+  # ============================
+  ai-server:
+    build: 
+      context: ./app/ai-server  # ⚠️ [중요] AI 프로젝트 폴더 경로 (Dockerfile이 있는 곳)
+      dockerfile: Dockerfile
+    container_name: ai-server
+    ports:
+      - "8000:8000"   # 외부 포트 오픈
+    environment:
+      - BACKEND_URL=http://backend:8080 # 내부 통신용 URL
+    volumes:
+      # ✅ [핵심] 로컬 소스 코드를 컨테이너에 연결 (코드 수정 시 즉시 반영)
+      - ./app/ai-server:/app
+      # ✅ 모델 파일 연결
+      - ./app/ai-server/model:/app/model
+    # ✅ [핵심] --reload 옵션으로 코드 변경 감지하여 서버 자동 재시작
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - lookie
+    depends_on:
+      - backend
 
   # ============================
   # Nginx Reverse Proxy 컨테이너
