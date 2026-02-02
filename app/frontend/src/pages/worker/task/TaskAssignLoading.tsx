@@ -1,33 +1,47 @@
 import { useEffect } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "../../../components/layout/MobileLayout";
-
-type AssignedTask = {
-  zone: string;
-  line: string;
-  count: number;
-};
+import { taskService } from "@/services/taskService";
+import { TASK_ERROR_MESSAGES, type TaskErrorCode } from "@/types/task";
 
 export default function TaskAssignLoading() {
   const navigate = useNavigate();
   const { setTitle } = useOutletContext<MobileLayoutContext>();
 
-  useEffect(() => {
-    setTitle("작업 할당");
-  }, [setTitle]);
+  useEffect(() => setTitle("작업 할당"), [setTitle]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      const task: AssignedTask = { zone: "A-2", line: "L-05", count: 24 };
+    const fetchTask = async () => {
+      try {
+        const response = await taskService.startTask();
 
-      // ✅ 핵심: state로 task 넘겨야 scan-start가 렌더됨
-      navigate("/worker/task/scan-start", {
-        replace: true,
-        state: { task },
-      });
-    }, 900);
+        if (response.success && response.data) {
+          // ApiResponse.data = TaskResponse(TaskVO)
+          const task = response.data.payload;
 
-    return () => clearTimeout(t);
+          // 대기 통계 (UI용)
+          await taskService.addWaitingTasks(task.itemCount || 1);
+
+          navigate("/worker/task/scan-start", {
+            replace: true,
+            state: { task },
+          });
+          return;
+        }
+
+        const msg = response.errorCode
+          ? (TASK_ERROR_MESSAGES[response.errorCode as TaskErrorCode] || response.message)
+          : (response.message || "작업 할당에 실패했습니다.");
+
+        throw new Error(msg);
+      } catch (error: any) {
+        console.error("Task assign error:", error);
+        alert(error?.message || "작업을 할당받지 못했습니다. 잠시 후 다시 시도해주세요.");
+        navigate("/worker/home", { replace: true });
+      }
+    };
+
+    fetchTask();
   }, [navigate]);
 
   return (

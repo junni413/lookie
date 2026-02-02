@@ -18,13 +18,14 @@ export default function AttendPage() {
     setLoading(true);
 
     try {
-      // ✅ 저장: 현재 시간을 로컬스토리지에 (임시)
       const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(
+        now.getMinutes()
+      ).padStart(2, "0")}`;
       localStorage.setItem("worker_attend_time", timeStr);
 
-      await attend(); // ✅ 출근 처리
-      navigate("/worker/home"); // ✅ 홈으로 이동
+      await attend();
+      navigate("/worker/home");
     } catch (e) {
       console.error("출근 처리 실패", e);
       alert("출근 처리에 실패했어요.");
@@ -39,11 +40,20 @@ export default function AttendPage() {
         type="button"
         onClick={handleAttend}
         disabled={loading}
-        className={`w-[220px] h-[150px] rounded-[28px] bg-blue-600 text-white
-          shadow-[0_18px_30px_rgba(37,99,235,0.25)] active:scale-[0.98] transition
-          ${loading ? "opacity-60 pointer-events-none" : ""}`}
+        className={`
+          w-[240px] h-[180px]
+          rounded-[32px]
+          bg-blue-600 text-white
+          flex flex-col items-center justify-center gap-3
+          shadow-[0_20px_40px_rgba(37,99,235,0.35)]
+          transition-all duration-200
+          active:scale-[0.97]
+          disabled:opacity-60 disabled:pointer-events-none
+        `}
       >
-        {loading ? "처리 중..." : "출근하기"}
+        <span className="text-[22px] font-black tracking-tight">
+          {loading ? "처리 중..." : "출근하기"}
+        </span>
       </button>
     </div>
   );

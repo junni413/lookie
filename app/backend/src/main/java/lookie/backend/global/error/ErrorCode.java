@@ -61,14 +61,17 @@ public enum ErrorCode {
 
 	// ===== ISSUE =====
 	ISSUE_RECAPTURE_REQUIRED("ISSUE_001", HttpStatus.BAD_REQUEST, "재촬영이 필요합니다"),
+	ISSUE_ITEM_NOT_FOUND("ISSUE_002", HttpStatus.NOT_FOUND, "작업 아이템을 찾을 수 없습니다"),
+	ISSUE_TASK_NOT_ASSIGNED("ISSUE_003", HttpStatus.FORBIDDEN, "해당 작업이 현재 작업자에게 할당되지 않았습니다"),
+	ISSUE_NOT_FOUND("ISSUE_004", HttpStatus.NOT_FOUND, "이슈를 찾을 수 없습니다"),
 
 	// ==== PRODUCT ====
 	PRODUCT_NOT_FOUND("PROD_001", HttpStatus.NOT_FOUND, "상품 정보를 찾을 수 없습니다"),
 
-	// ===== WEBRTC (OpenVidu) =====
-	WEBRTC_SESSION_NOT_FOUND("RTC_001", HttpStatus.NOT_FOUND, "존재하지 않거나 이미 종료된 세션입니다"),
+	// ===== WEBRTC (LiveKit) =====
+	WEBRTC_SESSION_NOT_FOUND("RTC_001", HttpStatus.NOT_FOUND, "세션을 찾을 수 없습니다"),
 	WEBRTC_MANAGER_BUSY("RTC_002", HttpStatus.CONFLICT, "관리자가 현재 부재중입니다"),
-	WEBRTC_SERVER_ERROR("RTC_003", HttpStatus.INTERNAL_SERVER_ERROR, "OpenVidu 서버와 통신 중 오류가 발생했습니다"),
+	WEBRTC_SERVER_ERROR("RTC_003", HttpStatus.INTERNAL_SERVER_ERROR, "LiveKit 서버와 통신 중 오류가 발생했습니다"),
 	WEBRTC_CLIENT_ERROR("RTC_004", HttpStatus.BAD_REQUEST, "잘못된 WebRTC 요청입니다"),
 	WEBRTC_USER_AWAY("RTC_005", HttpStatus.CONFLICT, "상대방이 자리 비움 상태입니다"),
 	WEBRTC_USER_PAUSED("RTC_006", HttpStatus.CONFLICT, "상대방이 작업 중지 상태입니다"),

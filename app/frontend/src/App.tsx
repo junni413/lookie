@@ -22,11 +22,16 @@ import WorkHistory from "./pages/worker/WorkHistory";
 import IssueListPage from "./pages/worker/issue/IssueList";
 import IssueReportPage from "./pages/worker/issue/IssueReport";
 import IssueResultPage from "./pages/worker/issue/IssueResult";
+import AiStockAnalysis from "./pages/worker/issue/AiStockAnalysis";
+import OtherIssue from "./pages/worker/issue/OtherIssue";
+import IssueDetail from "./pages/worker/issue/IssueDetail";
 
+// ADMIN pages
 import AdminDashboard from "./pages/admin/Dashboard";
 import IssuePage from "./pages/admin/Issue";
 import ManagePage from "./pages/admin/Manage";
 import MapPage from "./pages/admin/Map";
+import ContactPage from "./pages/admin/Contact";
 
 // ✅ 작업 흐름 (프론트만)
 import TaskAssignLoading from "./pages/worker/task/TaskAssignLoading";
@@ -127,6 +132,9 @@ export default function App() {
         <Route path="issue" element={<IssueListPage />} />
         <Route path="issue/report" element={<IssueReportPage />} />
         <Route path="issue/result" element={<IssueResultPage />} />
+        <Route path="issue/detail" element={<IssueDetail />} />
+        <Route path="issue/stock-analysis" element={<AiStockAnalysis />} />
+        <Route path="issue/other" element={<OtherIssue />} />
 
         {/* 사이드바 연결 페이지들 */}
         <Route path="mypage" element={<MyPage />} />
@@ -153,6 +161,7 @@ export default function App() {
         <Route path="manage" element={<ManagePage />} />
         <Route path="map" element={<MapPage />} />
         <Route path="issue" element={<IssuePage />} />
+        <Route path="contact" element={<ContactPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

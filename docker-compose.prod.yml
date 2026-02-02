@@ -109,9 +109,11 @@ services:
     container_name: nginx
     ports:
       - "80:80"                           # ✅ 외부 공개 포트(브라우저 접속)
+      - "443:443"
     volumes:
       # ✅ [추가] Nginx 접근/에러 로그를 EC2에서 확인
       - ./data/logs/nginx:/var/log/nginx
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     networks:
       - lookie
     depends_on:

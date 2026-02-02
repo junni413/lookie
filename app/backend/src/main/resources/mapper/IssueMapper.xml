@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="lookie.backend.domain.issue.mapper.IssueMapper">
+
+    <!-- Issue 생성 -->
+    <insert id="insertIssue" useGeneratedKeys="true" keyProperty="issueId">
+        INSERT INTO issues (
+            issue_type, status, priority, reason_code, issue_handling, admin_required,
+            worker_id, admin_id, batch_task_id, batch_task_item_id, zone_location_id,
+            note
+        ) VALUES (
+            #{issueType}, #{status}, #{priority}, #{reasonCode}, #{issueHandling}, #{adminRequired},
+            #{workerId}, #{adminId}, #{batchTaskId}, #{batchTaskItemId}, #{zoneLocationId},
+            #{note}
+        )
+    </insert>
+
+    <!-- Issue 단건 조회 -->
+    <select id="findById" resultType="IssueVO">
+        SELECT
+            issue_id AS issueId,
+            issue_type AS issueType,
+            status,
+            priority,
+            reason_code AS reasonCode,
+            issue_handling AS issueHandling,
+            admin_required AS adminRequired,
+            worker_id AS workerId,
+            admin_id AS adminId,
+            batch_task_id AS batchTaskId,
+            batch_task_item_id AS batchTaskItemId,
+            zone_location_id AS zoneLocationId,
+            created_at AS createdAt,
+            resolved_at AS resolvedAt,
+            note
+        FROM issues
+        WHERE issue_id = #{issueId}
+    </select>
+
+    <!-- Issue 상태/정책 업데이트 -->
+    <update id="updateIssueStatus">
+        UPDATE issues
+        SET
+            status = #{status},
+            priority = #{priority},
+            reason_code = #{reasonCode},
+            issue_handling = #{issueHandling},
+            admin_required = #{adminRequired},
+            resolved_at = #{resolvedAt}
+        WHERE issue_id = #{issueId}
+    </update>
+
+    <!-- 이미지 저장 -->
+    <insert id="insertIssueImage" useGeneratedKeys="true" keyProperty="issueImageId">
+        INSERT INTO issue_images (
+            issue_id, image_url
+        ) VALUES (
+            #{issueId}, #{imageUrl}
+        )
+    </insert>
+
+    <!-- AI 판정 초기 저장 -->
+    <insert id="insertAiJudgment" useGeneratedKeys="true" keyProperty="judgmentId">
+        INSERT INTO ai_judgments (
+            issue_id, image_url, ai_decision, confidence, summary
+        ) VALUES (
+            #{issueId}, #{imageUrl}, #{aiDecision}, #{confidence}, #{summary}
+        )
+    </insert>
+
+    <!-- AI 판정 결과 업데이트 -->
+    <update id="updateAiJudgment">
+        UPDATE ai_judgments
+        SET
+            ai_result = #{aiResult},
+            confidence = #{confidence},
+            ai_decision = #{aiDecision},
+            summary = #{summary}
+        WHERE issue_id = #{issueId}
+    </update>
+    
+    <!-- Issue ID로 AI 판정 조회 -->
+    <select id="findAiJudgmentByIssueId" resultType="AiJudgmentVO">
+        SELECT
+            judgment_id AS judgmentId,
+            issue_id AS issueId,
+            image_url AS imageUrl,
+            ai_result AS aiResult,
+            confidence,
+            ai_decision AS aiDecision,
+            summary,
+            created_at AS createdAt
+        FROM ai_judgments
+        WHERE issue_id = #{issueId}
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+</mapper>

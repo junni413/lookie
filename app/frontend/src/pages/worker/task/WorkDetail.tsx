@@ -1,69 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "../../../components/layout/MobileLayout";
 import IssueSelectSheet, { type IssueType } from "./IssueSelectDrawer";
+import ScannerModal from "./ScannerModal";
 import { useToast } from "@/components/ui/use-toast";
-import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
-
-type AssignedTask = { zone: string; line: string; count: number };
-
-type ProductItem = {
-  id: string;
-  name: string;
-  sku: string;
-  location: string;
-  qty: number;
-};
-
-// Mock Data
-const MOCK_PRODUCTS: ProductItem[] = [
-  {
-    id: "p1",
-    name: "[K365] 유명산지 고당도 사과",
-    sku: "SKU-887421_KR",
-    location: "A-12-03",
-    qty: 1,
-  },
-  {
-    id: "p2",
-    name: "삼성 블루투스 이어폰",
-    sku: "SKU-SAMSUNG-EQ",
-    location: "A-12-04",
-    qty: 2,
-  },
-  {
-    id: "p3",
-    name: "로지텍 무선 마우스",
-    sku: "SKU-LOGIT-MX",
-    location: "A-12-05",
-    qty: 1,
-  },
-];
-
-async function reportIssue(params: {
-  type: IssueType;
-  toteBarcode: string;
-  sku: string;
-  location: string;
-}) {
-  // TODO: 백 API로 교체
-  const res = await fetch("/api/issues", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
-
-  if (!res.ok) {
-    let msg = "이슈 신고에 실패했습니다.";
-    try {
-      const data = await res.json();
-      msg = data?.message ?? msg;
-    } catch { }
-    throw new Error(msg);
-  }
-
-  return res.json().catch(() => ({}));
-}
+import { ChevronLeft, ChevronRight, MapPin, PackageSearch, Plus, Minus } from "lucide-react";
+import { taskService } from "@/services/taskService";
+import type { TaskVO, TaskItemVO, NextAction, TaskErrorCode } from "@/types/task";
+import { TASK_ERROR_MESSAGES } from "@/types/task";
 
 export default function WorkDetail() {
   const { setTitle } = useOutletContext<MobileLayoutContext>();
@@ -71,182 +15,389 @@ export default function WorkDetail() {
   const { state } = useLocation();
   const { toast } = useToast();
 
-  const task = (state as any)?.task as AssignedTask | undefined;
-  const toteBarcode = (state as any)?.toteBarcode as string | undefined;
+  const task: TaskVO | undefined = state?.task;
+  const toteBarcode = state?.toteBarcode as string | undefined;
+
+  const [nextAction, setNextAction] = useState<NextAction>(state?.nextAction || "SCAN_LOCATION");
+  const [items, setItems] = useState<TaskItemVO[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   const [issueOpen, setIssueOpen] = useState(false);
-  const [sendingIssue, setSendingIssue] = useState<IssueType | null>(null);
+  const sendingIssue: IssueType | null = null;
 
-  // 현재 보고 있는 상품 인덱스
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanType, setScanType] = useState<"LOCATION" | "ITEM">("LOCATION");
 
   useEffect(() => setTitle("작업 진행"), [setTitle]);
 
   useEffect(() => {
-    if (!task || !toteBarcode) navigate("/worker/home", { replace: true });
-  }, [task, toteBarcode, navigate]);
+    if (!task || !toteBarcode) {
+      navigate("/worker/home", { replace: true });
+      return;
+    }
 
-  if (!task || !toteBarcode) return null;
+    const fetchItems = async () => {
+      setLoading(true);
+      try {
+        // ✅ 백: GET /api/tasks/{taskId}/items -> ApiResponse<List<TaskItemVO>>
+        const response = await taskService.getTaskItems(task.batchTaskId);
 
-  const currentProduct = MOCK_PRODUCTS[currentIndex];
-  // 마지막 아이템 여부
-  const isLastItem = currentIndex === MOCK_PRODUCTS.length - 1;
+        if (response.success && Array.isArray(response.data)) {
+          setItems(response.data);
+          setCurrentIndex(0);
+        } else {
+          setItems([]);
+        }
+      } catch (err: any) {
+        console.error("Fetch items error:", err);
+        setItems([]);
+        toast({ title: "아이템 조회 실패", description: err?.message, variant: "destructive" });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  // 이전 아이템
+    fetchItems();
+  }, [task, toteBarcode, navigate, toast]);
+
+  const currentItem = items[currentIndex];
+
+  useEffect(() => {
+    if (!currentItem) return;
+
+    if (currentItem.status === "DONE") setNextAction("SCAN_ITEM");
+    else setNextAction("SCAN_LOCATION");
+  }, [currentIndex, currentItem]);
+
   const prevItem = () => {
     if (currentIndex > 0) setCurrentIndex((i) => i - 1);
   };
 
-  // 다음 아이템
-  const nextItem = () => {
-    if (currentIndex < MOCK_PRODUCTS.length - 1) setCurrentIndex((i) => i + 1);
+  const nextItemIdx = () => {
+    if (currentIndex < items.length - 1) setCurrentIndex((i) => i + 1);
   };
 
-  const handleNextWork = () => {
-    if (isLastItem) {
-      alert("모든 작업이 완료되었습니다!");
-      navigate("/worker/home");
-    } else {
-      nextItem();
-      toast({
-        title: "다음 상품으로 이동합니다.",
-      });
+  const openLocationScanner = () => {
+    setScanType("LOCATION");
+    setScannerOpen(true);
+  };
+
+  const openItemScanner = () => {
+    setScanType("ITEM");
+    setScannerOpen(true);
+  };
+
+  const handleScanned = useCallback(
+    async (barcode: string) => {
+      if (!currentItem || !task) return;
+
+      if (scanType === "LOCATION") {
+        // 1) 프론트 1차 검증
+        if (barcode !== currentItem.locationCode) {
+          toast({ title: "지번 불일치", description: "지번을 다시 확인해주십시오.", variant: "destructive" });
+          return;
+        }
+
+        // 2) 백 호출: POST /api/tasks/{taskId}/locations/check
+        try {
+          setScannerOpen(false);
+          const res = await taskService.scanLocation(task.batchTaskId, barcode);
+
+          if (res.success && res.data) {
+            setNextAction(res.data.nextAction);
+            toast({ title: "지번 확인됨", description: "이제 상품을 스캔하세요." });
+          } else {
+            const msg =
+              (res.errorCode && TASK_ERROR_MESSAGES[res.errorCode as TaskErrorCode]) ||
+              res.message ||
+              "지번 확인에 실패했습니다.";
+            toast({ title: "지번 확인 실패", description: msg, variant: "destructive" });
+          }
+        } catch (err: any) {
+          toast({ title: "지번 확인 실패", description: err?.message, variant: "destructive" });
+        }
+        return;
+      }
+
+      // ITEM
+      // 1) 프론트 1차 검증
+      if (barcode !== currentItem.barcode) {
+        toast({ title: "상품 불일치", description: "상품을 다시 확인해주십시오.", variant: "destructive" });
+        return;
+      }
+
+      // 2) 백 호출: POST /api/tasks/{taskId}/items/scan
+      try {
+        setScannerOpen(false);
+        const res = await taskService.scanItem(task.batchTaskId, barcode);
+
+        if (res.success && res.data) {
+          setNextAction(res.data.nextAction);
+
+          const updatedPayload = res.data.payload;
+          const updatedItems = items.map((it) =>
+            it.batchTaskItemId === updatedPayload.batchTaskItemId ? updatedPayload : it
+          );
+          setItems(updatedItems);
+
+          toast({ title: "상품 인식됨", description: "수량을 확인해주세요." });
+        } else {
+          const msg =
+            (res.errorCode && TASK_ERROR_MESSAGES[res.errorCode as TaskErrorCode]) ||
+            res.message ||
+            "상품 인식에 실패했습니다.";
+          toast({ title: "상품 인식 실패", description: msg, variant: "destructive" });
+        }
+      } catch (err: any) {
+        toast({ title: "상품 인식 실패", description: err?.message, variant: "destructive" });
+      }
+    },
+    [currentItem, scanType, task, items, toast]
+  );
+
+  const handleQuantityChange = async (increment: number) => {
+    if (!currentItem) return;
+
+    try {
+      const res = await taskService.updateQuantity(currentItem.batchTaskItemId, increment);
+
+      if (res.success && res.data) {
+        const updatedPayload = res.data.payload;
+        const updatedItems = items.map((it) =>
+          it.batchTaskItemId === updatedPayload.batchTaskItemId ? updatedPayload : it
+        );
+        setItems(updatedItems);
+      } else {
+        const msg =
+          (res.errorCode && TASK_ERROR_MESSAGES[res.errorCode as TaskErrorCode]) ||
+          res.message ||
+          "수량 조절에 실패했습니다.";
+        toast({ title: "수량 조절 실패", description: msg, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "수량 조절 실패", description: err?.message, variant: "destructive" });
     }
   };
 
-  const handleIssueSelect = async (type: IssueType) => {
-    // 전송 중이면 무시
-    if (sendingIssue) return;
+  const handleNextWork = async () => {
+    if (!currentItem) return;
 
-    // ✅ 상품 파손은 "사진 촬영/업로드" 화면으로 이동
-    if (type === "DAMAGED") {
-      setIssueOpen(false);
-      navigate("/worker/issue/report", {
-        state: {
-          issueType: type,
-          toteBarcode,
-          product: currentProduct, // 현재 상품 정보 전달
-        },
-      });
+    if (currentItem.status !== "DONE") {
+      toast({ title: "작업 미완료", description: "현재 상품의 수량을 모두 채워주세요." });
       return;
     }
 
-    // ✅ 재고 없음/기타는 즉시 신고 + 토스트
-    setSendingIssue(type);
-    try {
-      await reportIssue({
-        type,
-        toteBarcode,
-        sku: currentProduct.sku,
-        location: currentProduct.location,
-      });
+    if (currentIndex === items.length - 1) {
+      const allDone = items.every((it) => it.status === "DONE");
+      if (!allDone) {
+        toast({
+          title: "작업 미완료",
+          description: "아직 처리하지 않은 상품이 있습니다. 목록을 확인해주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-      toast({
-        title: "이슈 신고가 접수되었습니다.",
-        description: "관리자가 확인 후 처리합니다.",
-      });
+      // ✅ POST /api/tasks/{taskId}/complete (바디 없음)
+      try {
+        const res = await taskService.completeTask(task.batchTaskId);
 
-      setIssueOpen(false);
-    } catch (e: any) {
-      toast({
-        title: "이슈 신고 실패",
-        description: e?.message ?? "잠시 후 다시 시도해주세요.",
-        variant: "destructive",
-      });
-    } finally {
-      setSendingIssue(null);
+        if (res.success) {
+          alert("축하합니다! 모든 배정 작업을 완료했습니다.");
+          navigate("/worker/home");
+        } else {
+          const msg =
+            (res.errorCode && TASK_ERROR_MESSAGES[res.errorCode as TaskErrorCode]) ||
+            res.message ||
+            "작업 완료 처리에 실패했습니다.";
+          toast({ title: "작업 완료 처리 실패", description: msg, variant: "destructive" });
+        }
+      } catch (err: any) {
+        toast({ title: "작업 완료 처리 실패", description: err?.message, variant: "destructive" });
+      }
+      return;
     }
+
+    nextItemIdx();
+    setNextAction("SCAN_LOCATION");
   };
+
+  const handleIssueSelect = (type: IssueType) => {
+    if (!currentItem) return;
+
+    if (type === "DAMAGED") {
+      setIssueOpen(false);
+      navigate("/worker/issue/report", { state: { issueType: type, toteBarcode, product: currentItem } });
+      return;
+    }
+    if (type === "MISSING") {
+      setIssueOpen(false);
+      navigate("/worker/issue/stock-analysis", { state: { task, toteBarcode, product: currentItem } });
+      return;
+    }
+    if (type === "OTHER") {
+      setIssueOpen(false);
+      navigate("/worker/issue/other", { state: { task, toteBarcode, product: currentItem } });
+      return;
+    }
+    setIssueOpen(false);
+  };
+
+  // 방어
+  if (!task || !toteBarcode) return null;
+  if (loading) return null;
+  if (!currentItem) return null;
 
   return (
     <>
-      <div className="space-y-4 relative">
-        {/* Top Left Menu Button (Absolute positioned near container top) */}
-        <div className="absolute -top-12 left-0">
+      <div className="space-y-4 px-2 relative">
+        <div className="flex justify-start">
           <button
-            onClick={() => navigate("/worker/task/list")}
-            className="p-2 hover:bg-gray-100 rounded-lg"
+            onClick={() => navigate("/worker/task/list", { state: { task, toteBarcode } })}
+            className="p-2 -mt-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
-            <Menu className="w-6 h-6 text-gray-700" />
+            <div className="flex flex-col gap-1 w-6">
+              <div className="h-0.5 w-full bg-gray-500 rounded-full" />
+              <div className="h-0.5 w-4/5 bg-gray-500 rounded-full" />
+            </div>
           </button>
         </div>
 
-        <section className="rounded-2xl border bg-white p-4 shadow-sm">
-          <p className="text-sm font-semibold">토트 스캔 완료</p>
-          <p className="mt-1 text-xs text-gray-500">
-            토트 바코드: {toteBarcode}
+        <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <p className="text-base font-bold text-gray-900">토트 스캔 완료</p>
+          <p className="mt-1 text-sm text-gray-400">
+            토트 바코드: <span className="text-gray-600 font-medium">{toteBarcode}</span>
           </p>
         </section>
 
-        <section className="rounded-2xl border bg-white p-4 shadow-sm relative">
-          <p className="text-lg font-extrabold text-center">지번과 상품을 스캔해주세요.</p>
+        <section className="rounded-[32px] border border-gray-50 bg-white p-6 shadow-sm relative overflow-hidden">
+          <p className="text-[22px] font-black text-center text-gray-900 leading-tight">
+            {nextAction === "SCAN_LOCATION" ? "지번을 스캔해주세요." : "상품을 스캔해주세요."}
+          </p>
 
-          <div className="mt-6 flex items-center gap-2">
-            {/* Left Arrow */}
+          <div className="mt-8 flex items-center gap-2">
             <button
               onClick={prevItem}
               disabled={currentIndex === 0}
-              className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-30"
+              className="p-1 rounded-full hover:bg-gray-50 disabled:opacity-0 transition-opacity"
             >
-              <ChevronLeft className="w-6 h-6 text-gray-400" />
+              <ChevronLeft className="w-8 h-8 text-gray-300" />
             </button>
 
-            {/* Product Card Content */}
-            <div className="flex-1 flex gap-3">
-              <div className="h-28 w-28 rounded-2xl bg-gray-100 flex-shrink-0" />
+            <div className="flex-1 flex gap-5 items-center">
+              <div className="h-32 w-32 rounded-3xl bg-gray-50 flex-shrink-0 animate-pulse" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500">상품명</p>
-                <p className="text-sm font-extrabold break-keep">{currentProduct.name}</p>
+                <p className="text-[13px] font-semibold text-gray-400">상품명</p>
+                <p className="text-lg font-black text-gray-900 break-keep leading-snug">
+                  {currentItem.productName}
+                </p>
 
-                <p className="mt-3 text-xs text-gray-500">상품 코드</p>
-                <p className="text-sm font-extrabold">{currentProduct.sku}</p>
+                <p className="mt-3 text-[13px] font-semibold text-gray-400">상품 코드</p>
+                <p className="text-[15px] font-bold text-gray-900 tabular-nums">{currentItem.barcode}</p>
               </div>
             </div>
 
-            {/* Right Arrow */}
             <button
-              onClick={nextItem}
-              disabled={currentIndex === MOCK_PRODUCTS.length - 1}
-              className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-30"
+              onClick={nextItemIdx}
+              disabled={currentIndex === items.length - 1}
+              className="p-1 rounded-full hover:bg-gray-50 disabled:opacity-0 transition-opacity"
             >
-              <ChevronRight className="w-6 h-6 text-gray-400" />
+              <ChevronRight className="w-8 h-8 text-gray-300" />
             </button>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-8 grid grid-cols-2 gap-4">
             <button
-              type="button"
-              className="h-20 rounded-2xl border bg-white text-sm font-semibold hover:bg-gray-50 active:bg-gray-100 transition-colors"
+              onClick={openLocationScanner}
+              disabled={nextAction !== "SCAN_LOCATION"}
+              className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${
+                nextAction === "SCAN_LOCATION" ? "bg-blue-50/50 border-blue-100 shadow-sm" : "bg-white border-transparent"
+              }`}
             >
-              지번 스캔
-              <div className="mt-1 text-xs text-gray-500">{currentProduct.location}</div>
+              <div
+                className={`p-2 rounded-full mb-2 ${
+                  nextAction === "SCAN_LOCATION" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"
+                }`}
+              >
+                <MapPin className="w-5 h-5" />
+              </div>
+              <p className={`text-sm font-bold ${nextAction === "SCAN_LOCATION" ? "text-gray-900" : "text-gray-400"}`}>
+                지번 스캔
+              </p>
+              <p className="text-sm font-medium text-gray-500 mt-0.5">{currentItem.locationCode}</p>
             </button>
+
             <button
-              type="button"
-              className="h-20 rounded-2xl border bg-white text-sm font-semibold hover:bg-gray-50 active:bg-gray-100 transition-colors"
+              onClick={openItemScanner}
+              disabled={nextAction !== "SCAN_ITEM"}
+              className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${
+                nextAction === "SCAN_ITEM" ? "bg-blue-50/50 border-blue-100 shadow-sm" : "bg-white border-transparent"
+              }`}
             >
-              상품 스캔
-              <div className="mt-1 text-xs text-gray-500">{currentProduct.location}</div>
+              <div
+                className={`p-2 rounded-full mb-2 ${
+                  nextAction === "SCAN_ITEM" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"
+                }`}
+              >
+                <PackageSearch className="w-5 h-5" />
+              </div>
+              <p className={`text-sm font-bold ${nextAction === "SCAN_ITEM" ? "text-gray-900" : "text-gray-400"}`}>
+                상품 스캔
+              </p>
+              <p className="text-sm font-medium text-gray-500 mt-0.5">{currentItem.barcode}</p>
             </button>
           </div>
 
-          {/* Progress Indicator */}
-          <div className="flex justify-center mt-4 gap-1">
-            {MOCK_PRODUCTS.map((_, idx) => (
+          <div className="mt-8 flex flex-col items-center">
+            <div className="flex items-center gap-8">
+              <button
+                onClick={() => handleQuantityChange(-1)}
+                disabled={currentItem.pickedQty === 0}
+                className={`p-3 rounded-full transition-colors ${
+                  currentItem.pickedQty === 0 ? "bg-gray-50 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                }`}
+              >
+                <Minus className="w-6 h-6" />
+              </button>
+
+              <div className="text-center">
+                <p className="text-xs font-bold text-gray-400 mb-1">담긴 수량 / 담아야 할 총 수량</p>
+                <p className="text-2xl font-black text-gray-900">
+                  <span className="text-blue-600">{currentItem.pickedQty}</span> / {currentItem.requiredQty}
+                </p>
+              </div>
+
+              <button
+                onClick={() => handleQuantityChange(1)}
+                disabled={currentItem.pickedQty >= currentItem.requiredQty}
+                className={`p-3 rounded-full transition-colors ${
+                  currentItem.pickedQty >= currentItem.requiredQty
+                    ? "bg-gray-50 text-gray-300"
+                    : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                }`}
+              >
+                <Plus className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-center mt-10 gap-2">
+            {items.map((_, idx) => (
               <div
                 key={idx}
-                className={`h-1.5 rounded-full transition-all ${idx === currentIndex ? "w-4 bg-gray-800" : "w-1.5 bg-gray-300"
-                  }`}
+                className={`h-2 rounded-full transition-all duration-500 ${
+                  idx === currentIndex ? "w-6 bg-blue-600" : "w-2 bg-gray-200"
+                }`}
               />
             ))}
           </div>
 
-          <div className="mt-5 grid gap-3">
+          <div className="mt-10 space-y-3">
             <button
               type="button"
               onClick={() => setIssueOpen(true)}
-              disabled={!!sendingIssue}
-              className="h-14 rounded-2xl bg-yellow-300 text-base font-extrabold disabled:opacity-60 shadow-md shadow-yellow-100 hover:bg-yellow-400 transition-colors"
+              className="w-full h-16 rounded-[20px] bg-[#FFE162] text-[17px] font-black text-gray-900 shadow-sm active:scale-[0.98] transition-all"
             >
               이슈 발생 신고
             </button>
@@ -254,9 +405,9 @@ export default function WorkDetail() {
             <button
               type="button"
               onClick={handleNextWork}
-              className="h-14 rounded-2xl bg-blue-600 text-base font-extrabold text-white shadow-md shadow-blue-200 hover:bg-blue-700 transition-colors"
+              className="w-full h-16 rounded-[20px] bg-blue-600 text-[17px] font-black text-white shadow-lg active:scale-[0.98] transition-all"
             >
-              {isLastItem ? "작업 완료" : "다음 작업 진행"}
+              {currentIndex === items.length - 1 ? "작업 완료" : "다음 작업 진행"}
             </button>
           </div>
         </section>
@@ -267,6 +418,14 @@ export default function WorkDetail() {
         onClose={() => setIssueOpen(false)}
         onSelect={handleIssueSelect}
         loadingKey={sendingIssue}
+      />
+
+      <ScannerModal
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={handleScanned}
+        title={scanType === "LOCATION" ? "지번 스캔" : "상품 바코드 스캔"}
+        expectedValue={scanType === "LOCATION" ? currentItem.locationCode : currentItem.barcode}
       />
     </>
   );

@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { cva } from "class-variance-authority";
-import { Badge } from "@/components/ui/badge";
-import type { IssueResponse, IssueType } from "@/types/db";
+import type { IssueResponse } from "@/types/db";
 import { cn } from "@/utils/cn";
 import { timeAgo } from "@/utils/format";
 
@@ -12,29 +10,8 @@ interface IssueListItemProps {
     onClick?: () => void;
 }
 
-const issueBadgeVariants = cva(
-    "rounded-full px-2 py-0.5 text-xs text-white border-0",
-    {
-        variants: {
-            type: {
-                OUT_OF_STOCK: "bg-destructive hover:bg-destructive",
-                DAMAGED: "bg-primary hover:bg-primary",
-            },
-        },
-    }
-);
-
-function IssueTypeBadge({ type }: { type: IssueType }) {
-    const label = type === "OUT_OF_STOCK" ? "재고" : "파손";
-
-    return (
-        <Badge className={cn(issueBadgeVariants({ type }))}>
-            {label}
-        </Badge>
-    );
-}
-
 export default function IssueListItem({ issue, selected, onClick }: IssueListItemProps) {
+    const isOutOfStock = issue.issue_type === "OUT_OF_STOCK";
     const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
 
     const worker = issue.worker || {
@@ -45,11 +22,7 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
         name: issue.workerName || "Unknown"
     };
 
-    const getStatusText = (s: string) => {
-        if (s === "WORKING") return "🟢 작업중";
-        if (s === "PAUSED") return "🟡 휴식중";
-        return "⚪ 퇴근/대기";
-    };
+
 
     const handleNameClick = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -70,73 +43,90 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
         <div
             onClick={onClick}
             className={cn(
-                "w-full flex items-center gap-4 rounded-2xl border p-4 text-left transition-all cursor-pointer",
+                "w-full flex items-center justify-between px-5 py-3 rounded-2xl cursor-pointer",
                 selected
-                    ? "bg-muted border-primary/50 text-foreground shadow-sm"
-                    : "bg-card text-muted-foreground hover:bg-muted/50 hover:shadow-md"
-            )}
-        >
-            {/* Main Text */}
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5 relative">
-                    {/* Interactive Worker Name */}
-                    <div className="relative group/worker">
-                        <span
-                            className={cn(
-                                "truncate font-semibold text-base hover:underline hover:text-blue-600 cursor-help transition-colors",
-                                selected ? "text-foreground" : "text-foreground/90"
-                            )}
-                            onClick={handleNameClick}
+                    ? "bg-indigo-50/50 border border-indigo-100 shadow-sm"
+                    : "transition-all duration-300 ease-out hover:bg-white hover:shadow-md hover:scale-[1.005] bg-transparent border border-transparent"
+            )}>
+            {/* Left: Worker & Zone */}
+            <div className="flex flex-col gap-1">
+                {/* Interactive Worker Name */}
+                <span
+                    onClick={handleNameClick}
+                    className="font-bold text-slate-800 text-sm leading-tight transition-colors hover:text-blue-600 cursor-help relative group/worker"
+                >
+                    {issue.workerName || "작업자"}
+                </span>
+
+                {/* Portal Popover */}
+                {popoverPos && createPortal(
+                    <>
+                        <div
+                            className="fixed inset-0 z-50 bg-transparent"
+                            onClick={closePopover}
+                        />
+                        <div
+                            className="fixed z-50 w-56 bg-white text-slate-900 rounded-xl border border-slate-200 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                            style={{
+                                top: popoverPos.y,
+                                left: popoverPos.x,
+                                transform: "translateY(-50%)"
+                            }}
+                            onClick={(e) => e.stopPropagation()}
                         >
-                            {issue.workerName}
-                        </span>
+                            {/* Header */}
+                            <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                                <span className="font-bold text-sm text-slate-800">작업자 정보</span>
+                                <span className={cn(
+                                    "text-[10px] px-2 py-0.5 rounded-full font-bold border",
+                                    worker.status === "WORKING" ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                                        worker.status === "PAUSED" ? "bg-amber-50 text-amber-600 border-amber-100" :
+                                            "bg-slate-100 text-slate-500 border-slate-200"
+                                )}>
+                                    {worker.status === "WORKING" ? "작업중" : worker.status === "PAUSED" ? "휴식" : "대기"}
+                                </span>
+                            </div>
 
-                        {/* Portal Popover */}
-                        {popoverPos && createPortal(
-                            <>
-                                <div
-                                    className="fixed inset-0 z-50 bg-transparent"
-                                    onClick={closePopover}
-                                />
-                                <div
-                                    className="fixed z-50 w-48 bg-popover text-popover-foreground rounded-lg border shadow-lg p-3 animate-in fade-in zoom-in-95 bg-white"
-                                    style={{
-                                        top: popoverPos.y,
-                                        left: popoverPos.x,
-                                        transform: "translateY(-50%)"
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    <div className="space-y-2">
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-sm font-bold">{getStatusText(worker.status)}</span>
-                                        </div>
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-xs font-medium text-muted-foreground">현재 작업 중인 지번</span>
-                                            <span className="text-sm">{worker.current_zone_id ? `${worker.current_zone_id}번 구역` : "-"}</span>
-                                        </div>
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-xs font-medium text-muted-foreground">금일 작업량</span>
-                                            <span className="text-sm">{worker.today_work_count} 건</span>
-                                        </div>
-                                    </div>
+                            {/* Content */}
+                            <div className="p-4 space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-slate-500 font-medium">현재 위치</span>
+                                    <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded">
+                                        {worker.current_zone_id ? `Zone ${worker.current_zone_id}` : "-"}
+                                    </span>
                                 </div>
-                            </>,
-                            document.body
-                        )}
-                    </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-slate-500 font-medium">금일 작업량</span>
+                                    <span className="text-xs font-bold text-slate-700">
+                                        {worker.today_work_count} 건
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </>,
+                    document.body
+                )}
 
-                    {issue.status === "RESOLVED" && (
-                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-5">완료</Badge>
-                    )}
-                </div>
-                <div className="text-sm text-muted-foreground truncate">{issue.zoneName}</div>
+                <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                    <span className="uppercase tracking-wide">
+                        {issue.zoneName || "ZONE --"}
+                    </span>
+                </span>
             </div>
 
-            {/* Right Meta */}
-            <div className="flex flex-col items-end gap-1">
-                <IssueTypeBadge type={issue.issue_type} />
-                <div className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(issue.created_at)}</div>
+            {/* Right: Badge & Time */}
+            <div className="flex flex-col items-end gap-1.5">
+                <span className={cn(
+                    "px-2.5 py-1 rounded-full text-[10px] font-bold shadow-sm border",
+                    isOutOfStock
+                        ? "bg-indigo-50 text-indigo-700 border-indigo-100" // Indigo for Stock (Distinct from Warn/Busy)
+                        : "bg-violet-50 text-violet-700 border-violet-100" // Violet for Broken
+                )}>
+                    {isOutOfStock ? "재고 부족" : "물품 파손"}
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">
+                    {timeAgo(issue.created_at)}
+                </span>
             </div>
         </div>
     );

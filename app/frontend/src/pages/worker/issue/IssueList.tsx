@@ -1,42 +1,31 @@
-import { useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useOutletContext } from "react-router-dom";
+import { taskService, type Issue } from "@/services/taskService";
 
 type Ctx = { setTitle: (t: string) => void };
 
-type IssueStatus = "DONE" | "WAIT";
-type Issue = {
-  id: string;
-  title: string;
-  location: string;
-  createdAt: string;
-  status: IssueStatus;
-};
-
 export default function IssueListPage() {
   const { setTitle } = useOutletContext<Ctx>();
+  const navigate = useNavigate();
   useEffect(() => setTitle("이슈 목록 조회"), [setTitle]);
 
   const [tab, setTab] = useState<"ALL" | "DONE" | "WAIT">("ALL");
+  const [data, setData] = useState<Issue[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const data = useMemo<Issue[]>(
-    () => [
-      {
-        id: "ISS-001",
-        title: "K365 | 유리병 파손",
-        location: "SKU-88742-1KR",
-        createdAt: "2026.01.26 10:32",
-        status: "WAIT",
-      },
-      {
-        id: "ISS-002",
-        title: "K365 | 유리병 파손",
-        location: "SKU-88742-1KR",
-        createdAt: "2026.01.26 10:32",
-        status: "DONE",
-      },
-    ],
-    []
-  );
+  useEffect(() => {
+    const fetchIssues = async () => {
+      try {
+        const issues = await taskService.getMyIssues();
+        setData(issues);
+      } catch (err) {
+        console.error("Fetch issues error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchIssues();
+  }, []);
 
   const filtered = data.filter((it) => {
     if (tab === "ALL") return true;
@@ -61,21 +50,33 @@ export default function IssueListPage() {
 
       {/* 리스트 */}
       <div className="space-y-3">
-        {filtered.map((it) => (
-          <div key={it.id} className="rounded-2xl border bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-xs text-gray-500">{it.id}</div>
-                <div className="mt-1 font-semibold text-gray-900">{it.title}</div>
-                <div className="mt-1 text-sm text-gray-500">{it.location}</div>
+        {loading ? (
+          <div className="py-20 text-center text-gray-400">이슈 목록을 불러오는 중...</div>
+        ) : filtered.length === 0 ? (
+          <div className="py-20 text-center text-gray-400">신고된 이슈가 없습니다.</div>
+        ) : (
+          filtered.map((it) => (
+            <div
+              key={it.id}
+              onClick={() => navigate("/worker/issue/detail", { state: { issue: it } })}
+              className="rounded-2xl border bg-white p-4 shadow-sm active:scale-[0.98] transition-all cursor-pointer"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs text-gray-500">{it.id}</div>
+                  <div className="mt-1 font-semibold text-gray-900">
+                    {it.title} - {it.productName}
+                  </div>
+                  <div className="mt-1 text-sm text-gray-500">{it.location}</div>
+                </div>
+
+                <StatusPill status={it.status} />
               </div>
 
-              <StatusPill status={it.status} />
+              <div className="mt-3 text-xs text-gray-400">{it.createdAt}</div>
             </div>
-
-            <div className="mt-3 text-xs text-gray-400">{it.createdAt}</div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );

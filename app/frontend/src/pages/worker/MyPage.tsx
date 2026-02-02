@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
+import { User, Phone, Calendar, Mail, ChevronRight } from "lucide-react";
 
 type Ctx = { setTitle: (t: string) => void };
 
@@ -22,58 +23,80 @@ export default function MyPage() {
 
   useEffect(() => setTitle("마이페이지"), [setTitle]);
 
-  // 로그인 안 됨
   useEffect(() => {
     if (!token) navigate("/login", { replace: true });
   }, [token, navigate]);
 
-  // 새로고침 대응
   useEffect(() => {
     if (token && !user) {
       fetchMe().catch(() => {});
     }
   }, [token, user, fetchMe]);
 
-  if (!token || !user) return null;
-
   const view = useMemo(
     () => ({
-      name: user.name,
-      phone: formatPhone(user.phoneNumber),
-      birth: user.birthDate ?? "-",
-      email: user.email,
+      name: user?.name || "작업자",
+      phone: formatPhone(user?.phoneNumber),
+      birth: user?.birthDate || "-",
+      email: user?.email || "-",
     }),
     [user]
   );
 
-  return (
-    <div className="space-y-4">
-      <div className="rounded-2xl bg-white p-4 shadow-sm border">
-        <div className="space-y-4">
-          <Field label="이름" value={view.name} />
-          <Field label="전화번호" value={view.phone} />
-          <Field label="생년월일" value={view.birth} />
-          <Field label="이메일" value={view.email} />
-        </div>
+  if (!token || !user) return null;
 
+  return (
+    <div className="flex h-full flex-col space-y-6">
+      <div className="flex flex-col items-center justify-center py-6">
+        <h2 className="mt-4 text-[22px] font-black tracking-tight text-slate-900">
+          {view.name}님
+        </h2>
+        <p className="text-[13px] font-semibold text-slate-400">
+          오늘도 안전하게 화이팅!
+        </p>
+      </div>
+
+      {/* Info List */}
+      <div className="space-y-2 rounded-[32px] border border-slate-50 bg-white p-6 shadow-2xl shadow-slate-100/50">
+        <InfoRow icon={User} label="이름" value={view.name} />
+        <InfoRow icon={Phone} label="전화번호" value={view.phone} />
+        <InfoRow icon={Calendar} label="생년월일" value={view.birth} />
+        <InfoRow icon={Mail} label="이메일" value={view.email} />
+      </div>
+
+      {/* Action Button */}
+      <div className="mt-auto px-2 pb-4">
         <button
-          type="button"
           onClick={() => navigate("/worker/profile/edit")}
-          className="mt-6 w-full rounded-full bg-blue-600 py-3 text-white font-semibold shadow-sm active:scale-[0.99] transition"
+          className="flex h-16 w-full items-center justify-center gap-2 rounded-[24px] bg-blue-600 text-[17px] font-black text-white shadow-xl shadow-blue-100 transition-all active:scale-[0.98]"
         >
-          정보 수정
+          내 정보 수정하기
+          <ChevronRight size={20} strokeWidth={3} />
         </button>
       </div>
     </div>
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function InfoRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: any;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="space-y-1">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="h-11 rounded-xl bg-gray-50 px-3 flex items-center text-sm text-gray-900 border">
-        {value}
+    <div className="group flex items-center rounded-2xl px-4 py-3 transition-colors hover:bg-slate-50">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-400 transition-colors group-hover:bg-white group-hover:text-blue-600">
+        <Icon size={18} strokeWidth={2} />
+      </div>
+      <div className="ml-4 flex-1">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          {label}
+        </p>
+        <p className="mt-0.5 text-[15px] font-bold text-slate-800">{value}</p>
       </div>
     </div>
   );

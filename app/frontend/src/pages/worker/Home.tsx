@@ -2,8 +2,57 @@ import { useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import type { MobileLayoutContext } from "../../components/layout/MobileLayout";
+import { taskService } from "../../services/taskService";
 
 type WorkStatus = "WORKING" | "PAUSED";
+type Stats = { done: number; issue: number; waiting: number };
+
+function ZoneCard({
+  zone,
+  line,
+  slot,
+  status,
+}: {
+  zone: string;
+  line: string;
+  slot: string;
+  status: "근무중" | "대기중";
+}) {
+  return (
+    <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-extrabold text-slate-900">오늘 근무 구역</p>
+        </div>
+
+        <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
+          {status}
+        </span>
+      </div>
+
+      <div className="mt-4 flex items-center gap-4">
+        <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-blue-50 text-blue-600">
+          <span className="text-[18px] font-black">{zone}</span>
+        </div>
+
+        <div className="flex-1">
+          <div className="text-[16px] font-black text-slate-900">
+            {zone}구역
+          </div>
+          <div className="mt-1 text-[12px] font-semibold text-slate-400">
+            작업 시작 전 구역이 맞는지 확인해주세요.
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[12px] font-bold text-emerald-700">
+          배정 완료
+        </span>
+      </div>
+    </section>
+  );
+}
 
 export default function Home() {
   const { setTitle } = useOutletContext<MobileLayoutContext>();
@@ -12,20 +61,26 @@ export default function Home() {
 
   const [workStatus, setWorkStatus] = useState<WorkStatus>("WORKING");
   const [savedTime, setSavedTime] = useState<string>("— —");
+  const [stats, setStats] = useState<Stats>({ done: 0, issue: 0, waiting: 0 });
+
+  // ✅ 임시(하드코딩) 근무 구역 값
+  const mockZone = {
+    zone: "A",
+  };
 
   useEffect(() => {
     setTitle("홈");
 
-    // ✅ 출근 시간 불러오기
     const t = localStorage.getItem("worker_attend_time");
     if (t) setSavedTime(t);
+
+    taskService.getWorkStats().then(setStats);
   }, [setTitle]);
 
-  // 임시 데이터 (나중에 API로 교체)
   const workStats = [
-    { id: "done", label: "처리한 작업", value: 53, icon: "📦" },
-    { id: "issue", label: "전체 이슈", value: 10, icon: "🧾" },
-    { id: "waiting", label: "처리 대기 중", value: 2, icon: "⏳" },
+    { id: "done", label: "처리한 작업", value: stats.done, icon: "📦" },
+    { id: "issue", label: "전체 이슈", value: stats.issue, icon: "🧾" },
+    { id: "waiting", label: "처리 대기 중", value: stats.waiting, icon: "⏳" },
   ];
 
   const onStartNewTask = () => {
@@ -34,49 +89,56 @@ export default function Home() {
 
   const onPause = () => setWorkStatus("PAUSED");
   const onResume = () => setWorkStatus("WORKING");
+
   const onCheckout = () => {
-    // TODO: 퇴근 처리 (나중에 API 연동)
-    alert("퇴근 처리(임시)");
+    if (!window.confirm("정말 퇴근하시겠습니까?\n오늘의 통계가 초기화됩니다.")) {
+      return;
+    }
+
     localStorage.removeItem("worker_attend_time");
+    localStorage.removeItem("work_stats");
+    localStorage.removeItem("my_issues");
     setSavedTime("— —");
+    setStats({ done: 0, issue: 0, waiting: 0 });
+
+    navigate("/worker/attend");
   };
+
+  const statusChipClass =
+    workStatus === "WORKING"
+      ? "rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700"
+      : "rounded-full bg-yellow-50 px-3 py-1 text-xs font-bold text-yellow-700";
 
   return (
     <div className="space-y-4">
-      {/* 안녕하세요 섹션 */}
+      {/* 인사 섹션 */}
       <div className="px-1 pt-2">
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className="text-[26px] font-black tracking-tight text-slate-900">
           {user?.name ?? "작업자"}님
         </h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="mt-1 text-[13px] font-semibold text-slate-400">
           안녕하세요! 오늘의 작업을 시작하세요.
         </p>
       </div>
 
       {/* 출근 카드 */}
-      <section className="rounded-2xl border bg-white p-4 shadow-sm">
+      <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-50 text-lg">
+            <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-slate-50 text-lg">
               ⏱️
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-800">
+              <p className="text-sm font-extrabold text-slate-900">
                 오늘의 출근 시간
               </p>
-              <p className="mt-1 text-2xl font-extrabold tracking-tight text-gray-900">
+              <p className="mt-1 text-[28px] font-black leading-none tracking-tight text-slate-900">
                 {savedTime}
               </p>
             </div>
           </div>
 
-          <span
-            className={
-              workStatus === "WORKING"
-                ? "rounded-full bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700"
-                : "rounded-full bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700"
-            }
-          >
+          <span className={statusChipClass}>
             {workStatus === "WORKING" ? "근무중" : "근무중단"}
           </span>
         </div>
@@ -86,7 +148,7 @@ export default function Home() {
             <>
               <button
                 type="button"
-                className="h-11 rounded-xl border bg-white text-sm font-semibold text-gray-700 active:scale-[0.99]"
+                className="h-11 rounded-[18px] border border-slate-200 bg-white text-sm font-extrabold text-slate-700 active:scale-[0.99] transition"
                 onClick={onPause}
               >
                 중단
@@ -94,7 +156,7 @@ export default function Home() {
 
               <button
                 type="button"
-                className="h-11 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600 active:scale-[0.99]"
+                className="h-11 rounded-[18px] border border-red-200 bg-red-50 text-sm font-extrabold text-red-600 active:scale-[0.99] transition"
                 onClick={onCheckout}
               >
                 퇴근
@@ -104,7 +166,7 @@ export default function Home() {
             <>
               <button
                 type="button"
-                className="h-11 rounded-xl bg-blue-600 text-sm font-semibold text-white shadow-sm active:scale-[0.99]"
+                className="h-11 rounded-[18px] bg-blue-600 text-sm font-extrabold text-white shadow-sm active:scale-[0.99] transition"
                 onClick={onResume}
               >
                 재개
@@ -112,7 +174,7 @@ export default function Home() {
 
               <button
                 type="button"
-                className="h-11 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600 active:scale-[0.99]"
+                className="h-11 rounded-[18px] border border-red-200 bg-red-50 text-sm font-extrabold text-red-600 active:scale-[0.99] transition"
                 onClick={onCheckout}
               >
                 퇴근
@@ -122,23 +184,34 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ✅ 오늘 근무 구역(추가) - 오늘의 작업 위 */}
+      <ZoneCard
+        zone={mockZone.zone}
+        line={mockZone.line}
+        slot={mockZone.slot}
+        status={mockZone.status}
+      />
+
       {/* 오늘의 작업 카드 */}
-      <section className="rounded-2xl border bg-white p-4 shadow-sm">
+      <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-extrabold text-gray-900">오늘의 작업</h2>
+          <h2 className="text-[18px] font-black text-slate-900">오늘의 작업</h2>
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-3">
           {workStats.map((s) => (
-            <div key={s.id} className="rounded-2xl bg-gray-50 p-3 text-center">
-              <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-white text-base">
+            <div
+              key={s.id}
+              className="rounded-[22px] bg-slate-50 p-3 text-center"
+            >
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[14px] bg-white text-base">
                 {s.icon}
               </div>
 
-              <p className="mt-3 text-2xl font-extrabold leading-none text-gray-900">
+              <p className="mt-3 text-[26px] font-black leading-none text-slate-900">
                 {s.value}
               </p>
-              <p className="mt-2 text-xs font-medium text-gray-600">
+              <p className="mt-2 text-[12px] font-bold text-slate-500">
                 {s.label}
               </p>
             </div>
@@ -146,27 +219,27 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 하단: 새로운 작업 시작 (리스트 버튼) */}
+      {/* 새로운 작업 시작 */}
       <button
         type="button"
         onClick={onStartNewTask}
-        className="flex h-14 w-full items-center justify-between rounded-2xl border bg-white px-4 text-left shadow-sm active:scale-[0.99]"
+        className="flex h-14 w-full items-center justify-between rounded-[22px] border border-slate-100 bg-white px-5 text-left shadow-sm active:scale-[0.99] transition disabled:opacity-60"
         disabled={workStatus === "PAUSED"}
       >
         <span
           className={
             workStatus === "PAUSED"
-              ? "text-sm font-semibold text-gray-400"
-              : "text-sm font-semibold text-gray-900"
+              ? "text-sm font-extrabold text-slate-400"
+              : "text-sm font-extrabold text-slate-900"
           }
         >
           새로운 작업 시작
         </span>
-        <span className="text-lg text-gray-400">›</span>
+        <span className="text-[22px] text-slate-300">›</span>
       </button>
 
       {workStatus === "PAUSED" && (
-        <p className="px-1 text-xs text-gray-500">
+        <p className="px-1 text-[12px] font-semibold text-slate-400">
           근무가 중단된 상태에서는 새로운 작업을 시작할 수 없어요.
         </p>
       )}

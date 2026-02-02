@@ -7,9 +7,9 @@
     <insert id="save" parameterType="lookie.backend.domain.webrtc.vo.CallHistoryVO"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO call_history (
-        open_vidu_session_id, caller_id, callee_id, issue_id, status, created_at
+        room_name, caller_id, callee_id, issue_id, status, created_at
         ) VALUES (
-        #{openViduSessionId}, #{callerId}, #{calleeId}, #{issueId}, #{status}, NOW()
+        #{roomName}, #{callerId}, #{calleeId}, #{issueId}, #{status}, NOW()
         )
     </insert>
 

@@ -24,10 +24,10 @@ function seededRandom(seed: number) {
 export type ZoneStatus = "NORMAL" | "BUSY" | "ISSUE";
 
 export const zonesMock: { id: number; name: string; status: ZoneStatus }[] = [
-  { id: 1, name: "A 존", status: "NORMAL" },
-  { id: 2, name: "B 존", status: "BUSY" },
-  { id: 3, name: "C 존", status: "ISSUE" },
-  { id: 4, name: "D 존", status: "NORMAL" },
+  { id: 1, name: "zone A", status: "NORMAL" },
+  { id: 2, name: "zone B", status: "BUSY" },
+  { id: 3, name: "zone C", status: "ISSUE" },
+  { id: 4, name: "zone D", status: "NORMAL" },
 ];
 
 /**

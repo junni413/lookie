@@ -20,9 +20,9 @@ public class WebRtcDto {
     @Getter
     @AllArgsConstructor
     public static class CallResponse {
-        private Long callId;       // DB PK
-        private String sessionId;  // OpenVidu Session ID
-        private String token;      // Caller 본인 입장 토큰
+        private Long callId; // DB PK
+        private String roomName; // LiveKit Room 이름
+        private String token; // Caller 본인 입장 토큰
     }
 
     // [3] 토큰 응답 (수락 시 사용)
