@@ -18,11 +18,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 6. [NEW] 모델 파일 명시적 복사 (리뷰어 피드백 반영)
 # 빌드 시점에 모델 파일이 없으면 여기서 에러가 나서 안전합니다.
-COPY model/best.onnx /app/model/best.onnx
-# nano 추가
+# 문지기 모델 (Gatekeeper: Nano) - 필수
+RUN mkdir -p /app/model
 COPY model/yolov8n.onnx /app/model/yolov8n.onnx
-# large 모델 사용시 주석 해제
-# COPY model/yolov8n.onnx /app/model/large_best.onnx
+
+# 전문가 모델 (Expert: Fine-tuned)
+# 상품별로 학습된 모델 파일들을 복사합니다.
+COPY model/best.onnx /app/model/best.onnx
+# 추후 사과, 토마토 모델 추가 시 여기에 COPY 추가
 
 
 # 7. 나머지 소스 코드 복사
