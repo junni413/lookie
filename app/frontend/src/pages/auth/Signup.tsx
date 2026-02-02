@@ -39,7 +39,7 @@ function formatPhone(digits: string) {
   return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
 }
 
-// ----- API helpers (프로젝트 axios 인스턴스 있으면 교체) -----
+// ----- API helpers -----
 async function postJSON<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
@@ -87,19 +87,14 @@ export default function Signup() {
   const navigate = useNavigate();
 
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState(""); // 화면에는 하이픈 포함 형태로 표시
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-
-  // ✅ 생년월일 추가 (yyyy-mm-dd)
   const [birth, setBirth] = useState("");
-
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
 
-  // 전화번호: 인증(SMS) 아님. "중복확인" 완료 여부
   const [phoneVerified, setPhoneVerified] = useState(false);
 
-  // 이메일 인증 상태
   const [emailVerified, setEmailVerified] = useState(false);
   const [emailStep, setEmailStep] = useState<"idle" | "sent" | "verified">(
     "idle"
@@ -108,7 +103,6 @@ export default function Signup() {
   const [emailExpiresAt, setEmailExpiresAt] = useState<number | null>(null);
   const [emailLeftSec, setEmailLeftSec] = useState(0);
 
-  // 재전송 쿨다운(1분) - AUTH_005 대응
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [cooldownLeftSec, setCooldownLeftSec] = useState(0);
 
@@ -118,7 +112,6 @@ export default function Signup() {
     emailExpiresAt !== null ? Date.now() >= emailExpiresAt : false;
   const isCooldown = cooldownUntil !== null ? Date.now() < cooldownUntil : false;
 
-  // email 변경 시 인증 상태 리셋
   useEffect(() => {
     setEmailVerified(false);
     setEmailStep("idle");
@@ -128,7 +121,6 @@ export default function Signup() {
     setErrors((p) => ({ ...p, email: undefined, emailCode: undefined }));
   }, [email]);
 
-  // 만료 타이머
   useEffect(() => {
     if (!emailExpiresAt) return;
     const tick = () => {
@@ -140,7 +132,6 @@ export default function Signup() {
     return () => clearInterval(id);
   }, [emailExpiresAt]);
 
-  // 쿨다운 타이머
   useEffect(() => {
     if (!cooldownUntil) return;
     const tick = () => {
@@ -166,7 +157,6 @@ export default function Signup() {
     else if (!isValidEmail(email)) next.email = "이메일 형식을 확인해주세요.";
     else if (!emailVerified) next.email = "이메일 인증을 완료해주세요.";
 
-    // ✅ birth 검증
     if (!birth.trim()) next.birth = "생년월일을 입력해주세요.";
     else if (!isValidBirth(birth)) next.birth = "생년월일 형식을 확인해주세요. (YYYY-MM-DD)";
 
@@ -200,16 +190,16 @@ export default function Signup() {
     if (!validate()) return;
 
     if (isDev) {
-      alert("현재는 회원가입 API 미연동 상태입니다. (UI/유효성만 구현)");
+      alert("현재는 회원가입 API 미연동 상태입니다.");
       return;
     }
 
     try {
       await postJSON("/api/auth/signup", {
         name,
-        phoneNumber: onlyDigits(phone), // ✅ 백은 digits만 받음
+        phoneNumber: onlyDigits(phone),
         email,
-        birthDate: birth, // ✅ 추가
+        birthDate: birth,
         password: pw,
       });
 
@@ -248,15 +238,16 @@ export default function Signup() {
 
     try {
       setErrors((prev) => ({ ...prev, phone: undefined }));
-      // await postJSON("/api/auth/check/phone", { phone: digits });
+      // ✅ 백엔드 SignupRequest DTO 필드명에 맞춰 phone -> phoneNumber로 수정함
+      await postJSON("/api/auth/check/phone", { phoneNumber: digits });
       setPhoneVerified(true);
+      alert("사용 가능한 전화번호입니다.");
     } catch (err: any) {
       const code = getErrCode(err);
+      setPhoneVerified(false);
       if (code === "USER_001") {
-        setPhoneVerified(false);
         setErrors((prev) => ({ ...prev, phone: "이미 가입된 전화번호입니다." }));
       } else {
-        setPhoneVerified(false);
         setErrors((prev) => ({
           ...prev,
           phone: getErrMessage(err) ?? "전화번호 확인에 실패했습니다.",
@@ -265,13 +256,9 @@ export default function Signup() {
     }
   };
 
-  // 이메일 인증코드 발송
   const handleEmailSendCode = async () => {
     if (!isValidEmail(email)) {
-      setErrors((prev) => ({
-        ...prev,
-        email: "이메일 형식을 확인해주세요.",
-      }));
+      setErrors((prev) => ({ ...prev, email: "이메일 형식을 확인해주세요." }));
       return;
     }
     if (isCooldown) {
@@ -293,92 +280,56 @@ export default function Signup() {
     try {
       setErrors((p) => ({ ...p, email: undefined, emailCode: undefined }));
       await postJSON("/api/auth/email/send-code", { email });
-
       setEmailStep("sent");
       setEmailExpiresAt(Date.now() + 5 * 60 * 1000);
       setCooldownUntil(Date.now() + 60 * 1000);
     } catch (err: any) {
       const code = getErrCode(err);
-
       if (code === "USER_002") {
         setErrors((p) => ({ ...p, email: "이미 가입된 이메일입니다." }));
-        return;
-      }
-      if (code === "AUTH_005") {
+      } else if (code === "AUTH_005") {
         setCooldownUntil(Date.now() + 60 * 1000);
         setErrors((p) => ({ ...p, email: "1분 내 재발송이 제한됩니다." }));
-        return;
-      }
-      if (code === "EMAIL_001") {
+      } else {
         setErrors((p) => ({
           ...p,
-          email: "이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.",
+          email: getErrMessage(err) ?? "이메일 발송에 실패했습니다.",
         }));
-        return;
       }
-
-      setErrors((p) => ({
-        ...p,
-        email: getErrMessage(err) ?? "이메일 발송에 실패했습니다.",
-      }));
     }
   };
 
-  // 이메일 코드 확인
   const handleEmailConfirmCode = async () => {
-    if (!isValidEmail(email)) {
-      setErrors((p) => ({ ...p, email: "이메일 형식을 확인해주세요." }));
-      return;
-    }
+    if (!isValidEmail(email)) return;
     if (!emailCode.trim()) {
       setErrors((p) => ({ ...p, emailCode: "인증번호를 입력해주세요." }));
       return;
     }
     if (isEmailExpired) {
-      setErrors((p) => ({
-        ...p,
-        emailCode: "인증번호가 만료되었습니다. 재전송해주세요.",
-      }));
+      setErrors((p) => ({ ...p, emailCode: "인증번호가 만료되었습니다." }));
       return;
     }
 
     if (isDev) {
       setEmailVerified(true);
       setEmailStep("verified");
-      setErrors((p) => ({ ...p, email: undefined, emailCode: undefined }));
       return;
     }
 
     try {
-      setErrors((p) => ({ ...p, email: undefined, emailCode: undefined }));
-
-      await postJSON("/api/auth/email/verify", {
-        email,
-        code: emailCode,
-      });
-
+      setErrors((p) => ({ ...p, emailCode: undefined }));
+      await postJSON("/api/auth/email/verify", { email, code: emailCode });
       setEmailVerified(true);
       setEmailStep("verified");
     } catch (err: any) {
-      const code = getErrCode(err);
-
-      if (code === "AUTH_007") {
-        setEmailVerified(false);
-        setErrors((p) => ({
-          ...p,
-          emailCode: "인증번호가 만료되었거나 일치하지 않습니다.",
-        }));
-        return;
-      }
       setEmailVerified(false);
       setErrors((p) => ({
         ...p,
-        emailCode: getErrMessage(err) ?? "인증에 실패했습니다.",
+        emailCode: "인증번호가 일치하지 않습니다.",
       }));
     }
   };
 
-  // ---------- UI ----------
   return (
     <div className="min-h-[100dvh] bg-white px-4 py-8">
       <div className="mx-auto w-full max-w-[430px]">
@@ -412,11 +363,10 @@ export default function Signup() {
               <button
                 type="button"
                 onClick={handlePhoneDup}
-                className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
-                  phoneVerified
+                className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${phoneVerified
                     ? "bg-blue-50 text-blue-600"
                     : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                }`}
+                  }`}
               >
                 {phoneVerified ? "확인완료" : "중복확인"}
               </button>
@@ -436,19 +386,18 @@ export default function Signup() {
                 type="button"
                 onClick={handleEmailSendCode}
                 disabled={emailStep === "verified" || isCooldown}
-                className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
-                  emailStep === "verified"
+                className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${emailStep === "verified"
                     ? "bg-blue-50 text-blue-600"
                     : isCooldown
-                    ? "bg-gray-100 text-gray-400"
-                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                }`}
+                      ? "bg-gray-100 text-gray-400"
+                      : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                  }`}
               >
                 {emailStep === "verified"
                   ? "인증완료"
                   : isCooldown
-                  ? formatSec(cooldownLeftSec)
-                  : "인증하기"}
+                    ? formatSec(cooldownLeftSec)
+                    : "인증하기"}
               </button>
             </div>
 
@@ -468,11 +417,10 @@ export default function Signup() {
                     type="button"
                     onClick={handleEmailConfirmCode}
                     disabled={isEmailExpired}
-                    className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
-                      isEmailExpired
+                    className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${isEmailExpired
                         ? "bg-gray-100 text-gray-400"
                         : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                    }`}
+                      }`}
                   >
                     확인
                   </button>
@@ -480,23 +428,13 @@ export default function Signup() {
                     {isEmailExpired ? "만료됨" : formatSec(emailLeftSec)}
                   </div>
                 </div>
-
                 {errors.emailCode && (
-                  <div className="mt-2 text-xs text-red-500">
-                    {errors.emailCode}
-                  </div>
-                )}
-
-                {isEmailExpired && (
-                  <div className="mt-2 text-xs text-gray-400">
-                    인증번호가 만료되었습니다. 인증하기로 재전송해주세요.
-                  </div>
+                  <div className="mt-2 text-xs text-red-500">{errors.emailCode}</div>
                 )}
               </div>
             )}
           </Field>
 
-          {/* ✅ 생년월일 추가 */}
           <Field label="생년월일" error={errors.birth}>
             <input
               type="date"
@@ -531,11 +469,10 @@ export default function Signup() {
             type="button"
             onClick={handleSubmit}
             disabled={!canSubmit}
-            className={`mt-6 w-full rounded-full py-4 text-base font-semibold transition ${
-              canSubmit
+            className={`mt-6 w-full rounded-full py-4 text-base font-semibold transition ${canSubmit
                 ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:bg-blue-700"
                 : "bg-gray-100 text-gray-400"
-            }`}
+              }`}
           >
             회원가입
           </button>

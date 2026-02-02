@@ -8,7 +8,10 @@ export async function request<T>(
   url: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { method = "GET", body, token } = options;
+  const { method = "GET", body, token: customToken } = options;
+
+  // localStorage에서 토큰 가져오기 (전역 자동 주입)
+  const token = customToken || localStorage.getItem("accessToken");
 
   const res = await fetch(url, {
     method,
