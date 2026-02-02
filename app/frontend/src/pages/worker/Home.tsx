@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import type { MobileLayoutContext } from "../../components/layout/MobileLayout";
+import { taskService } from "../../services/taskService";
 
 type WorkStatus = "WORKING" | "PAUSED";
+type Stats = { done: number; issue: number; waiting: number };
 
 export default function Home() {
   const { setTitle } = useOutletContext<MobileLayoutContext>();
@@ -12,6 +14,7 @@ export default function Home() {
 
   const [workStatus, setWorkStatus] = useState<WorkStatus>("WORKING");
   const [savedTime, setSavedTime] = useState<string>("— —");
+  const [stats, setStats] = useState<Stats>({ done: 0, issue: 0, waiting: 0 });
 
   useEffect(() => {
     setTitle("홈");
@@ -19,13 +22,16 @@ export default function Home() {
     // ✅ 출근 시간 불러오기
     const t = localStorage.getItem("worker_attend_time");
     if (t) setSavedTime(t);
+
+    // ✅ 통계 데이터 불러오기
+    taskService.getWorkStats().then(setStats);
   }, [setTitle]);
 
-  // 임시 데이터 (나중에 API로 교체)
+  // 실시간 데이터 반영
   const workStats = [
-    { id: "done", label: "처리한 작업", value: 53, icon: "📦" },
-    { id: "issue", label: "전체 이슈", value: 10, icon: "🧾" },
-    { id: "waiting", label: "처리 대기 중", value: 2, icon: "⏳" },
+    { id: "done", label: "처리한 작업", value: stats.done, icon: "📦" },
+    { id: "issue", label: "전체 이슈", value: stats.issue, icon: "🧾" },
+    { id: "waiting", label: "처리 대기 중", value: stats.waiting, icon: "⏳" },
   ];
 
   const onStartNewTask = () => {
@@ -35,10 +41,17 @@ export default function Home() {
   const onPause = () => setWorkStatus("PAUSED");
   const onResume = () => setWorkStatus("WORKING");
   const onCheckout = () => {
+    if (!window.confirm("정말 퇴근하시겠습니까?\n오늘의 통계가 초기화됩니다.")) {
+      return;
+    }
     // TODO: 퇴근 처리 (나중에 API 연동)
-    alert("퇴근 처리(임시)");
     localStorage.removeItem("worker_attend_time");
+    localStorage.removeItem("work_stats"); // 통계 초기화
+    localStorage.removeItem("my_issues"); // 이슈 내역도 초기화 (필요시)
     setSavedTime("— —");
+    setStats({ done: 0, issue: 0, waiting: 0 });
+
+    navigate("/worker/attend");
   };
 
   return (

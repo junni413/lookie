@@ -51,6 +51,26 @@ async function patchJSON<T>(url: string, body: unknown, token: string): Promise<
   return data as T;
 }
 
+async function deleteJSON<T>(url: string, body: unknown, token: string): Promise<T> {
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const err: any = new Error("API Error");
+    err.response = { status: res.status, data };
+    throw err;
+  }
+  return data as T;
+}
+
 function getErrCode(err: any): string | null {
   return (
     err?.response?.data?.code ??
@@ -144,6 +164,11 @@ export default function ProfileEdit() {
   // 비밀번호는 선택 입력
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
+
+  // 회원 탈퇴 관련
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePw, setDeletePw] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   // user 갱신되면 폼 동기화
   useEffect(() => {
@@ -346,6 +371,32 @@ export default function ProfileEdit() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!deletePw.trim()) {
+      alert("비밀번호를 입력해주세요.");
+      return;
+    }
+
+    if (!confirm("정말로 탈퇴하시겠습니까?\n탈퇴 시 모든 정보가 삭제되며 복구할 수 없습니다.")) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      await deleteJSON<ApiResponse<null>>("/api/users/me", { password: deletePw }, token);
+
+      alert("회원 탈퇴가 완료되었습니다.");
+      // 로그아웃 처리 및 이동
+      const logout = useAuthStore.getState().logout;
+      if (logout) logout();
+      navigate("/", { replace: true });
+    } catch (err: any) {
+      alert(getErrMessage(err) ?? "회원 탈퇴에 실패했습니다. 비밀번호를 확인해주세요.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl bg-white p-4 shadow-sm border space-y-4">
@@ -370,10 +421,10 @@ export default function ProfileEdit() {
               onClick={handleEmailSendCode}
               disabled={!emailChanged || emailStep === "verified" || isCooldown}
               className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${emailStep === "verified"
-                  ? "bg-blue-50 text-blue-600"
-                  : !emailChanged || isCooldown
-                    ? "bg-gray-100 text-gray-400"
-                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                ? "bg-blue-50 text-blue-600"
+                : !emailChanged || isCooldown
+                  ? "bg-gray-100 text-gray-400"
+                  : "bg-blue-100 text-blue-700 hover:bg-blue-200"
                 }`}
             >
               {emailStep === "verified" ? "인증완료" : isCooldown ? formatSec(cooldownLeftSec) : "인증하기"}
@@ -450,6 +501,60 @@ export default function ProfileEdit() {
           </button>
         </div>
       </div>
+
+      {/* 회원 탈퇴 버튼 */}
+      <div className="flex justify-center pt-4">
+        <button
+          type="button"
+          onClick={() => setShowDeleteModal(true)}
+          className="text-sm text-gray-400 underline hover:text-red-400 transition"
+        >
+          회원 탈퇴하기
+        </button>
+      </div>
+
+      {/* 회원 탈퇴 모달 */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold text-gray-900">회원 탈퇴</h3>
+            <p className="mt-2 text-sm text-gray-500">
+              계정을 삭제하시려면 현재 비밀번호를 입력해주세요.
+            </p>
+
+            <div className="mt-4">
+              <input
+                type="password"
+                value={deletePw}
+                onChange={(e) => setDeletePw(e.target.value)}
+                placeholder="현재 비밀번호"
+                className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-red-200"
+              />
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeletePw("");
+                }}
+                className="flex-1 h-11 rounded-xl border bg-white text-gray-700 font-semibold hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleting || !deletePw.trim()}
+                className="flex-1 h-11 rounded-xl bg-red-600 text-white font-semibold shadow-sm hover:bg-red-700 disabled:bg-gray-200"
+              >
+                {deleting ? "탈퇴 중..." : "탈퇴하기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

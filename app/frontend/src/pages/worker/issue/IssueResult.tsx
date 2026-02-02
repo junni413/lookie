@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
 import { useToast } from "@/components/ui/use-toast";
@@ -7,7 +7,7 @@ import type { IssueType, AiVerdict } from "./IssueReport";
 type NavState = {
   issueType: IssueType;
   toteBarcode: string;
-  product: { name: string; sku: string; location: string };
+  product: { productName: string; barcode: string; locationCode: string };
   imageUrl: string;
   verdict: AiVerdict;
 };
@@ -72,6 +72,8 @@ export default function IssueResult() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const [adminConnected, setAdminConnected] = useState(false);
+
   useEffect(() => {
     if (!nav) navigate("/worker/home", { replace: true });
   }, [nav, navigate]);
@@ -83,18 +85,19 @@ export default function IssueResult() {
   if (!nav) return null;
 
   const goNext = () => {
-    // TODO: 실제 “다음 상품” 흐름으로 연결
-    // 지금은 WorkDetail로 돌아간다고 가정
     navigate(-2);
   };
 
   const connectAdmin = async () => {
-    // TODO: 실제 “관리자 연결” 또는 “신고 확정 API” 호출
     toast({
       title: "관리자에게 전달했습니다.",
       description: "관리자가 확인 후 처리합니다.",
     });
+    setAdminConnected(true);
   };
+
+  const needsAdmin = nav.verdict === "DAMAGED" || nav.verdict === "NEED_REVIEW";
+  const isNextDisabled = needsAdmin && !adminConnected;
 
   return (
     <div className="space-y-4">
@@ -105,7 +108,7 @@ export default function IssueResult() {
         </div>
 
         <p className="mt-3 text-xs text-gray-500">상품명</p>
-        <p className="text-sm font-extrabold">{nav.product.name}</p>
+        <p className="text-sm font-extrabold">{nav.product.productName}</p>
       </section>
 
       {/* 결과 카드 */}
@@ -117,9 +120,13 @@ export default function IssueResult() {
           <button
             type="button"
             onClick={connectAdmin}
-            className="h-12 rounded-2xl bg-blue-600 font-extrabold text-white"
+            disabled={adminConnected}
+            className={`h-12 rounded-2xl font-extrabold transition-all ${adminConnected
+                ? "bg-gray-100 text-gray-400"
+                : "bg-blue-600 text-white"
+              }`}
           >
-            관리자 연결하기
+            {adminConnected ? "관리자 연결됨" : "관리자 연결하기"}
           </button>
         )}
 
@@ -127,18 +134,22 @@ export default function IssueResult() {
           <button
             type="button"
             onClick={goNext}
-            className="h-12 rounded-2xl bg-blue-600 font-extrabold text-white"
+            disabled={isNextDisabled}
+            className={`h-12 rounded-2xl font-extrabold transition-all ${isNextDisabled
+                ? "bg-gray-200 text-gray-400"
+                : "bg-blue-600 text-white"
+              }`}
           >
-            다음 상품 스캔
+            다음 작업 진행
           </button>
         )}
 
-        {/* 검토필요면 다시촬영 버튼도 흔히 넣음 */}
         {nav.verdict === "NEED_REVIEW" && (
           <button
             type="button"
             onClick={() => navigate("/worker/issue/report", { state: nav })}
-            className="h-12 rounded-2xl border bg-white font-extrabold"
+            disabled={adminConnected}
+            className="h-12 rounded-2xl border bg-white font-extrabold disabled:opacity-50"
           >
             다시 촬영
           </button>
