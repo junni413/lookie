@@ -12,6 +12,12 @@ type MenuItem = {
 
 const MENUS: MenuItem[] = [
   {
+    title: "홈",
+    desc: "메인 화면",
+    to: "/worker/home",
+    emoji: "🏠",
+  },
+  {
     title: "마이페이지",
     desc: "내 정보 조회 및 수정",
     to: "/worker/mypage", // ✅ 사이드바는 '마이페이지'로 이동
@@ -26,7 +32,7 @@ const MENUS: MenuItem[] = [
   {
     title: "이슈 목록 조회",
     desc: "처리된 이슈 내역",
-    to: "/worker/issues",
+    to: "/worker/issue",
     emoji: "🧾",
   },
 ];

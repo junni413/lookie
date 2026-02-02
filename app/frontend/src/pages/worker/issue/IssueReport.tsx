@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
 import { useToast } from "@/components/ui/use-toast";
+import { taskService } from "@/services/taskService";
 
 export type IssueType = "DAMAGED" | "MISSING" | "OTHER";
 export type AiVerdict = "OK" | "DAMAGED" | "NEED_REVIEW";
@@ -9,7 +10,7 @@ export type AiVerdict = "OK" | "DAMAGED" | "NEED_REVIEW";
 type NavState = {
   issueType: IssueType;
   toteBarcode: string;
-  product: { name: string; sku: string; location: string };
+  product: { productName: string; barcode: string; locationCode: string };
 };
 
 const TITLE: Record<IssueType, string> = {
@@ -72,15 +73,26 @@ export default function IssueReport() {
     }
     setLoading(true);
     try {
-      // TODO: 실제 AI API로 교체
-      // const form = new FormData()
-      // form.append("image", file)
-      // form.append("sku", nav.product.sku)
-      // form.append("issueType", nav.issueType)
-      // const res = await fetch("/api/ai/issue/analyze", { method:"POST", body: form })
-      // const data = await res.json()
+      // 1. 이슈 생성 (API POST /api/issues 에 해당)
+      const issueId = await taskService.reportIssue({
+        productName: nav.product.productName,
+        sku: nav.product.barcode,
+        location: nav.product.locationCode,
+        type: nav.issueType === "DAMAGED" ? "파손" : "재고없음"
+      });
 
+      // 2. 이미지 업로드 (API POST /api/issues/{issueId}/images 에 해당)
+      await taskService.uploadIssueImage(issueId, file);
+
+      // AI 판정 결과 시뮬레이션
       const verdict = fakeAiVerdict();
+
+      // 결과 업데이트
+      await taskService.updateIssueResult(issueId, {
+        verdict,
+        imageUrl: previewUrl,
+        status: verdict === "OK" ? "DONE" : "WAIT"
+      });
 
       navigate("/worker/issue/result", {
         state: {
@@ -89,6 +101,7 @@ export default function IssueReport() {
           product: nav.product,
           imageUrl: previewUrl,
           verdict,
+          issueId // 이슈 ID도 함께전송
         },
       });
     } finally {
@@ -99,9 +112,9 @@ export default function IssueReport() {
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border bg-white p-4 shadow-sm">
-        <p className="text-sm font-extrabold">{nav.product.name}</p>
-        <p className="mt-1 text-xs text-gray-500">SKU: {nav.product.sku}</p>
-        <p className="mt-1 text-xs text-gray-500">위치: {nav.product.location}</p>
+        <p className="text-sm font-extrabold">{nav.product.productName}</p>
+        <p className="mt-1 text-xs text-gray-500">SKU: {nav.product.barcode}</p>
+        <p className="mt-1 text-xs text-gray-500">위치: {nav.product.locationCode}</p>
         <p className="mt-2 text-xs text-gray-500">토트: {nav.toteBarcode}</p>
       </section>
 
