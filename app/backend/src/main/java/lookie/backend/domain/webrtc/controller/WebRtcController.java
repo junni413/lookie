@@ -9,11 +9,13 @@ import lookie.backend.domain.webrtc.vo.CallHistoryVO;
 import lookie.backend.global.response.ApiResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/webrtc")
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "livekit.enabled", havingValue = "true", matchIfMissing = true)
 public class WebRtcController {
 
     private final LiveKitService liveKitService;
