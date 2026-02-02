@@ -75,19 +75,18 @@ services:
   # - API 서버
   # ============================
   backend:
-    build: ./app/backend                   # 로컬 Dockerfile로 이미지 빌드
+    build: ./app/backend
     container_name: backend
     environment:
-      - SPRING_PROFILES_ACTIVE=docker      # docker 프로파일 사용(application-docker.yml 등)
-      # ✅ migrate 컨테이너가 DB 변경을 담당하므로, backend에서는 flyway 비활성화
+      - SPRING_PROFILES_ACTIVE=docker
       - SPRING_FLYWAY_ENABLED=false
-      # (권장) JPA가 테이블을 자동 생성/변경하지 않고, 현재 스키마가 엔티티와 맞는지 검증만
-      # - 운영에서는 validate / 개발에서는 update를 쓰는 식으로 분리 가능
       - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
-      # ✅ 백엔드가 AI 서버를 호출할 주소
       - AI_SERVER_URL=http://ai-server:8000
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
     env_file:
-      - .env                               # DB/JWT/Redis 등 런타임 환경변수 주입
+      - .env
     ports:
       - "8080:8080"                        # API 외부 노출 포트
     networks:
