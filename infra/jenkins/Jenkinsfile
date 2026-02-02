@@ -24,6 +24,7 @@ pipeline {
     DOCKERHUB_CRED_ID      = 'dockerhub-cred'           // ✅ Jenkins에 등록된 DockerHub credential
     REGISTRY_IMAGE_BACKEND = 'sheonj/lookie-backend'    // ✅ 백엔드 이미지 레포명
     REGISTRY_IMAGE_NGINX   = 'sheonj/lookie-nginx'      // ✅ nginx 이미지 레포명
+    REGISTRY_IMAGE_AI      = 'sheonj/lookie-ai'         // ✅ ai 이미지 레포명
 
     // ============================================================
     // [BUILD PATH] repo 구조에 맞는 build context / Dockerfile 경로
@@ -32,6 +33,8 @@ pipeline {
     BACKEND_DOCKERFILE = 'app/backend/Dockerfile'       // ✅ backend Dockerfile 경로
     NGINX_CONTEXT      = '.'                            // ✅ docker build context (nginx는 루트 기준)
     NGINX_DOCKERFILE   = 'infra/nginx/Dockerfile'       // ✅ nginx Dockerfile 경로
+    AI_CONTEXT         = 'app/ai-server'                // ✅ AI 소스 경로
+    AI_DOCKERFILE      = 'app/ai-server/Dockerfile'     // ✅ AI Dockerfile 경로
 
     // ============================================================
     // [NOTIFY] Mattermost 알림
@@ -298,6 +301,35 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         }
       }
     }
+    // ============================================================
+    // MR: AI Server Test (Only Build & Test, No Push)
+    // - MR 단계에서는 도커 허브에 올리지 않고, 빌드/테스트만 검증합니다.
+    // ============================================================
+    stage('AI Test (MR only)') {
+      when { expression { env.EVENT_KIND == 'merge_request' } }
+      steps {
+        script {
+            // MR에서는 태그를 고정(test)해서 덮어쓰기 (용량 절약)
+            def testTag = "test"
+            
+            // Build (캐시 활용) -> Test (컨테이너 내부 실행)
+            sh """
+              bash -lc '
+                set -euo pipefail
+                echo "[INFO] AI Server MR Test Start..."
+                
+                # 1. 빌드 (Push 안 함)
+                docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${testTag}" "${AI_CONTEXT}"
+                
+                # 2. 테스트 (이미지 내부 pytest 실행)
+                docker run --rm "${REGISTRY_IMAGE_AI}:${testTag}" pytest /app/test_main.py
+                
+                echo "[INFO] MR Test Passed! (Ready to Merge)"
+              '
+            """
+        }
+      }
+    }
 
     // ============================================================
     // 4) MR: Frontend Build
@@ -339,13 +371,16 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     //  - IMAGE_TAG는 commit SHA로 생성(불변 태그) → 재현성/롤백 가능
     //  - Docker Hub에는 develop/latest가 없어도 됨(sha 태그만 존재)
     // ============================================================
-    stage('Build & Push Images (develop push only)') {
+    // ============================================================
+    // 5-1) Build & Push: Backend & Nginx (항상 실행)
+    // ============================================================
+    stage('Build & Push: Backend & Nginx') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
         script {
-          // ✅ immutable tag (commit SHA)
-          env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-          echo "IMAGE_TAG=${env.IMAGE_TAG}"
+           // ✅ 공통 태그 생성 (commit SHA)
+           env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+           echo "IMAGE_TAG=${env.IMAGE_TAG}"
         }
 
         withCredentials([usernamePassword(
@@ -357,20 +392,69 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
             bash -lc '
               set -euo pipefail
 
-              # ✅ Docker Hub 로그인(푸시 권한)
+              # ✅ Docker Hub 로그인
               echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
-              # ✅ backend 이미지 빌드/푸시 (sha tag)
-              docker build -f "${BACKEND_DOCKERFILE}" \
-                -t "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}" \
-                "${BACKEND_CONTEXT}"
+              # ✅ backend 이미지 빌드/푸시
+              echo "[INFO] Backend Build..."
+              docker build -f "${BACKEND_DOCKERFILE}" -t "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}" "${BACKEND_CONTEXT}"
               docker push "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}"
 
-              # ✅ nginx 이미지 빌드/푸시 (sha tag)
-              docker build -f "${NGINX_DOCKERFILE}" \
-                -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" \
-                "${NGINX_CONTEXT}"
+              # ✅ nginx 이미지 빌드/푸시
+              echo "[INFO] Nginx Build..."
+              docker build -f "${NGINX_DOCKERFILE}" -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" "${NGINX_CONTEXT}"
               docker push "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}"
+            '
+          '''
+        }
+      }
+    }
+
+    // ============================================================
+    // 5-2) Build & Push: AI Server (변경 감지 시에만 실행)
+    // ============================================================
+    stage('Build & Push: AI Server') {
+      when {
+        allOf {
+          // 1. 기본 실행 조건 (develop push 인가?)
+          expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" }
+          // 2. 변경 감지 조건 (AI 폴더나 Jenkinsfile이 바뀌었는가?)
+          anyOf {
+            changeset "app/ai-server/**"
+            changeset "Jenkinsfile"
+          }
+        }
+      }
+      steps {
+        script {
+           // 앞선 스테이지에서 IMAGE_TAG가 안 만들어졌을 경우 대비
+           if (!env.IMAGE_TAG) {
+             env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+           }
+        }
+
+        withCredentials([usernamePassword(
+          credentialsId: env.DOCKERHUB_CRED_ID,
+          usernameVariable: 'DH_USER',
+          passwordVariable: 'DH_PASS'
+        )]) {
+          sh '''
+            bash -lc '
+              set -euo pipefail
+
+              echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+
+              echo "[INFO] AI Server Changed. Starting Build..."
+              
+              # 캐시 활용 빌드
+              docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" "${AI_CONTEXT}"
+
+              echo "[INFO] AI Server Test Running..."
+              # 이미지 내부 테스트 실행
+              docker run --rm "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" pytest /app/test_main.py
+
+              echo "[INFO] Test Passed! Pushing image..."
+              docker push "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}"
             '
           '''
         }
@@ -427,6 +511,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
                   #    (배포 서버 .env에는 IMAGE_TAG를 두지 않는 것이 원칙)
                   export REGISTRY_IMAGE_BACKEND='${REGISTRY_IMAGE_BACKEND}'
                   export REGISTRY_IMAGE_NGINX='${REGISTRY_IMAGE_NGINX}'
+                  export REGISTRY_IMAGE_AI='${REGISTRY_IMAGE_AI}'
                   export IMAGE_TAG='${IMAGE_TAG}'
 
                   # ✅ 이미지 pull을 위한 docker hub 로그인
