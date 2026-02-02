@@ -73,6 +73,7 @@ public class SecurityConfig {
                                                                 "/api/auth/password/**", // 비밀번호 찾기
                                                                 // "/api/tasks/**", // 작업 관련 API (개발용)
                                                                 "/api/webrtc/**",
+                                                                "/api/issues/*/ai/result", // AI Webhook (인증 제외)
                                                                 "/api/auth/refresh" // 토큰 재발급
                                                 ).permitAll()
 
