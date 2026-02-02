@@ -76,7 +76,14 @@ public enum ErrorCode {
 	WEBRTC_USER_AWAY("RTC_005", HttpStatus.CONFLICT, "상대방이 자리 비움 상태입니다"),
 	WEBRTC_USER_PAUSED("RTC_006", HttpStatus.CONFLICT, "상대방이 작업 중지 상태입니다"),
 	// ==== SYSTEM =====
-	SYSTEM_TEMPORARY_LOCK_FAILED("SYS_001", HttpStatus.TOO_MANY_REQUESTS, "요청이 많아 잠시 후 다시 시도해주세요");
+	SYSTEM_TEMPORARY_LOCK_FAILED("SYS_001", HttpStatus.TOO_MANY_REQUESTS, "요청이 많아 잠시 후 다시 시도해주세요"),
+
+	// ===== WORKLOG ===== (기존 Enum 하단에 추가)
+	// ===== WORKLOG =====
+	WORK_ALREADY_STARTED("WORK_001", HttpStatus.CONFLICT, "이미 출근 처리된 상태입니다"),
+	WORK_SESSION_NOT_FOUND("WORK_002", HttpStatus.NOT_FOUND, "활성화된 근무 기록을 찾을 수 없습니다"),
+	WORK_ALREADY_PAUSED("WORK_003", HttpStatus.CONFLICT, "이미 휴식 중인 상태입니다"),
+	WORK_NOT_PAUSED("WORK_004", HttpStatus.BAD_REQUEST, "휴식 중인 상태가 아닙니다");
 
 	private final String code; // 프론트 노출용
 	private final HttpStatus status;
