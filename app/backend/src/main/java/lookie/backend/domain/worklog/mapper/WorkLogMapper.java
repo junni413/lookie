@@ -4,6 +4,8 @@ import lookie.backend.domain.worklog.vo.WorkLog;
 import lookie.backend.domain.worklog.vo.WorkLogEvent;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
 import java.util.Optional;
 
 @Mapper
@@ -22,4 +24,10 @@ public interface WorkLogMapper {
 
     /** 마지막 이벤트 조회 */
     WorkLogEvent findLastEventByWorkLogId(@Param("workLogId") Long workLogId);
+
+    /**
+     * 특정 작업자의 전체 근무 이력을 최신순으로 조회.
+     */
+    List<WorkLog> findAllByWorkerId(@Param("workerId") Long workerId);
+
 }

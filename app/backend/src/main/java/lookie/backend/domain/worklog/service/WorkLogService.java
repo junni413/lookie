@@ -2,6 +2,7 @@ package lookie.backend.domain.worklog.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.worklog.dto.DailyWorkLogStats;
 import lookie.backend.domain.worklog.dto.WorkLogRequestDto;
 import lookie.backend.domain.worklog.dto.WorkLogResponseDto;
 import lookie.backend.domain.worklog.mapper.WorkLogMapper;
@@ -12,8 +13,15 @@ import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDateTime;
 
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 작업자의 근무 세션 및 상태 변경 이벤트를 관리하는 서비스
@@ -38,7 +46,7 @@ public class WorkLogService {
     public WorkLogResponseDto startWork(Long workerId) {
         // 1-1. 중복 출근 검증
         workLogMapper.findActiveWorkLogByWorkerId(workerId).ifPresent(log -> {
-            throw new ApiException(ErrorCode.SYSTEM_TEMPORARY_LOCK_FAILED, "이미 출근 처리된 상태입니다.");
+            throw new ApiException(ErrorCode.WORK_ALREADY_STARTED, "이미 출근 처리된 상태입니다.");
         });
 
         // 1-2. 근무 세션 생성
@@ -88,7 +96,7 @@ public class WorkLogService {
     public WorkLogResponseDto pauseWork(Long workerId, WorkLogRequestDto.StatusChange request) {
         WorkLog workLog = getActiveWorkLogOrThrow(workerId);
         // 3-1. 중복 휴식 방지 검증
-        validateStatusNot(workLog.getWorkLogId(), WorkLogEventType.PAUSE, ErrorCode.WEBRTC_USER_PAUSED);
+        validateStatusNot(workLog.getWorkLogId(), WorkLogEventType.PAUSE, ErrorCode.WORK_ALREADY_PAUSED);
 
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.PAUSE, request.getReason());
         return WorkLogResponseDto.from(workLog, event);
@@ -109,7 +117,7 @@ public class WorkLogService {
 
         // 4-1. 상태 전이 유효성 검사
         if (lastEvent == null || lastEvent.getEventType() != WorkLogEventType.PAUSE) {
-            throw new ApiException(ErrorCode.TASK_INVALID_STATE, "휴식 중인 상태에서만 재개가 가능합니다.");
+            throw new ApiException(ErrorCode.WORK_NOT_PAUSED, "휴식 중인 상태에서만 재개가 가능합니다.");
         }
 
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.RESUME, "작업 재개");
@@ -131,15 +139,77 @@ public class WorkLogService {
     }
 
     /**
-     * 6. 진행 중인 근무 기록 조회하고 없으면 예외 던짐
+     * 6. 작업자 본인의 전체 근무 이력 조회
      */
-    private WorkLog getActiveWorkLogOrThrow(Long workerId) {
-        return workLogMapper.findActiveWorkLogByWorkerId(workerId)
-                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "활성 근무 기록이 없습니다."));
+    @Transactional(readOnly = true)
+    public List<WorkLogResponseDto> getMyWorkHistories(Long workerId) {
+        List<WorkLog> logs = workLogMapper.findAllByWorkerId(workerId);
+
+        return logs.stream().map(log -> {
+            // 이미 퇴근한 기록(endedAt != null)은 DB 조회 없이 END 상태로 반환 (성능 최적화)
+            if (log.getEndedAt() != null) {
+                // 가상의 퇴근 이벤트 객체를 만들어 DTO 변환에 사용
+                WorkLogEvent endEvent = WorkLogEvent.builder()
+                        .eventType(WorkLogEventType.END)
+                        .occurredAt(log.getEndedAt())
+                        .build();
+                return WorkLogResponseDto.from(log, endEvent);
+            } else {
+                // 아직 진행 중인 기록은 최신 상태를 정확히 조회
+                WorkLogEvent lastEvent = workLogMapper.findLastEventByWorkLogId(log.getWorkLogId());
+                return WorkLogResponseDto.from(log, lastEvent);
+            }
+        }).collect(Collectors.toList());
     }
 
     /**
-     * 7. 마지막 이벤트 상태가 특정 상태가 아닌지 검증
+     * 7. 일별 근무 통계 조회 (캘린더용)
+     * - 프론트엔드에서 reduce 할 필요 없이 백엔드에서 날짜별로 시간을 합쳐서 반환
+     */
+    @Transactional(readOnly = true)
+    public List<DailyWorkLogStats> getDailyStats(Long workerId) {
+        // 1. 전체 이력 조회
+        List<WorkLog> logs = workLogMapper.findAllByWorkerId(workerId);
+
+        // 2. 날짜별(LocalDate)로 그룹핑하여 근무 시간(분) 합산
+        Map<LocalDate, Long> dailyMinutesMap = logs.stream()
+                .collect(Collectors.groupingBy(
+                        log -> log.getStartedAt().toLocalDate(), // Key: 날짜
+                        Collectors.summingLong(log -> {          // Value: 근무 분 합계
+                            // 퇴근 안 찍힌 경우 현재 시간 기준으로 계산
+                            LocalDateTime end = log.getEndedAt() != null ? log.getEndedAt() : LocalDateTime.now();
+                            return Duration.between(log.getStartedAt(), end).toMinutes();
+                        })
+                ));
+
+        // 3. DTO 변환 및 최신 날짜순 정렬
+        return dailyMinutesMap.entrySet().stream()
+                .map(entry -> {
+                    long totalMin = entry.getValue();
+                    return DailyWorkLogStats.builder()
+                            .date(entry.getKey().format(DateTimeFormatter.ISO_DATE)) // "YYYY-MM-DD"
+                            .hours(totalMin / 60) // 시
+                            .minutes(totalMin % 60) // 분
+                            .totalMinutes(totalMin)
+                            .build();
+                })
+                .sorted(Comparator.comparing(DailyWorkLogStats::getDate).reversed())
+                .collect(Collectors.toList());
+    }
+
+
+    // ================= Helpers =================
+
+    /**
+     *  1. 진행 중인 근무 기록 조회하고 없으면 예외 던짐
+     */
+    private WorkLog getActiveWorkLogOrThrow(Long workerId) {
+        return workLogMapper.findActiveWorkLogByWorkerId(workerId)
+                .orElseThrow(() -> new ApiException(ErrorCode.WORK_SESSION_NOT_FOUND, "활성 근무 기록이 없습니다."));
+    }
+
+    /**
+     *  2. 마지막 이벤트 상태가 특정 상태가 아닌지 검증
      */
     private void validateStatusNot(Long workLogId, WorkLogEventType type, ErrorCode errorCode) {
         WorkLogEvent lastEvent = workLogMapper.findLastEventByWorkLogId(workLogId);
@@ -149,7 +219,7 @@ public class WorkLogService {
     }
 
     /**
-     * 8. 이벤트 생성 후 DB에 영구 저장
+     *  3. 이벤트 생성 후 DB에 영구 저장
      */
     private WorkLogEvent createAndSaveEvent(Long workLogId, WorkLogEventType type, String reason) {
         WorkLogEvent event = WorkLogEvent.builder()
@@ -161,4 +231,6 @@ public class WorkLogService {
         workLogMapper.insertWorkLogEvent(event);
         return event;
     }
+
+
 }

@@ -7,6 +7,7 @@ import lookie.backend.domain.worklog.service.WorkLogService;
 import lookie.backend.global.response.ApiResponse;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 /**
  * 작업자의 근무 관리(출근, 퇴근, 상태 변경) 담당 API 컨트롤러
@@ -67,6 +68,16 @@ public class WorkLogController {
     @GetMapping("/current")
     public ApiResponse<WorkLogResponseDto> getCurrentStatus(@AuthenticationPrincipal String userId) {
         WorkLogResponseDto response = workLogService.getCurrentStatus(Long.parseLong(userId));
+        return ApiResponse.success(response);
+    }
+
+    /**
+     * 6. 근무 이력 조회 API (본인용)
+     * GET /api/work-logs
+     */
+    @GetMapping
+    public ApiResponse<List<WorkLogResponseDto>> getMyWorkHistories(@AuthenticationPrincipal String userId) {
+        List<WorkLogResponseDto> response = workLogService.getMyWorkHistories(Long.parseLong(userId));
         return ApiResponse.success(response);
     }
 }

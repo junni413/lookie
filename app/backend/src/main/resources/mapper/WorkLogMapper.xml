@@ -54,4 +54,11 @@
         LIMIT 1
     </select>
 
+    <!-- 6. 작업자의 전체 근무 이력 조회  -->
+    <select id="findAllByWorkerId" resultMap="WorkLogResultMap">
+        SELECT * FROM work_logs
+        WHERE worker_id = #{workerId}
+        ORDER BY started_at DESC
+    </select>
+
 </mapper>
