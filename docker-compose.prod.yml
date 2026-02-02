@@ -87,6 +87,7 @@ services:
       - SPRING_PROFILES_ACTIVE=docker     # ✅ application-docker.yml 등 docker 프로파일 사용
       - SPRING_FLYWAY_ENABLED=false       # ✅ Flyway는 migrate 컨테이너가 수행하므로 backend에선 끔
       - SPRING_JPA_HIBERNATE_DDL_AUTO=validate # ✅ 스키마 자동 변경 금지(현재 스키마 검증만)
+      - AI_SERVER_URL=http://ai-server:8000    # ✅ [ADD] AI 서버 내부 주소 (Docker Network DNS 사용)
     env_file:
       - .env                              # ✅ DB/Redis/JWT 등 런타임 환경변수 주입
     ports:
@@ -101,6 +102,29 @@ services:
       mysql:
         condition: service_healthy        # ✅ mysql 준비 후 backend 기동(타이밍 이슈 방지)
 
+  # ============================
+  # ✅ [ADD] AI Server
+  # ============================
+  ai-server:
+    image: ${REGISTRY_IMAGE_AI}:${IMAGE_TAG}   # Jenkins가 주입한 이미지 사용
+    container_name: ai-server
+    restart: always
+    environment:
+      # ⚠️ CPU 과부하 방지 (4코어 중 2코어만 사용)
+      - OMP_NUM_THREADS=2
+      - MKL_NUM_THREADS=2
+      - BACKEND_URL=http://backend:8080
+    volumes:
+      - ./data/logs/ai:/app/logs
+    networks:
+      - lookie
+    # 헬스체크 (배포 후 서버가 죽었는지 살았는지 확인)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      
   # ============================
   # Nginx: Reverse Proxy + 정적 파일 서빙
   # ============================
