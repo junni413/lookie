@@ -23,10 +23,12 @@ import IssueListPage from "./pages/worker/issue/IssueList";
 import IssueReportPage from "./pages/worker/issue/IssueReport";
 import IssueResultPage from "./pages/worker/issue/IssueResult";
 
+// ADMIN pages
 import AdminDashboard from "./pages/admin/Dashboard";
 import IssuePage from "./pages/admin/Issue";
 import ManagePage from "./pages/admin/Manage";
 import MapPage from "./pages/admin/Map";
+import ContactPage from "./pages/admin/Contact";
 
 // ✅ 작업 흐름 (프론트만)
 import TaskAssignLoading from "./pages/worker/task/TaskAssignLoading";
@@ -153,6 +155,7 @@ export default function App() {
         <Route path="manage" element={<ManagePage />} />
         <Route path="map" element={<MapPage />} />
         <Route path="issue" element={<IssuePage />} />
+        <Route path="contact" element={<ContactPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
