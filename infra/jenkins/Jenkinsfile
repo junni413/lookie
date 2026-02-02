@@ -371,13 +371,16 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     //  - IMAGE_TAG는 commit SHA로 생성(불변 태그) → 재현성/롤백 가능
     //  - Docker Hub에는 develop/latest가 없어도 됨(sha 태그만 존재)
     // ============================================================
-    stage('Build & Push Images (develop push only)') {
+    // ============================================================
+    // 5-1) Build & Push: Backend & Nginx (항상 실행)
+    // ============================================================
+    stage('Build & Push: Backend & Nginx') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
         script {
-          // ✅ immutable tag (commit SHA)
-          env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-          echo "IMAGE_TAG=${env.IMAGE_TAG}"
+           // ✅ 공통 태그 생성 (commit SHA)
+           env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+           echo "IMAGE_TAG=${env.IMAGE_TAG}"
         }
 
         withCredentials([usernamePassword(
@@ -389,34 +392,66 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
             bash -lc '
               set -euo pipefail
 
-              # ✅ Docker Hub 로그인(푸시 권한)
+              # ✅ Docker Hub 로그인
               echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
-              # ✅ backend 이미지 빌드/푸시 (sha tag)
-              docker build -f "${BACKEND_DOCKERFILE}" \
-                -t "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}" \
-                "${BACKEND_CONTEXT}"
+              # ✅ backend 이미지 빌드/푸시
+              echo "[INFO] Backend Build..."
+              docker build -f "${BACKEND_DOCKERFILE}" -t "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}" "${BACKEND_CONTEXT}"
               docker push "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}"
 
-              # ✅ nginx 이미지 빌드/푸시 (sha tag)
-              docker build -f "${NGINX_DOCKERFILE}" \
-                -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" \
-                "${NGINX_CONTEXT}"
+              # ✅ nginx 이미지 빌드/푸시
+              echo "[INFO] Nginx Build..."
+              docker build -f "${NGINX_DOCKERFILE}" -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" "${NGINX_CONTEXT}"
               docker push "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}"
+            '
+          '''
+        }
+      }
+    }
 
-              # -------------------------------------------------------
-              # [2] AI Server: 빌드 -> 테스트 -> 푸시 (순서 중요!)
-              # -------------------------------------------------------
-              echo "[INFO] AI Server Docker Build..."
-              # 캐시를 활용해 빠르게 빌드 (태그는 임시로 latest 사용하거나 SHA 사용)
+    // ============================================================
+    // 5-2) Build & Push: AI Server (변경 감지 시에만 실행)
+    // ============================================================
+    stage('Build & Push: AI Server') {
+      when {
+        allOf {
+          // 1. 기본 실행 조건 (develop push 인가?)
+          expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" }
+          // 2. 변경 감지 조건 (AI 폴더나 Jenkinsfile이 바뀌었는가?)
+          anyOf {
+            changeset "app/ai-server/**"
+            changeset "Jenkinsfile"
+          }
+        }
+      }
+      steps {
+        script {
+           // 앞선 스테이지에서 IMAGE_TAG가 안 만들어졌을 경우 대비
+           if (!env.IMAGE_TAG) {
+             env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+           }
+        }
+
+        withCredentials([usernamePassword(
+          credentialsId: env.DOCKERHUB_CRED_ID,
+          usernameVariable: 'DH_USER',
+          passwordVariable: 'DH_PASS'
+        )]) {
+          sh '''
+            bash -lc '
+              set -euo pipefail
+
+              echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+
+              echo "[INFO] AI Server Changed. Starting Build..."
+              
+              # 캐시 활용 빌드
               docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" "${AI_CONTEXT}"
 
-              echo "[INFO] AI Server Test Running (Inside Container)..."
-              # ✅ 리뷰어 피드백 반영: 빌드된 이미지 안에서 테스트 실행
-              # --entrypoint를 덮어씌워서 서버 실행 대신 pytest 실행
-              # requirements 설치 과정이 없으므로 매우 빠름!
-              docker run --rm "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" \
-                pytest /app/test_main.py
+              echo "[INFO] AI Server Test Running..."
+              # 이미지 내부 테스트 실행
+              docker run --rm "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" pytest /app/test_main.py
 
               echo "[INFO] Test Passed! Pushing image..."
               docker push "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}"
