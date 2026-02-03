@@ -196,6 +196,8 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
 
     // ============================================================
     // 3) MR: Backend Test
+    //  - MySQL/Redis를 컨테이너로 띄우고 호스트 포트를 랜덤으로 할당
+    //  - 실제 할당된 포트를 읽어 spring 설정을 mvn 옵션으로 주입
     // ============================================================
     stage('Backend Test (MR only)') {
       when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_BACKEND == "true" } }
@@ -206,14 +208,19 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
               set -euo pipefail
               : > ../../${BACKEND_LOG}
 
+              # ✅ docker 사용 가능 확인
               docker version >/dev/null 2>&1 || {
                 echo "[ERROR] docker not available" | tee -a ../../${BACKEND_LOG}
                 exit 1
               }
 
+              # ✅ 이전 컨테이너 제거(충돌 방지)
               docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
               docker rm -f "${CI_MYSQL_CONTAINER}" >/dev/null 2>&1 || true
 
+              # ---------------------------
+              # (1) MySQL 컨테이너 실행 (호스트 포트 랜덤)
+              # ---------------------------
               docker pull "${CI_MYSQL_IMAGE}" >/dev/null 2>&1 || true
               docker run -d --name "${CI_MYSQL_CONTAINER}" \
                 -e MYSQL_ROOT_PASSWORD="${CI_MYSQL_ROOTPW}" \
@@ -223,12 +230,14 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
                 -p 0:3306 \
                 "${CI_MYSQL_IMAGE}" >/dev/null
 
+              # ✅ 실제 할당된 MySQL 호스트 포트 조회
               MYSQL_HOST_PORT="$(docker port "${CI_MYSQL_CONTAINER}" 3306/tcp | sed -E "s/.*:([0-9]+)$/\\1/" | tail -n 1)"
               [ -n "${MYSQL_HOST_PORT}" ] || {
                 echo "[ERROR] mysql port detect failed" | tee -a ../../${BACKEND_LOG}
                 exit 1
               }
 
+              # ✅ MySQL readiness 확인
               for i in $(seq 1 90); do
                 if docker exec "${CI_MYSQL_CONTAINER}" mysqladmin ping -uroot -p"${CI_MYSQL_ROOTPW}" --silent >/dev/null 2>&1; then
                   if docker exec "${CI_MYSQL_CONTAINER}" mysql -uroot -p"${CI_MYSQL_ROOTPW}" -e "SELECT 1" >/dev/null 2>&1; then
@@ -239,15 +248,20 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
                 [ "$i" -eq 90 ] && { echo "[ERROR] mysql readiness timeout" | tee -a ../../${BACKEND_LOG}; exit 1; }
               done
 
+              # ---------------------------
+              # (2) Redis 컨테이너 실행 (호스트 포트 랜덤)
+              # ---------------------------
               docker pull "${CI_REDIS_IMAGE}" >/dev/null 2>&1 || true
               docker run -d --name "${CI_REDIS_CONTAINER}" -p 0:6379 "${CI_REDIS_IMAGE}" >/dev/null
 
+              # ✅ 실제 할당된 Redis 호스트 포트 조회
               REDIS_HOST_PORT="$(docker port "${CI_REDIS_CONTAINER}" 6379/tcp | sed -E "s/.*:([0-9]+)$/\\1/" | tail -n 1)"
               [ -n "${REDIS_HOST_PORT}" ] || {
                 echo "[ERROR] redis port detect failed" | tee -a ../../${BACKEND_LOG}
                 exit 1
               }
 
+              # ✅ Redis readiness 확인
               for i in $(seq 1 30); do
                 if docker exec "${CI_REDIS_CONTAINER}" redis-cli ping 2>/dev/null | grep -q PONG; then
                   break
@@ -256,6 +270,10 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
                 [ "$i" -eq 30 ] && { echo "[ERROR] redis readiness timeout" | tee -a ../../${BACKEND_LOG}; exit 1; }
               done
 
+              # ---------------------------
+              # (3) Maven test
+              #  - DB/Redis 호스트/포트를 이번 CI 컨테이너로 강제 주입
+              # ---------------------------
               chmod +x mvnw || true
               ./mvnw -q clean test \
                 -Dspring.profiles.active=ci \
@@ -273,6 +291,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       }
       post {
         always {
+          // ✅ 성공/실패와 무관하게 컨테이너 정리
           sh '''
             bash -lc '
               docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
@@ -282,33 +301,39 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         }
       }
     }
-
     // ============================================================
     // MR: AI Server Test (Only Build & Test, No Push)
+    // - MR 단계에서는 도커 허브에 올리지 않고, 빌드/테스트만 검증합니다.
     // ============================================================
     stage('AI Test (MR only)') {
       when { expression { env.EVENT_KIND == 'merge_request' } }
       steps {
         script {
-          def testTag = "test"
-
-          sh """
-            bash -lc '
-              set -euo pipefail
-              echo "[INFO] AI Server MR Test Start..."
-
-              docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${testTag}" "${AI_CONTEXT}"
-              docker run --rm "${REGISTRY_IMAGE_AI}:${testTag}" pytest /app/test_main.py
-
-              echo "[INFO] MR Test Passed! (Ready to Merge)"
-            '
-          """
+            // MR에서는 태그를 고정(test)해서 덮어쓰기 (용량 절약)
+            def testTag = "test"
+            
+            // Build (캐시 활용) -> Test (컨테이너 내부 실행)
+            sh """
+              bash -lc '
+                set -euo pipefail
+                echo "[INFO] AI Server MR Test Start..."
+                
+                # 1. 빌드 (Push 안 함)
+                docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${testTag}" "${AI_CONTEXT}"
+                
+                # 2. 테스트 (이미지 내부 pytest 실행)
+                docker run --rm "${REGISTRY_IMAGE_AI}:${testTag}" pytest /app/test_main.py
+                
+                echo "[INFO] MR Test Passed! (Ready to Merge)"
+              '
+            """
         }
       }
     }
 
     // ============================================================
     // 4) MR: Frontend Build
+    //  - node 컨테이너로 npm ci / build 수행 → Jenkins 노드의 node 환경 의존 제거
     // ============================================================
     stage('Frontend Build (MR only)') {
       when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_FRONTEND == "true" } }
@@ -342,14 +367,20 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     }
 
     // ============================================================
-    // 5-1) Build & Push: Backend & Nginx (develop push)
+    // 5) develop push: Build & Push Images
+    //  - IMAGE_TAG는 commit SHA로 생성(불변 태그) → 재현성/롤백 가능
+    //  - Docker Hub에는 develop/latest가 없어도 됨(sha 태그만 존재)
+    // ============================================================
+    // ============================================================
+    // 5-1) Build & Push: Backend & Nginx (항상 실행)
     // ============================================================
     stage('Build & Push: Backend & Nginx') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
         script {
-          env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-          echo "IMAGE_TAG=${env.IMAGE_TAG}"
+           // ✅ 공통 태그 생성 (commit SHA)
+           env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+           echo "IMAGE_TAG=${env.IMAGE_TAG}"
         }
 
         withCredentials([usernamePassword(
@@ -361,12 +392,15 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
             bash -lc '
               set -euo pipefail
 
+              # ✅ Docker Hub 로그인
               echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
+              # ✅ backend 이미지 빌드/푸시
               echo "[INFO] Backend Build..."
               docker build -f "${BACKEND_DOCKERFILE}" -t "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}" "${BACKEND_CONTEXT}"
               docker push "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}"
 
+              # ✅ nginx 이미지 빌드/푸시
               echo "[INFO] Nginx Build..."
               docker build -f "${NGINX_DOCKERFILE}" -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" "${NGINX_CONTEXT}"
               docker push "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}"
@@ -382,7 +416,9 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     stage('Build & Push: AI Server') {
       when {
         allOf {
+          // 1. 기본 실행 조건 (develop push 인가?)
           expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" }
+          // 2. 변경 감지 조건 (AI 폴더나 Jenkinsfile이 바뀌었는가?)
           anyOf {
             changeset "app/ai-server/**"
             changeset "Jenkinsfile"
@@ -391,9 +427,10 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       }
       steps {
         script {
-          if (!env.IMAGE_TAG) {
-            env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-          }
+           // 앞선 스테이지에서 IMAGE_TAG가 안 만들어졌을 경우 대비
+           if (!env.IMAGE_TAG) {
+             env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+           }
         }
 
         withCredentials([usernamePassword(
@@ -408,9 +445,12 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
               echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
               echo "[INFO] AI Server Changed. Starting Build..."
+              
+              # 캐시 활용 빌드
               docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" "${AI_CONTEXT}"
 
               echo "[INFO] AI Server Test Running..."
+              # 이미지 내부 테스트 실행
               docker run --rm "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" pytest /app/test_main.py
 
               echo "[INFO] Test Passed! Pushing image..."
@@ -423,6 +463,8 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
 
     // ============================================================
     // 6) develop push: Deploy (pull based)
+    //  - EC2에서 docker compose pull → up -d
+    //  - 중요한 점: IMAGE_TAG는 배포 서버 .env가 아니라 "Jenkins가 export로 주입"
     // ============================================================
     stage('Deploy (develop push only, pull based)') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_DEPLOY == "true" } }
@@ -488,9 +530,8 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         }
       }
     }
-
-  } // ✅ [FIX] stages 블록을 여기서 닫아야 post가 pipeline 레벨로 올라감
-
+  }
+  
   // ============================================================
   // post: 항상 Mattermost 알림 전송
   // ============================================================
