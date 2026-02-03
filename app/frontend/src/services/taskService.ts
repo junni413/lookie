@@ -1,27 +1,16 @@
 import type { ApiResponse, TaskResponse, TaskVO, TaskItemVO } from "../types/task";
-import type { DB_BatchTask } from "@/types/db";
-import {
-  db_batch_tasks,
-  db_batch_task_items,
-
-  db_users,
-  db_products,
-  zoneNames
-} from "@/mocks/mockData";
 
 /** -----------------------------
- * Issue (로컬 저장용 - Mocking IssueService and TaskService overlap)
+ * Issue (로컬 저장용)
  * ----------------------------- */
-export type TaskIssueStatus = "DONE" | "WAIT";
+export type IssueStatus = "DONE" | "WAIT";
 
-// Keep Issue interface for local storage compatibility or refactor to DB_Issue?
-// For now, let's map DB_Issue to this if needed, or keep separate "local pending issues".
 export interface Issue {
   id: string;
   title: string;
   location: string;
   createdAt: string;
-  status: TaskIssueStatus;
+  status: IssueStatus;
   imageUrl?: string;
   productName: string;
   sku: string;
@@ -30,7 +19,7 @@ export interface Issue {
 }
 
 /** -----------------------------
- * HTTP Helper
+ * HTTP Helper (Task API에만 사용)
  * ----------------------------- */
 const TOKEN_KEY = "accessToken";
 
@@ -67,76 +56,43 @@ async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
 }
 
 /** -----------------------------
- * Helper to Map DB_BatchTask -> TaskVO
+ * Local stats helpers
  * ----------------------------- */
-function mapToTaskVO(task: DB_BatchTask): TaskVO {
-  const zoneName = zoneNames[task.zone_id] || "Unknown";
-  // Count items
-  const items = db_batch_task_items.filter(i => i.batch_task_id === task.batch_task_id);
+function getStats(): { done: number; issue: number; waiting: number } {
+  const statsStr = localStorage.getItem("work_stats");
+  return statsStr ? JSON.parse(statsStr) : { done: 0, issue: 0, waiting: 0 };
+}
 
-  return {
-    batchTaskId: task.batch_task_id,
-    batchId: task.batch_id,
-    zoneId: task.zone_id,
-    workerId: task.worker_id || undefined,
-    toteId: task.tote_id || undefined,
-    status: task.status,
-    startedAt: task.started_at || undefined,
-    completedAt: task.completed_at || undefined,
-    currentLocationId: task.current_location_id || undefined,
-    toteScannedAt: task.tote_scanned_at || undefined,
-    toteReleasedAt: task.tote_released_at || undefined,
-    actionStatus: task.action_status,
-    locationScannedAt: task.location_scanned_at || undefined,
-    // UI Fields
-    displayZone: zoneName,
-    displayLine: "L1", // Mock
-    itemCount: items.length
-  };
+function setStats(stats: { done: number; issue: number; waiting: number }) {
+  localStorage.setItem("work_stats", JSON.stringify(stats));
 }
 
 /** -----------------------------
- * taskService
+ * taskService (Task는 API / Issue는 MOCK)
  * ----------------------------- */
 export const taskService = {
   /** [MOCKING] 작업 할당 및 시작 */
   startTask: async (): Promise<ApiResponse<TaskResponse<TaskVO>>> => {
-    // Find a task for current user (assumed from token or context, but here we just pick one)
-    // For demo, let's pick the first IN_PROGRESS task.
-    const task = db_batch_tasks.find(t => t.status === "IN_PROGRESS");
+    console.warn("⚠️ 현재 Mock 데이터를 사용 중입니다. (배정 구역 에러 패스)");
 
-    if (!task) {
-      return {
-        success: false,
-        message: "No tasks available",
-        errorCode: "TASK_004",
-        data: {} as any
-      };
-    }
-
-    const vo = mapToTaskVO(task);
-    const workerName = db_users.find(u => u.user_id === task.worker_id)?.name || "Worker";
-
+    // ✅ errorCode에 null 넣으면 타입에 따라 TS2322 날 수 있어서 아예 제거
     return {
       success: true,
       message: "SUCCESS",
+      // errorCode: undefined, // 넣고 싶으면 undefined로 (대부분은 그냥 필드 제거가 안전)
       data: {
-        payload: { ...vo, workerName } as any,
-        nextAction: task.action_status as any // Map if needed
-      }
-    };
+        payload: {
+          batchTaskId: 1, // 임의의 ID
+          zoneName: "테스트 구역-A",
+          workerName: "관리자",
+        } as any,
+        nextAction: "SCAN_TOTE",
+      } as any,
+    } as any;
   },
 
   /** 토트 등록(스캔) */
   scanTote: async (taskId: number, barcode: string): Promise<ApiResponse<TaskResponse<TaskVO>>> => {
-    // Check local mock first? Or assumes API. 
-    // If Mock mode, update DB
-    const task = db_batch_tasks.find(t => t.batch_task_id === taskId);
-    if (task) {
-      task.action_status = "SCAN_LOCATION";
-      // task.tote_id = ... find from db_totes
-    }
-
     return requestJSON(`/api/tasks/${taskId}/totes`, {
       method: "POST",
       body: JSON.stringify({ barcode }),
@@ -179,65 +135,78 @@ export const taskService = {
 
   /** 작업 아이템 목록 조회 */
   getTaskItems: async (taskId: number): Promise<ApiResponse<TaskItemVO[]>> => {
-    // Mock return
-    const items = db_batch_task_items.filter(i => i.batch_task_id === taskId);
-    const res: TaskItemVO[] = items.map(i => {
-      const prod = db_products.find(p => p.product_id === i.product_id);
-      return {
-        batchTaskItemId: i.batch_task_item_id,
-        batchTaskId: i.batch_task_id,
-        productId: i.product_id,
-        locationId: i.location_id,
-        requiredQty: i.required_qty,
-        pickedQty: i.picked_qty,
-        status: i.status,
-        productName: prod?.product_name || "Unknown",
-        barcode: prod?.barcode || "",
-        locationCode: "A-01-01" // Mock
-      };
-    });
-
-    return {
-      success: true,
-      message: "OK",
-      data: res
-    };
-    // Once API is real, use:
-    // return requestJSON(`/api/tasks/${taskId}/items`, { method: "GET" });
+    return requestJSON(`/api/tasks/${taskId}/items`, { method: "GET" });
   },
 
   /** -----------------------------
    * UI용 로컬 기능 (이슈 관리 MOCK)
    * ----------------------------- */
-  // ... Keep existing local storage mock logic for now as it's purely UI state ...
 
-  addWaitingTasks: async (_count: number): Promise<void> => {
-    // no-op
+  addWaitingTasks: async (count: number): Promise<void> => {
+    const stats = getStats();
+    stats.waiting += count;
+    setStats(stats);
   },
 
   getWorkStats: async () => {
-    return { done: 10, issue: 2, waiting: 5 };
+    return getStats();
   },
 
-  reportIssue: async (_payload?: any): Promise<string> => {
-    // Add to db_issues (in memory)
-    const newId = Date.now();
-    // ...
-    return "ISS-" + newId;
+  /** (MOCK) 이슈 생성 -> issueId 리턴 + my_issues에 저장 */
+  reportIssue: async (payload?: any): Promise<string> => {
+    const stats = getStats();
+    stats.issue += 1;
+    setStats(stats);
+
+    const issuesStr = localStorage.getItem("my_issues");
+    const issues: Issue[] = issuesStr ? JSON.parse(issuesStr) : [];
+
+    const newId = `ISS-${String(issues.length + 1).padStart(3, "0")}`;
+
+    const typeLabel =
+      payload?.type ??
+      (payload?.issueType === "DAMAGED" ? "파손" : payload?.issueType === "MISSING" ? "재고없음" : "기타");
+
+    const newIssue: Issue = {
+      id: newId,
+      title: payload ? `${typeLabel} 신고` : "기타 이슈 신고",
+      location: payload?.location ?? "알 수 없음",
+      productName: payload?.productName ?? "기타 상품",
+      sku: payload?.sku ?? "OTHER",
+      createdAt: new Date().toLocaleString("ko-KR"),
+      status: "WAIT",
+      aiResult: payload?.aiResult,
+      verdict: payload?.verdict,
+      imageUrl: payload?.imageUrl,
+    };
+
+    issues.unshift(newIssue);
+    localStorage.setItem("my_issues", JSON.stringify(issues));
+    return newId;
   },
 
+  /** (MOCK) 이슈 이미지 업로드: 실제 업로드 없이 “업로드됨” 동작만 흉내 */
   uploadIssueImage: async (issueId: string, file: File): Promise<void> => {
     console.warn("⚠️ [MOCK] uploadIssueImage:", issueId, file.name);
+    // 실제 파일은 localStorage에 넣기 어려우니 no-op
   },
 
+  /** (MOCK) AI 결과/상태 업데이트: my_issues에서 해당 이슈 찾아 patch
+   * ✅ verdict는 AiStockAnalysis 등에서 없을 수 있어서 optional 처리
+   */
   updateIssueResult: async (
-    _issueId: string,
-    _patch: { verdict?: string; imageUrl?: string; status: TaskIssueStatus; aiResult?: string }
+    issueId: string,
+    patch: { verdict?: string; imageUrl?: string; status: IssueStatus; aiResult?: string }
   ): Promise<void> => {
-    // no-op
+    const issuesStr = localStorage.getItem("my_issues");
+    const issues: Issue[] = issuesStr ? JSON.parse(issuesStr) : [];
+
+    const next = issues.map((it) => (it.id === issueId ? { ...it, ...patch } : it));
+    localStorage.setItem("my_issues", JSON.stringify(next));
   },
 
   getMyIssues: async (): Promise<Issue[]> => {
-    return [];
+    const issuesStr = localStorage.getItem("my_issues");
+    return issuesStr ? JSON.parse(issuesStr) : [];
   },
 };
