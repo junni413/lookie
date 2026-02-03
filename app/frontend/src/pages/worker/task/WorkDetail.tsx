@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "../../../components/layout/MobileLayout";
 import IssueSelectSheet, { type IssueType } from "./IssueSelectDrawer";
 import ScannerModal from "./ScannerModal";
 import { useToast } from "@/components/ui/use-toast";
-import { ChevronLeft, ChevronRight, MapPin, PackageSearch, Plus, Minus } from "lucide-react";
+import { ChevronLeft, ChevronRight, MapPin, PackageSearch, Plus, Minus, Check } from "lucide-react";
 import { taskService } from "@/services/taskService";
 import type { TaskVO, TaskItemVO, NextAction, TaskErrorCode } from "@/types/task";
 import { TASK_ERROR_MESSAGES } from "@/types/task";
@@ -29,6 +29,8 @@ export default function WorkDetail() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanType, setScanType] = useState<"LOCATION" | "ITEM">("LOCATION");
 
+  // initializedItemsRef는 아래 currentItem 선언 이후에 정의됨
+
   useEffect(() => setTitle("작업 진행"), [setTitle]);
 
   // ✅ 가장 먼저 방어: task/toteBarcode 없으면 화면 진입 자체를 막음
@@ -49,9 +51,12 @@ export default function WorkDetail() {
         // ✅ GET /api/tasks/{taskId}/items -> ApiResponse<List<TaskItemVO>>
         const response = await taskService.getTaskItems(safeTask.batchTaskId);
 
+        console.log("📦 Fetched items:", response.data?.length ?? 0);
+
         if (response.success && Array.isArray(response.data)) {
           setItems(response.data);
           setCurrentIndex(0);
+          // initializedItemsRef는 아래에서 관리됨
         } else {
           setItems([]);
         }
@@ -65,23 +70,106 @@ export default function WorkDetail() {
     };
 
     fetchItems();
-  }, [safeTask.batchTaskId, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeTask.batchTaskId]); // toast 제거 - 불필요한 재실행 방지
 
   const currentItem = items[currentIndex];
 
+  // ✅ 각 아이템별 워크플로우 상태 추적 (itemId -> NextAction)
+  const itemStatesRef = useRef<Map<number, NextAction>>(new Map());
+
+  // ✅ 현재 아이템이 바뀔 때 nextAction 저장/복원
   useEffect(() => {
-    if (!currentItem) return;
+    if (!items[currentIndex]) return;
+    
+    const item = items[currentIndex];
+    const itemId = item.batchTaskItemId;
+    
+    console.log("🔄 useEffect triggered:", { 
+      currentIndex, 
+      itemId,
+      itemStatus: item.status,
+      pickedQty: item.pickedQty,
+      savedState: itemStatesRef.current.get(itemId)
+    });
 
-    if (currentItem.status === "DONE") setNextAction("SCAN_ITEM");
-    else setNextAction("SCAN_LOCATION");
-  }, [currentIndex, currentItem]);
+    // ✅ 이미 완료된 아이템(DONE)은 완료 상태로 표시
+    if (item.status === "DONE") {
+      console.log("🔄 Item is DONE - showing as complete");
+      setNextAction("NEXT_ITEM");
+      return;
+    }
+    
+    // ✅ 저장된 상태가 있으면 복원
+    const savedState = itemStatesRef.current.get(itemId);
+    if (savedState) {
+      console.log("🔄 Restoring saved state:", savedState);
+      setNextAction(savedState);
+      return;
+    }
 
-  const prevItem = () => {
-    if (currentIndex > 0) setCurrentIndex((i) => i - 1);
+    // ✅ 처음 방문하는 아이템은 SCAN_LOCATION으로 시작
+    console.log("🔄 First visit - initializing to SCAN_LOCATION");
+    itemStatesRef.current.set(itemId, "SCAN_LOCATION");
+    setNextAction("SCAN_LOCATION");
+  }, [currentIndex, items]);
+
+  // ✅ nextAction이 바뀔 때 현재 아이템 상태 저장
+  useEffect(() => {
+    const item = items[currentIndex];
+    if (item && item.status !== "DONE" && nextAction !== "NEXT_ITEM") {
+      console.log("� Saving state for item", item.batchTaskItemId, ":", nextAction);
+      itemStatesRef.current.set(item.batchTaskItemId, nextAction);
+    }
+  }, [nextAction, currentIndex, items]);
+
+  // ✅ 이전 아이템으로 이동 (단순 네비게이션, 완료된 아이템은 이미 DONE 상태)
+  const handlePrevItem = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex((i) => i - 1);
+    }
   };
 
-  const nextItemIdx = () => {
-    if (currentIndex < items.length - 1) setCurrentIndex((i) => i + 1);
+  // ✅ 다음 아이템으로 이동 (수량 채워졌으면 completeItem 호출 후 이동)
+  const handleNextItem = async () => {
+    if (currentIndex >= items.length - 1) return;
+    
+    const item = items[currentIndex];
+    
+    // 수량이 다 채워졌고 아직 DONE이 아니면 completeItem 호출
+    if (item && item.pickedQty >= item.requiredQty && item.status !== "DONE") {
+      console.log("➡️ Completing item before moving to next:", item.batchTaskItemId);
+      
+      try {
+        const res = await taskService.completeItem(item.batchTaskItemId);
+        
+        if (res.success && res.data) {
+          console.log("➡️ Item completed, nextAction:", res.data.nextAction);
+          
+          // 아이템 상태 업데이트
+          const updatedPayload = res.data.payload;
+          if (updatedPayload) {
+            const updatedItems = items.map((it) =>
+              it.batchTaskItemId === updatedPayload.batchTaskItemId ? updatedPayload : it
+            );
+            setItems(updatedItems);
+          }
+          
+          // 다음 아이템으로 이동
+          setCurrentIndex((i) => i + 1);
+          setNextAction(res.data.nextAction || "SCAN_LOCATION");
+        } else {
+          console.error("➡️ completeItem failed:", res.message);
+          toast({ title: "완료 처리 실패", description: res.message, variant: "destructive" });
+        }
+      } catch (err: any) {
+        console.error("➡️ completeItem error:", err);
+        toast({ title: "완료 처리 실패", description: err?.message, variant: "destructive" });
+      }
+    } else {
+      // 수량 안 채워졌으면 그냥 이동 (또는 이미 DONE)
+      setCurrentIndex((i) => i + 1);
+    }
   };
 
   const openLocationScanner = () => {
@@ -110,7 +198,14 @@ export default function WorkDetail() {
           setScannerOpen(false);
           const res = await taskService.scanLocation(safeTask.batchTaskId, barcode);
 
+          // ✅ 디버깅: 백엔드 응답 확인
+          console.log("📍 Location Scan Response:", JSON.stringify(res, null, 2));
+
           if (res.success && res.data) {
+            console.log("📍 Setting nextAction to:", res.data.nextAction);
+            
+            // ✅ Map을 먼저 업데이트하여 useEffect가 복원할 때 올바른 상태 사용
+            itemStatesRef.current.set(currentItem.batchTaskItemId, res.data.nextAction);
             setNextAction(res.data.nextAction);
             toast({ title: "지번 확인됨", description: "이제 상품을 스캔하세요." });
           } else {
@@ -138,7 +233,14 @@ export default function WorkDetail() {
         setScannerOpen(false);
         const res = await taskService.scanItem(safeTask.batchTaskId, barcode);
 
+        // ✅ 디버깅: 백엔드 응답 확인
+        console.log("📦 Item Scan Response:", JSON.stringify(res, null, 2));
+
         if (res.success && res.data) {
+          console.log("📦 Setting nextAction to:", res.data.nextAction);
+          
+          // ✅ Map을 먼저 업데이트하여 useEffect가 복원할 때 올바른 상태 사용
+          itemStatesRef.current.set(currentItem.batchTaskItemId, res.data.nextAction);
           setNextAction(res.data.nextAction);
 
           const updatedPayload = res.data.payload;
@@ -187,46 +289,77 @@ export default function WorkDetail() {
   };
 
   const handleNextWork = async () => {
-    if (!currentItem) return;
-
-    if (currentItem.status !== "DONE") {
-      toast({ title: "작업 미완료", description: "현재 상품의 수량을 모두 채워주세요." });
+    console.log("🚀 handleNextWork called", {
+      currentItem,
+      pickedQty: currentItem?.pickedQty,
+      requiredQty: currentItem?.requiredQty,
+    });
+    
+    if (!currentItem) {
+      console.log("🚀 No currentItem, returning");
       return;
     }
 
-    if (currentIndex === items.length - 1) {
-      const allDone = items.every((it) => it.status === "DONE");
-      if (!allDone) {
-        toast({
-          title: "작업 미완료",
-          description: "아직 처리하지 않은 상품이 있습니다. 목록을 확인해주세요.",
-          variant: "destructive",
-        });
+    // 수량이 아직 다 안 채워졌으면 막기
+    if (currentItem.pickedQty < currentItem.requiredQty) {
+      console.log("🚀 Quantity not met:", currentItem.pickedQty, "<", currentItem.requiredQty);
+      toast({ title: "작업 미완료", description: "현재 상품의 수량을 모두 채워주세요." });
+      return;
+    }
+    
+    console.log("🚀 Proceeding to completeItem...");
+
+    try {
+      // ✅ 1. 현재 아이템 완료 처리 (백엔드 호출)
+      const completeRes = await taskService.completeItem(currentItem.batchTaskItemId);
+      
+      if (!completeRes.success) {
+        const msg =
+          (completeRes.errorCode && TASK_ERROR_MESSAGES[completeRes.errorCode as TaskErrorCode]) ||
+          completeRes.message ||
+          "아이템 완료 처리에 실패했습니다.";
+        toast({ title: "완료 처리 실패", description: msg, variant: "destructive" });
         return;
       }
 
-      // ✅ POST /api/tasks/{taskId}/complete (바디 없음)
-      try {
-        const res = await taskService.completeTask(safeTask.batchTaskId);
+      // 백엔드에서 반환된 nextAction 사용
+      const nextActionFromServer = completeRes.data?.nextAction;
+      console.log("📋 completeItem response:", { nextAction: nextActionFromServer });
 
-        if (res.success) {
+      // ✅ 2. 마지막 아이템이고 모든 작업 완료인 경우
+      if (nextActionFromServer === "COMPLETE_TASK") {
+        const completeTaskRes = await taskService.completeTask(safeTask.batchTaskId);
+        
+        if (completeTaskRes.success) {
           alert("축하합니다! 모든 배정 작업을 완료했습니다.");
           navigate("/worker/home");
         } else {
           const msg =
-            (res.errorCode && TASK_ERROR_MESSAGES[res.errorCode as TaskErrorCode]) ||
-            res.message ||
+            (completeTaskRes.errorCode && TASK_ERROR_MESSAGES[completeTaskRes.errorCode as TaskErrorCode]) ||
+            completeTaskRes.message ||
             "작업 완료 처리에 실패했습니다.";
           toast({ title: "작업 완료 처리 실패", description: msg, variant: "destructive" });
         }
-      } catch (err: any) {
-        toast({ title: "작업 완료 처리 실패", description: err?.message, variant: "destructive" });
+        return;
       }
-      return;
-    }
 
-    nextItemIdx();
-    setNextAction("SCAN_LOCATION");
+      // ✅ 3. 다음 아이템으로 이동
+      // 현재 아이템 상태 업데이트
+      const updatedPayload = completeRes.data?.payload;
+      if (updatedPayload) {
+        const updatedItems = items.map((it) =>
+          it.batchTaskItemId === updatedPayload.batchTaskItemId ? updatedPayload : it
+        );
+        setItems(updatedItems);
+      }
+
+      // 다음 아이템으로 이동 (useEffect가 새 아이템의 상태에 따라 nextAction 설정)
+      setCurrentIndex((i) => i + 1);
+      setNextAction(nextActionFromServer || "SCAN_LOCATION");
+      
+    } catch (err: any) {
+      toast({ title: "처리 실패", description: err?.message, variant: "destructive" });
+    }
   };
 
   const handleIssueSelect = (type: IssueType) => {
@@ -254,6 +387,13 @@ export default function WorkDetail() {
   if (loading) return null;
   if (!currentItem) return null;
 
+  // ✅ 수량 조절 가능 여부: 상품 스캔 후(ADJUST_QUANTITY 등)이거나 SCAN_ITEM 단계가 지나야 함
+  // 간단히: nextAction이 SCAN_LOCATION이 아니고 SCAN_ITEM도 아니어야 함 (즉, 상품 스캔을 통과한 상태)
+  // 혹은, 백엔드가 주는 nextAction이 ADJUST_QUANTITY 인지 확인.
+  // 여기서는 "상품 스캔 전에는 비활성화" 이므로 -> nextAction === "SCAN_LOCATION" || nextAction === "SCAN_ITEM" 이면 비활성화
+  const isQuantityControlEnabled =
+      nextAction !== "SCAN_LOCATION" && nextAction !== "SCAN_ITEM";
+
   return (
     <>
       <div className="space-y-4 px-2 relative">
@@ -278,12 +418,13 @@ export default function WorkDetail() {
 
         <section className="rounded-[32px] border border-gray-50 bg-white p-6 shadow-sm relative overflow-hidden">
           <p className="text-[22px] font-black text-center text-gray-900 leading-tight">
-            {nextAction === "SCAN_LOCATION" ? "지번을 스캔해주세요." : "상품을 스캔해주세요."}
+            {nextAction === "SCAN_LOCATION" ? "지번을 스캔해주세요." :
+             nextAction === "SCAN_ITEM" ? "상품을 스캔해주세요." : "수량을 확인해주세요."}
           </p>
 
           <div className="mt-8 flex items-center gap-2">
             <button
-              onClick={prevItem}
+              onClick={handlePrevItem}
               disabled={currentIndex === 0}
               className="p-1 rounded-full hover:bg-gray-50 disabled:opacity-0 transition-opacity"
             >
@@ -304,7 +445,7 @@ export default function WorkDetail() {
             </div>
 
             <button
-              onClick={nextItemIdx}
+              onClick={handleNextItem}
               disabled={currentIndex === items.length - 1}
               className="p-1 rounded-full hover:bg-gray-50 disabled:opacity-0 transition-opacity"
             >
@@ -313,54 +454,88 @@ export default function WorkDetail() {
           </div>
 
           <div className="mt-8 grid grid-cols-2 gap-4">
-            <button
-              onClick={openLocationScanner}
-              disabled={nextAction !== "SCAN_LOCATION"}
-              className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${
-                nextAction === "SCAN_LOCATION" ? "bg-blue-50/50 border-blue-100 shadow-sm" : "bg-white border-transparent"
-              }`}
-            >
-              <div
-                className={`p-2 rounded-full mb-2 ${
-                  nextAction === "SCAN_LOCATION" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"
-                }`}
-              >
-                <MapPin className="w-5 h-5" />
-              </div>
-              <p className={`text-sm font-bold ${nextAction === "SCAN_LOCATION" ? "text-gray-900" : "text-gray-400"}`}>
-                지번 스캔
-              </p>
-              <p className="text-sm font-medium text-gray-500 mt-0.5">{currentItem.locationCode}</p>
-            </button>
+            {(() => {
+              // ✅ 상태 계산을 간단하게 처리
+              const isLocationActive = nextAction === "SCAN_LOCATION";
+              const isLocationDone = !isLocationActive && nextAction !== "NONE";
+              const isItemActive = nextAction === "SCAN_ITEM";
+              const isItemDone = isQuantityControlEnabled;
 
-            <button
-              onClick={openItemScanner}
-              disabled={nextAction !== "SCAN_ITEM"}
-              className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${
-                nextAction === "SCAN_ITEM" ? "bg-blue-50/50 border-blue-100 shadow-sm" : "bg-white border-transparent"
-              }`}
-            >
-              <div
-                className={`p-2 rounded-full mb-2 ${
-                  nextAction === "SCAN_ITEM" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"
-                }`}
-              >
-                <PackageSearch className="w-5 h-5" />
-              </div>
-              <p className={`text-sm font-bold ${nextAction === "SCAN_ITEM" ? "text-gray-900" : "text-gray-400"}`}>
-                상품 스캔
-              </p>
-              <p className="text-sm font-medium text-gray-500 mt-0.5">{currentItem.barcode}</p>
-            </button>
+              return (
+                <>
+                  {/* 지번 스캔 버튼 */}
+                  <button
+                    onClick={openLocationScanner}
+                    disabled={!isLocationActive}
+                    className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${
+                      isLocationActive 
+                        ? "bg-blue-50/50 border-blue-100 shadow-sm" 
+                        : isLocationDone
+                          ? "bg-green-50/50 border-green-100"
+                          : "bg-white border-transparent"
+                    }`}
+                  >
+                    <div
+                      className={`p-2 rounded-full mb-2 ${
+                        isLocationActive 
+                          ? "bg-blue-600 text-white" 
+                          : isLocationDone
+                            ? "bg-green-500 text-white"
+                            : "bg-gray-100 text-gray-400"
+                      }`}
+                    >
+                      {isLocationDone ? <Check className="w-5 h-5" /> : <MapPin className="w-5 h-5" />}
+                    </div>
+                    <p className={`text-sm font-bold ${
+                      isLocationActive ? "text-gray-900" : isLocationDone ? "text-green-600" : "text-gray-400"
+                    }`}>
+                      {isLocationDone ? "지번 확인 완료" : "지번 스캔"}
+                    </p>
+                    <p className="text-sm font-medium text-gray-500 mt-0.5">{currentItem.locationCode}</p>
+                  </button>
+
+                  {/* 상품 스캔 버튼 */}
+                  <button
+                    onClick={openItemScanner}
+                    disabled={!isItemActive}
+                    className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${
+                      isItemActive 
+                        ? "bg-blue-50/50 border-blue-100 shadow-sm" 
+                        : isItemDone
+                          ? "bg-green-50/50 border-green-100"
+                          : "bg-white border-transparent"
+                    }`}
+                  >
+                    <div
+                      className={`p-2 rounded-full mb-2 ${
+                        isItemActive 
+                          ? "bg-blue-600 text-white" 
+                          : isItemDone
+                            ? "bg-green-500 text-white"
+                            : "bg-gray-100 text-gray-400"
+                      }`}
+                    >
+                      {isItemDone ? <Check className="w-5 h-5" /> : <PackageSearch className="w-5 h-5" />}
+                    </div>
+                    <p className={`text-sm font-bold ${
+                      isItemActive ? "text-gray-900" : isItemDone ? "text-green-600" : "text-gray-400"
+                    }`}>
+                      {isItemDone ? "상품 확인 완료" : "상품 스캔"}
+                    </p>
+                    <p className="text-sm font-medium text-gray-500 mt-0.5">{currentItem.barcode}</p>
+                  </button>
+                </>
+              );
+            })()}
           </div>
 
           <div className="mt-8 flex flex-col items-center">
             <div className="flex items-center gap-8">
               <button
                 onClick={() => handleQuantityChange(-1)}
-                disabled={currentItem.pickedQty === 0}
+                disabled={!isQuantityControlEnabled || currentItem.pickedQty === 0}
                 className={`p-3 rounded-full transition-colors ${
-                  currentItem.pickedQty === 0 ? "bg-gray-50 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                  !isQuantityControlEnabled || currentItem.pickedQty === 0 ? "bg-gray-50 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
                 }`}
               >
                 <Minus className="w-6 h-6" />
@@ -375,9 +550,9 @@ export default function WorkDetail() {
 
               <button
                 onClick={() => handleQuantityChange(1)}
-                disabled={currentItem.pickedQty >= currentItem.requiredQty}
+                disabled={!isQuantityControlEnabled || currentItem.pickedQty >= currentItem.requiredQty}
                 className={`p-3 rounded-full transition-colors ${
-                  currentItem.pickedQty >= currentItem.requiredQty
+                  !isQuantityControlEnabled || currentItem.pickedQty >= currentItem.requiredQty
                     ? "bg-gray-50 text-gray-300"
                     : "bg-gray-100 hover:bg-gray-200 text-gray-600"
                 }`}
