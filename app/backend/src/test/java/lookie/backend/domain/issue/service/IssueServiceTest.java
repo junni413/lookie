@@ -2,6 +2,7 @@ package lookie.backend.domain.issue.service;
 
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
+import lookie.backend.domain.issue.dto.AdminDecision;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
 import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueResponse;
@@ -723,7 +724,7 @@ class IssueServiceTest {
         when(issueMapper.findById(issueId)).thenReturn(issue);
 
         // when
-        issueService.confirmIssue(issueId, "NORMAL");
+        issueService.confirmIssue(issueId, AdminDecision.NORMAL);
 
         // then
         assertEquals("RESOLVED", issue.getStatus());
@@ -745,7 +746,7 @@ class IssueServiceTest {
         when(issueMapper.findById(issueId)).thenReturn(issue);
 
         // when
-        issueService.confirmIssue(issueId, "FIXED");
+        issueService.confirmIssue(issueId, AdminDecision.FIXED);
 
         // then
         assertEquals("RESOLVED", issue.getStatus());
@@ -766,7 +767,7 @@ class IssueServiceTest {
 
         // when, then
         ApiException exception = assertThrows(ApiException.class, () -> {
-            issueService.confirmIssue(issueId, "NORMAL");
+            issueService.confirmIssue(issueId, AdminDecision.NORMAL);
         });
 
         assertEquals(ErrorCode.ISSUE_ALREADY_RESOLVED, exception.getErrorCode());
@@ -786,7 +787,7 @@ class IssueServiceTest {
 
         // when, then
         ApiException exception = assertThrows(ApiException.class, () -> {
-            issueService.confirmIssue(issueId, "FIXED");
+            issueService.confirmIssue(issueId, AdminDecision.FIXED);
         });
 
         assertEquals(ErrorCode.INVALID_ADMIN_DECISION, exception.getErrorCode());

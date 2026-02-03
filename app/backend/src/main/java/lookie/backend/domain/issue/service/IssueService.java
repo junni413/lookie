@@ -27,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import lookie.backend.domain.issue.dto.AdminDecision;
 
 /**
  * Issue 도메인 비즈니스 로직 처리 서비스
@@ -586,6 +588,12 @@ public class IssueService {
     // 관리자 확정 (분기표 D14, S7)
     // ================================================================
 
+    private static final Set<AdminDecision> DAMAGED_ALLOWED = Set.of(
+            AdminDecision.NORMAL, AdminDecision.DAMAGED, AdminDecision.CALLED_OTHER_PROCESS);
+
+    private static final Set<AdminDecision> OUT_OF_STOCK_ALLOWED = Set.of(
+            AdminDecision.FIXED);
+
     /**
      * 관리자 확정 처리
      * - 분기표 D14, S7 노드
@@ -598,7 +606,7 @@ public class IssueService {
      * @param adminDecision 관리자 확정 결과 (NORMAL/DAMAGED/CALLED_OTHER_PROCESS/FIXED)
      */
     @Transactional
-    public void confirmIssue(Long issueId, String adminDecision) {
+    public void confirmIssue(Long issueId, AdminDecision adminDecision) {
         log.info("[IssueService] confirmIssue started. issueId={}, adminDecision={}",
                 issueId, adminDecision);
 
@@ -620,7 +628,7 @@ public class IssueService {
 
         // 4. 확정 처리
         issue.setStatus("RESOLVED");
-        issue.setAdminDecision(adminDecision);
+        issue.setAdminDecision(adminDecision.name());
         issue.setResolvedAt(java.time.LocalDateTime.now());
 
         // 5. Issue 업데이트
@@ -629,7 +637,7 @@ public class IssueService {
                 issueId, adminDecision);
 
         // 6. Inventory Event 기록 (DAMAGED 타입 + DAMAGED 확정만)
-        if ("DAMAGED".equals(issue.getIssueType()) && "DAMAGED".equals(adminDecision)) {
+        if ("DAMAGED".equals(issue.getIssueType()) && AdminDecision.DAMAGED.equals(adminDecision)) {
             // TODO: Inventory Event 시스템 구현 후 활성화
             // eventService.recordInventoryEvent(
             // issue.getProductId(),
@@ -646,17 +654,15 @@ public class IssueService {
     /**
      * adminDecision 유효성 검증
      */
-    private void validateAdminDecision(String issueType, String adminDecision) {
+    private void validateAdminDecision(String issueType, AdminDecision adminDecision) {
         if ("DAMAGED".equals(issueType)) {
-            // DAMAGED 타입: NORMAL, DAMAGED, CALLED_OTHER_PROCESS만 허용
-            if (!"NORMAL".equals(adminDecision)
-                    && !"DAMAGED".equals(adminDecision)
-                    && !"CALLED_OTHER_PROCESS".equals(adminDecision)) {
+            // DAMAGED 타입 허용 값 검증
+            if (!DAMAGED_ALLOWED.contains(adminDecision)) {
                 throw new ApiException(ErrorCode.INVALID_ADMIN_DECISION);
             }
         } else if ("OUT_OF_STOCK".equals(issueType)) {
-            // OUT_OF_STOCK 타입: FIXED만 허용
-            if (!"FIXED".equals(adminDecision)) {
+            // OUT_OF_STOCK 타입 허용 값 검증
+            if (!OUT_OF_STOCK_ALLOWED.contains(adminDecision)) {
                 throw new ApiException(ErrorCode.INVALID_ADMIN_DECISION);
             }
         } else {

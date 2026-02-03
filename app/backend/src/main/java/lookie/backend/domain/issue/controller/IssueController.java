@@ -15,6 +15,7 @@ import lookie.backend.domain.issue.service.IssueService;
 import lookie.backend.global.response.ApiResponse;
 import lookie.backend.global.security.SecurityUtil;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -29,77 +30,78 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class IssueController {
 
-    private final IssueService issueService;
+        private final IssueService issueService;
 
-    /**
-     * 이슈 생성
-     * - 작업자가 집품 중 문제 발견 시 호출
-     */
-    @Operation(summary = "이슈 신고", description = "작업자가 집품 중 파손/재고부족 등의 이슈를 신고합니다.")
-    @PostMapping
-    public ResponseEntity<ApiResponse<IssueResponse>> createIssue(@RequestBody CreateIssueRequest request) {
-        Long workerId = SecurityUtil.getCurrentUserId();
-        IssueResponse response = issueService.createIssue(workerId, request);
-        return ResponseEntity.ok(ApiResponse.success("이슈가 등록되었습니다.", response));
-    }
+        /**
+         * 이슈 생성
+         * - 작업자가 집품 중 문제 발견 시 호출
+         */
+        @Operation(summary = "이슈 신고", description = "작업자가 집품 중 파손/재고부족 등의 이슈를 신고합니다.")
+        @PostMapping
+        public ResponseEntity<ApiResponse<IssueResponse>> createIssue(@RequestBody CreateIssueRequest request) {
+                Long workerId = SecurityUtil.getCurrentUserId();
+                IssueResponse response = issueService.createIssue(workerId, request);
+                return ResponseEntity.ok(ApiResponse.success("이슈가 등록되었습니다.", response));
+        }
 
-    /**
-     * 이슈 상세 조회
-     * - 작업자가 신고한 이슈의 현재 상태 및 AI 판정 결과 조회
-     */
-    @Operation(summary = "이슈 상세 조회", description = "이슈 ID로 이슈의 상태, AI 판정 결과, 다음 행동을 조회합니다.")
-    @GetMapping("/{issueId}")
-    public ResponseEntity<ApiResponse<IssueDetailResponse>> getIssueDetail(
-            @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId) {
-        log.info("[IssueController] getIssueDetail called. issueId={}", issueId);
+        /**
+         * 이슈 상세 조회
+         * - 작업자가 신고한 이슈의 현재 상태 및 AI 판정 결과 조회
+         */
+        @Operation(summary = "이슈 상세 조회", description = "이슈 ID로 이슈의 상태, AI 판정 결과, 다음 행동을 조회합니다.")
+        @GetMapping("/{issueId}")
+        public ResponseEntity<ApiResponse<IssueDetailResponse>> getIssueDetail(
+                        @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId) {
+                log.info("[IssueController] getIssueDetail called. issueId={}", issueId);
 
-        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+                IssueDetailResponse response = issueService.getIssueDetail(issueId);
 
-        return ResponseEntity.ok(ApiResponse.success("이슈 조회 성공", response));
-    }
+                return ResponseEntity.ok(ApiResponse.success("이슈 조회 성공", response));
+        }
 
-    /**
-     * AI 판정 결과 수신 (Webhook)
-     * - AI 서버가 이미지 분석 완료 후 호출 (POST /api/issues/{issueId}/ai/result)
-     * - Issue 상태 및 정책 자동 업데이트
-     * 
-     * [Webhook Contract]
-     * - aiDecision: PASS | FAIL | NEED_CHECK | UNKNOWN
-     * - confidence: Float (0.0 ~ 1.0)
-     */
-    @Operation(summary = "AI 판정 결과 수신", description = "AI 서버로부터 이미지 분석 결과를 수신하여 Issue 상태를 업데이트합니다. (Webhook)")
-    @PostMapping("/{issueId}/ai/result")
-    public ResponseEntity<ApiResponse<AiResultResponse>> receiveAiResult(
-            @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
-            @RequestBody AiResultRequest request) {
-        log.info("[IssueController] AI result received. issueId={}, aiDecision={}",
-                issueId, request.getAiDecision());
+        /**
+         * AI 판정 결과 수신 (Webhook)
+         * - AI 서버가 이미지 분석 완료 후 호출 (POST /api/issues/{issueId}/ai/result)
+         * - Issue 상태 및 정책 자동 업데이트
+         * 
+         * [Webhook Contract]
+         * - aiDecision: PASS | FAIL | NEED_CHECK | UNKNOWN
+         * - confidence: Float (0.0 ~ 1.0)
+         */
+        @Operation(summary = "AI 판정 결과 수신", description = "AI 서버로부터 이미지 분석 결과를 수신하여 Issue 상태를 업데이트합니다. (Webhook)")
+        @PostMapping("/{issueId}/ai/result")
+        public ResponseEntity<ApiResponse<AiResultResponse>> receiveAiResult(
+                        @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
+                        @RequestBody AiResultRequest request) {
+                log.info("[IssueController] AI result received. issueId={}, aiDecision={}",
+                                issueId, request.getAiDecision());
 
-        AiResultResponse response = issueService.processAiResult(issueId, request);
+                AiResultResponse response = issueService.processAiResult(issueId, request);
 
-        return ResponseEntity.ok(ApiResponse.success(
-                "AI 판정 결과가 반영되었습니다.",
-                response));
-    }
+                return ResponseEntity.ok(ApiResponse.success(
+                                "AI 판정 결과가 반영되었습니다.",
+                                response));
+        }
 
-    /**
-     * 관리자 확정 (ADMIN_CONFIRM)
-     * - 분기표 D14: DAMAGED 확정 (NORMAL/DAMAGED/CALLED_OTHER_PROCESS)
-     * - 분기표 S7: OUT_OF_STOCK 확정 (FIXED)
-     */
-    @Operation(summary = "관리자 확정", description = "관리자가 이슈를 최종 확정 처리합니다. (WebRTC 통화 후 또는 사후 확정)")
-    @PostMapping("/{issueId}/admin/confirm")
-    public ResponseEntity<ApiResponse<Void>> confirmIssue(
-            @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
-            @RequestBody AdminConfirmRequest request) {
-        // TODO: 관리자 권한 체크 필요 (현재는 누구나 호출 가능)
-        log.info("[IssueController] Admin confirm request. issueId={}, decision={}",
-                issueId, request.getAdminDecision());
+        /**
+         * 관리자 확정 (ADMIN_CONFIRM)
+         * - 분기표 D14: DAMAGED 확정 (NORMAL/DAMAGED/CALLED_OTHER_PROCESS)
+         * - 분기표 S7: OUT_OF_STOCK 확정 (FIXED)
+         */
+        @Operation(summary = "관리자 확정", description = "관리자가 이슈를 최종 확정 처리합니다. (WebRTC 통화 후 또는 사후 확정)")
+        @PostMapping("/{issueId}/admin/confirm")
+        @PreAuthorize("hasRole('ADMIN')")
+        public ResponseEntity<ApiResponse<Void>> confirmIssue(
+                        @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
+                        @RequestBody AdminConfirmRequest request) {
+                // 관리자 권한 체크: @PreAuthorize("hasRole('ADMIN')") 적용됨
+                log.info("[IssueController] Admin confirm request. issueId={}, decision={}",
+                                issueId, request.getAdminDecision());
 
-        issueService.confirmIssue(issueId, request.getAdminDecision());
+                issueService.confirmIssue(issueId, request.getAdminDecision());
 
-        return ResponseEntity.ok(ApiResponse.success(
-                "이슈가 확정 처리되었습니다.",
-                null));
-    }
+                return ResponseEntity.ok(ApiResponse.success(
+                                "이슈가 확정 처리되었습니다.",
+                                null));
+        }
 }

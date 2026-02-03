@@ -22,5 +22,5 @@ public class AdminConfirmRequest {
      * OUT_OF_STOCK 타입:
      * - FIXED: 전산 오류 수정 완료
      */
-    private String adminDecision;
+    private AdminDecision adminDecision;
 }
