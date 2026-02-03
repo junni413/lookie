@@ -14,6 +14,7 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8080", // ✅ 백엔드 포트에 맞게
         changeOrigin: true,
+        ws: true, // ✅ WebSocket 프록시 허용
       },
     },
   },

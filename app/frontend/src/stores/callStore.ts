@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { CallState } from "@/types/webrtc";
 import { webrtcService } from "@/services/webrtcService";
+import { subscribeCallStatus } from "@/services/stompService";
+import { useAuthStore } from "@/stores/authStore";
 
 interface CallStore extends CallState {
     // 타이머 ID (브라우저 환경)
@@ -43,7 +45,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
      * 통화 시작 (발신)
      * - API 호출
      * - 30초 타이머 시작
-     * - 3초 주기 폴링 시작 (상대방 수락 여부 확인)
+     * - WebSocket 구독 시작 (상대방 수락 여부 확인)
      */
     startCall: async (callerId, calleeId, issueId, calleeName) => {
         try {
@@ -59,35 +61,59 @@ export const useCallStore = create<CallStore>((set, get) => ({
                 get().cancelCall("TIMEOUT");
             }, 30000);
 
-            // 3초 주기 폴링 시작 (수락 여부 확인)
-            const pollingId = setInterval(async () => {
-                const { callId, status } = get();
-                if (!callId || status !== "WAITING") return;
+            // STOMP WebSocket 구독 시작 (폴링 대체)
+            // 현재 로그인한 사용자의 토큰 가져오기
+            const token = useAuthStore.getState().token; // token field name confirmed from authStore.ts
+            if (!token) {
+                console.error("❌ [WebSocket] 토큰이 없습니다. 구독 불가.");
+                return;
+            }
 
-                try {
-                    const resultStatus = await webrtcService.checkCallStatus(callId);
-                    console.log(`📡 [Polling] Call ${callId} status: ${resultStatus}`);
+            const unsubscribe = subscribeCallStatus(
+                response.callId,
+                token,
+                (event) => {
+                    console.log(`📨 [WebSocket] 상태 이벤트 수신:`, event);
 
-                    if (resultStatus === "ACTIVE") {
-                        console.log("✅ 통화 수락됨! ACTIVE 상태로 전환");
-                        // 타이머 & 폴링 해제
-                        const { timeoutId, pollingId } = get();
-                        if (timeoutId) clearTimeout(timeoutId);
-                        if (pollingId) clearInterval(pollingId);
+                    switch (event.type) {
+                        case 'ACCEPTED':
+                            console.log("✅ 통화 수락됨! ACTIVE 상태로 전환");
+                            // 타이머 해제
+                            const { timeoutId } = get();
+                            if (timeoutId) clearTimeout(timeoutId);
 
-                        set({
-                            status: "ACTIVE",
-                            timeoutId: null,
-                            pollingId: null
-                        });
-                    } else if (resultStatus === "ENDED" || resultStatus === "REJECTED") {
-                        console.log("🚫 통화 종료/거절됨");
-                        get().reset();
+                            set({
+                                status: "ACTIVE",
+                                timeoutId: null,
+                                // 토큰은 이미 response에 있거나 이벤트를 통해 받을 수 있음
+                                // 여기서는 makeCall 응답으로 받은 토큰 사용 (이미 저장됨)
+                            });
+                            break;
+
+                        case 'ENDED':
+                            console.log("🚫 통화 종료됨");
+                            get().reset();
+                            break;
+
+                        case 'REJECTED':
+                            console.log("🚫 통화 거절됨");
+                            get().reset();
+                            break;
+
+                        case 'CANCELED':
+                            console.log("🚫 통화 취소됨");
+                            get().reset();
+                            break;
                     }
-                } catch (error) {
-                    console.warn("Polling failed:", error);
+                },
+                (error) => {
+                    console.error("❌ [WebSocket] 연결 실패:", error);
                 }
-            }, 3000);
+            );
+
+            // Cleanup 함수 저장
+            // @ts-ignore
+            (get() as any).wsCleanup = unsubscribe;
 
             set({
                 status: "WAITING",
@@ -98,7 +124,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
                 remoteUserName: calleeName || "작업자",
                 issueId,
                 timeoutId: timerId,
-                pollingId: pollingId,
+                pollingId: null,
             });
         } catch (error) {
             get().handleError(error);
@@ -194,6 +220,13 @@ export const useCallStore = create<CallStore>((set, get) => ({
         if (pollingId) clearInterval(pollingId);
 
         set({ ...initialState, timeoutId: null, pollingId: null });
+
+        // WebSocket Cleanup
+        const wsCleanup = (get() as any).wsCleanup;
+        if (wsCleanup) {
+            wsCleanup();
+            (get() as any).wsCleanup = null;
+        }
     },
 
     /**
