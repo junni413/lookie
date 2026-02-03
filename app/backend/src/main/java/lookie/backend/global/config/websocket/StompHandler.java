@@ -6,6 +6,8 @@ import lookie.backend.global.exception.WebSocketAuthenticationException;
 import lookie.backend.global.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.webrtc.mapper.CallHistoryMapper;
+import lookie.backend.domain.webrtc.vo.CallHistoryVO;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -25,6 +27,7 @@ import java.util.List;
 public class StompHandler implements ChannelInterceptor {
 
     private final JwtProvider jwtProvider;
+    private final CallHistoryMapper callHistoryMapper;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -70,8 +73,24 @@ public class StompHandler implements ChannelInterceptor {
             }
         }
 
-        // 2. 다른 요청 (SUBSCRIBE, SEND): 이미 인증된 세션인지 확인
-        else if (StompCommand.SUBSCRIBE.equals(command) || StompCommand.SEND.equals(command)) {
+        // 2. 구독 요청 (SUBSCRIBE): 권한 확인
+        else if (StompCommand.SUBSCRIBE.equals(command)) {
+            String destination = accessor.getDestination();
+            Authentication user = (Authentication) accessor.getUser();
+
+            if (user == null) {
+                log.warn("WebSocket 구독 실패: 인증되지 않은 사용자");
+                throw new WebSocketAuthenticationException("Authentication failed: User not authenticated");
+            }
+
+            // [권한 검사] /topic/video-calls/{callId} 구독 시 참여자(Caller, Callee)인지 확인
+            if (destination != null && destination.startsWith("/topic/video-calls/")) {
+                validateSubscription(destination, user.getName());
+            }
+        }
+
+        // 3. 메시지 전송 (SEND): 인증 확인
+        else if (StompCommand.SEND.equals(command)) {
             if (accessor.getUser() == null) {
                 log.warn("WebSocket 요청 차단: 인증되지 않은 세션 (command={})", command);
                 throw new WebSocketAuthenticationException("Authentication failed: User not authenticated");
@@ -79,5 +98,41 @@ public class StompHandler implements ChannelInterceptor {
         }
 
         return message;
+    }
+
+    /**
+     * 구독 권한 검증
+     * - destination에서 callId 추출
+     * - DB 조회 후 callerId 또는 calleeId와 일치하는지 확인
+     */
+    private void validateSubscription(String destination, String userId) {
+        try {
+            // URL 파싱: /topic/video-calls/{callId}
+            String[] parts = destination.split("/");
+            if (parts.length < 4) {
+                return; // 형식이 맞지 않으면 패스 (혹은 예외)
+            }
+            Long callId = Long.parseLong(parts[3]);
+
+            // DB 조회
+            CallHistoryVO call = callHistoryMapper.findById(callId).orElse(null);
+
+            if (call == null) {
+                log.warn("WebSocket 구독 차단: 존재하지 않는 Call ID ({})", callId);
+                throw new WebSocketAuthenticationException("Subscription failed: Call not found");
+            }
+
+            // 참여자 확인
+            long uid = Long.parseLong(userId);
+            if (uid != call.getCallerId() && uid != call.getCalleeId()) {
+                log.warn("WebSocket 구독 차단: 권한 없음 (User={}, CallId={})", userId, callId);
+                throw new WebSocketAuthenticationException("Subscription failed: Access denied");
+            }
+
+            log.info("✅ WebSocket 구독 승인: callId={}, userId={}", callId, userId);
+
+        } catch (NumberFormatException e) {
+            log.warn("WebSocket 구독 실패: 잘못된 Call ID 형식 ({})", destination);
+        }
     }
 }

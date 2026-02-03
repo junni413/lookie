@@ -97,6 +97,7 @@ services:
     volumes:
       - ./data/logs/nginx:/var/log/nginx
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./data/images:/data/images
     networks: [lookie]
     depends_on: [backend]
 

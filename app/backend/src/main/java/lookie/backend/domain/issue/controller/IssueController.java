@@ -45,6 +45,22 @@ public class IssueController {
         }
 
         /**
+         * 이슈 재촬영 (AI 재분석 요청)
+         * - AI 판정 결과가 RETAKE일 때, 새 이미지로 재분석을 요청합니다.
+         */
+        @Operation(summary = "이슈 재촬영 (AI 재분석)", description = "AI 판정 결과가 RETAKE인 경우, 새 이미지 URL로 재분석을 요청합니다.")
+        @PostMapping("/{issueId}/ai/retake")
+        public ResponseEntity<ApiResponse<Void>> retakeIssue(
+                        @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
+                        @RequestBody lookie.backend.domain.issue.dto.RetakeIssueRequest request) {
+
+                Long workerId = SecurityUtil.getCurrentUserId();
+                issueService.retakeIssue(workerId, issueId, request.getImageUrl());
+
+                return ResponseEntity.ok(ApiResponse.success("재분석 요청이 완료되었습니다.", null));
+        }
+
+        /**
          * 이슈 상세 조회
          * - 작업자가 신고한 이슈의 현재 상태 및 AI 판정 결과 조회
          */

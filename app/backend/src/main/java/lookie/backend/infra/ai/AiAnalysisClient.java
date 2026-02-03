@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.infra.ai.dto.AiAnalysisRequest;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
+
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -23,7 +23,6 @@ public class AiAnalysisClient {
      * - Fire and Forget 방식
      * - 결과는 Webhook으로 수신
      */
-    @Async
     public void requestAnalysis(AiAnalysisRequest request) {
         String url = aiServerUrl + "/predict";
 
