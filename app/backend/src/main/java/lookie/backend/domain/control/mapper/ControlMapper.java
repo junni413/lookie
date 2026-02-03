@@ -3,6 +3,8 @@ package lookie.backend.domain.control.mapper;
 import java.util.List;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
+import lookie.backend.domain.control.dto.map.ZoneLineDto;
+import lookie.backend.domain.control.dto.map.ZoneWorkerLocationDto;
 
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
 import org.apache.ibatis.annotations.Mapper;
@@ -72,5 +74,19 @@ public interface ControlMapper {
     /**
      * 사용자 테이블(Users)의 배정 구역(assigned_zone_id) 업데이트
      */
+    /**
+     * 사용자 테이블(Users)의 배정 구역(assigned_zone_id) 업데이트
+     */
     void updateUserAssignedZone(@Param("workerId") Long workerId, @Param("zoneId") Long zoneId);
+
+    /**
+     * 구역 내 모든 라인 조회
+     */
+    List<ZoneLineDto> selectLinesByZoneId(@Param("zoneId") Long zoneId);
+
+    /**
+     * 구역 내 작업자 실시간 위치 및 병목 여부 조회
+     */
+    List<ZoneWorkerLocationDto> selectWorkerLocationsByZoneId(@Param("zoneId") Long zoneId,
+            @Param("thresholdSeconds") int thresholdSeconds);
 }

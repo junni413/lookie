@@ -10,6 +10,8 @@ import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
+import lookie.backend.domain.control.dto.map.ZoneMapResponse;
+import lookie.backend.domain.control.service.WorkerLocationService;
 import lookie.backend.domain.control.service.WorkerMonitoringService;
 import lookie.backend.global.response.ApiResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ControlController {
 
     private final WorkerMonitoringService workerMonitoringService;
+    private final WorkerLocationService workerLocationService;
 
     /**
      * 1. 구역별 현황 조회 API
@@ -82,7 +85,6 @@ public class ControlController {
     public ApiResponse<WorkerHoverDto> getWorkerHoverInfo(@PathVariable Long workerId) {
         WorkerHoverDto result = workerMonitoringService.getWorkerHoverInfo(workerId);
         return ApiResponse.success(result);
-
     }
 
     /**
@@ -95,6 +97,19 @@ public class ControlController {
     @PostMapping("/assignments")
     public ApiResponse<Void> assignWorkerToZone(@RequestBody @Valid AdminZoneAssignmentRequest request) {
         workerMonitoringService.assignWorkerToZone(request);
-        return ApiResponse.success(null);
+        return ApiResponse.success(null); // 중복된 return 제거됨
+    }
+
+    /**
+     * 6. 구역 상세 맵 조회 API
+     * 구역 내 라인 및 작업자 실시간 위치(병목 여부 포함)를 반환
+     * 권한: ADMIN
+     */
+    @Operation(summary = "구역 상세 맵 조회", description = "구역 내 라인 및 작업자 실시간 위치 정보를 조회합니다.")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    @GetMapping("/zones/{zoneId}/map")
+    public ApiResponse<ZoneMapResponse> getZoneMap(@PathVariable Long zoneId) {
+        ZoneMapResponse result = workerLocationService.getZoneMap(zoneId);
+        return ApiResponse.success(result);
     }
 }
