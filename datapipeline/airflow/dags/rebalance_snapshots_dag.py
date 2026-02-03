@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import pendulum
 
 from airflow import DAG
-from airflow.providers.mysql.operators.mysql import MySqlOperator
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 KST = pendulum.timezone("Asia/Seoul")
 
@@ -12,16 +12,10 @@ DEFAULT_ARGS = {
     "retry_delay": timedelta(minutes=1),
 }
 
-# 5분 단위 timestamp (Asia/Seoul에서 실행된다는 전제)
-FLOOR_TS_EXPR = "FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(NOW())/300)*300)"
+# ✅ MySQL 내부에서 KST로 통일 (DB timezone 설정이 애매해도 안전)
+NOW_KST = "CONVERT_TZ(NOW(), '+00:00', '+09:00')"
+FLOOR_TS_EXPR = f"FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP({NOW_KST})/300)*300)"
 
-# -------------------------------------------------------------------
-# Task 1) snapshot upsert
-# - 현재 IN_PROGRESS 배치 1개 선택
-# - IN_PROGRESS 작업자별 required_total/picked_total/remaining/progress 계산
-# - zone 상태(backlog/active/location_cnt/blocking) 결합
-# - worker_speed_30m_avg는 일단 0으로 넣고, Task 3에서 업데이트
-# -------------------------------------------------------------------
 INSERT_SNAPSHOT_SQL = f"""
 INSERT INTO rebalance_snapshots (
   ts, batch_id, worker_id, zone_id,
@@ -63,7 +57,7 @@ zone_backlog AS (
   JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
   JOIN zone_locations zl ON zl.location_id = bti.location_id
   JOIN active_batch ab ON ab.batch_id = bt.batch_id
-  WHERE bt.status IN ('UNASSIGNED','IN_PROGRESS','COMPLETED')  -- 필요시 범위 조정
+  WHERE bt.status IN ('UNASSIGNED','IN_PROGRESS','COMPLETED')
   GROUP BY zl.zone_id
 ),
 zone_active AS (
@@ -88,7 +82,7 @@ zone_blocking AS (
 worker_time AS (
   SELECT
     wl.worker_id,
-    TIMESTAMPDIFF(MINUTE, NOW(), wl.planned_end_at) AS time_to_planned_end_min
+    TIMESTAMPDIFF(MINUTE, {NOW_KST}, wl.planned_end_at) AS time_to_planned_end_min
   FROM work_logs wl
   WHERE wl.ended_at IS NULL
 )
@@ -102,7 +96,7 @@ SELECT
   wm.remaining_qty,
 
   COALESCE(wt.time_to_planned_end_min, 0) AS time_to_planned_end_min,
-  TIMESTAMPDIFF(MINUTE, NOW(), ab.deadline_at) AS time_to_deadline_min,
+  TIMESTAMPDIFF(MINUTE, {NOW_KST}, ab.deadline_at) AS time_to_deadline_min,
 
   COALESCE(zb.zone_backlog, 0) AS zone_backlog,
   COALESCE(za.zone_active_workers, 0) AS zone_active_workers,
@@ -136,28 +130,19 @@ ON DUPLICATE KEY UPDATE
   required_total=VALUES(required_total);
 """
 
-# -------------------------------------------------------------------
-# Task 2) speed_label 계산
-# - 5분 전 스냅샷의 picked_total과 차이를 이용
-# - speed_label(qty/hour) = picked_delta * 12  (5분 -> 60/5=12)
-# -------------------------------------------------------------------
+# ✅ prev 없으면 0 처리(원하면 NULL 유지로 바꿀 수 있음)
 UPDATE_SPEED_LABEL_SQL = f"""
 UPDATE rebalance_snapshots cur
-JOIN rebalance_snapshots prev
+LEFT JOIN rebalance_snapshots prev
   ON prev.worker_id = cur.worker_id
  AND prev.ts = DATE_SUB(cur.ts, INTERVAL 5 MINUTE)
-SET cur.speed_label = GREATEST((cur.picked_total - prev.picked_total) * 12, 0)
+SET cur.speed_label = GREATEST(COALESCE(cur.picked_total - prev.picked_total, 0) * 12, 0)
 WHERE cur.ts = {FLOOR_TS_EXPR};
 """
 
-# -------------------------------------------------------------------
-# Task 3) worker_speed_30m_avg 계산 (shift 적용)
-# - 최근 30분 평균: [ts-30m, ts) 범위
-# - 현재 ts는 제외(shift) → 미래 정보 누수 방지
-# -------------------------------------------------------------------
 UPDATE_SPEED_30M_SQL = f"""
 UPDATE rebalance_snapshots cur
-JOIN (
+LEFT JOIN (
   SELECT worker_id, AVG(speed_label) AS avg_30m
   FROM rebalance_snapshots
   WHERE ts >= DATE_SUB({FLOOR_TS_EXPR}, INTERVAL 30 MINUTE)
@@ -165,7 +150,7 @@ JOIN (
     AND speed_label IS NOT NULL
   GROUP BY worker_id
 ) r ON r.worker_id = cur.worker_id
-SET cur.worker_speed_30m_avg = r.avg_30m
+SET cur.worker_speed_30m_avg = COALESCE(r.avg_30m, 0)
 WHERE cur.ts = {FLOOR_TS_EXPR};
 """
 
@@ -179,21 +164,21 @@ with DAG(
     tags=["rebalance", "snapshots"],
 ) as dag:
 
-    insert_snapshot_rows = MySqlOperator(
+    insert_snapshot_rows = SQLExecuteQueryOperator(
         task_id="insert_snapshot_rows",
-        mysql_conn_id="lookie_mysql",
+        conn_id="lookie_mysql",
         sql=INSERT_SNAPSHOT_SQL,
     )
 
-    update_speed_label = MySqlOperator(
+    update_speed_label = SQLExecuteQueryOperator(
         task_id="update_speed_label",
-        mysql_conn_id="lookie_mysql",
+        conn_id="lookie_mysql",
         sql=UPDATE_SPEED_LABEL_SQL,
     )
 
-    update_speed_30m_avg = MySqlOperator(
+    update_speed_30m_avg = SQLExecuteQueryOperator(
         task_id="update_speed_30m_avg",
-        mysql_conn_id="lookie_mysql",
+        conn_id="lookie_mysql",
         sql=UPDATE_SPEED_30M_SQL,
     )
 
