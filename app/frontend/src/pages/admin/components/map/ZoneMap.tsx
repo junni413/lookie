@@ -9,7 +9,6 @@ interface ZoneMapProps {
 }
 
 export default function ZoneMap({ layout, workers }: ZoneMapProps) {
-
     if (!layout) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
@@ -20,63 +19,69 @@ export default function ZoneMap({ layout, workers }: ZoneMapProps) {
     }
 
     return (
-        <div className="overflow-auto h-full w-full">
-            <div className="flex flex-col gap-3 min-w-[500px] p-2">
+        <div className="overflow-y-auto h-full w-full bg-slate-50/50 p-4 pb-10">
+            {/* Grid container - 4 columns x 3 rows = 12 line blocks */}
+            <div className="grid grid-cols-4 gap-2 max-w-full mx-auto">
                 {layout.lines.map((line) => (
-                    <div key={line.line_number} className="flex gap-2">
-                        {/* Line Label */}
-                        <div className="flex items-center justify-center w-12 h-12 bg-slate-100 rounded text-slate-500 text-xs font-bold shrink-0 shadow-sm border border-slate-200">
-                            L{line.line_number}
+                    <div
+                        key={line.lineNumber}
+                        className="bg-white/60 rounded-xl border border-slate-200/60 p-2 flex flex-col gap-2 hover:bg-white hover:border-slate-300/60 transition-colors"
+                    >
+                        {/* Line Header */}
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100/80 px-2 py-0.5 rounded-md">Line {line.lineNumber}</span>
+                            {/* <span className="text-[9px] text-slate-400">{line.bins.length} bins</span> */}
                         </div>
 
-                        {/* Bins Row */}
-                        <div className="flex gap-2">
+                        {/* 3x2 Grid of bins (6 bins total per line) */}
+                        <div className="grid grid-cols-3 gap-1.5">
                             {line.bins.map((bin) => {
-                                // Find workers in this bin AND in this zone
-                                const binWorkers = workers.filter(w =>
-                                    w.current_zone_id === layout.zone_id &&
-                                    w.line_number === line.line_number &&
-                                    w.bin_number === bin.bin_number
+                                const binWorkers = workers.filter(
+                                    (w) =>
+                                        w.currentZoneId === layout.zoneId &&
+                                        w.lineNumber === line.lineNumber &&
+                                        w.binNumber === bin.binNumber
                                 );
 
                                 const hasWorkers = binWorkers.length > 0;
 
                                 return (
                                     <div
-                                        key={`${line.line_number}-${bin.bin_number}`}
+                                        key={`${line.lineNumber}-${bin.binNumber}`}
                                         className={cn(
-                                            "relative w-12 h-12 shrink-0 rounded border transition-all flex items-center justify-center gap-0.5",
+                                            "relative aspect-square rounded-lg transition-all flex items-center justify-center gap-0.5",
                                             hasWorkers
-                                                ? "bg-white border-slate-300 shadow-sm"
-                                                : "bg-slate-50 border-slate-100"
+                                                ? "bg-white border md:border-2 border-indigo-100 shadow-sm"
+                                                : "bg-slate-50/50 border border-slate-100/50"
                                         )}
-                                        title={`L${line.line_number}-B${bin.bin_number} (${binWorkers.length}명)`}
+                                        title={`L${line.lineNumber}-B${bin.binNumber} (${binWorkers.length}명)`}
                                     >
-                                        {/* Bin Number (Subtle) */}
-                                        <span className="absolute top-[2px] left-[3px] text-[7px] text-slate-300 font-mono">
-                                            {bin.bin_number}
+                                        <span
+                                            className={cn(
+                                                "absolute top-1 left-1.5 text-[8px] font-mono",
+                                                hasWorkers ? "text-indigo-300" : "text-slate-300"
+                                            )}
+                                        >
+                                            {bin.binNumber}
                                         </span>
 
-                                        {/* Worker Dots */}
-                                        {binWorkers.map((worker) => {
-                                            const rate = worker.work_rate || 0;
-                                            // Palette: Indigo(High) -> Blue(Mid) -> Cyan(Low)
-                                            const dotColor = getWorkRateBgColor(rate);
+                                        <div className="flex gap-1 flex-wrap items-center justify-center p-1">
+                                            {binWorkers.map((worker) => {
+                                                const rate = worker.workRate || 0;
+                                                const dotColor = getWorkRateBgColor(rate);
 
-                                            // Check pause status if we want to show it? User asked to focus on work rate. 
-                                            // But maybe overlay? For now, stick to user request: "Mark based on work rate".
-
-                                            return (
-                                                <div
-                                                    key={worker.worker_id}
-                                                    className={cn(
-                                                        "w-3.5 h-3.5 rounded-full border-2 border-white shadow-md z-10",
-                                                        dotColor
-                                                    )}
-                                                    title={`${worker.name} (진척률: ${rate}%)`}
-                                                />
-                                            );
-                                        })}
+                                                return (
+                                                    <div
+                                                        key={worker.userId}
+                                                        className={cn(
+                                                            "w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white",
+                                                            dotColor
+                                                        )}
+                                                        title={`${worker.name} (진척률: ${rate}%)`}
+                                                    />
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 );
                             })}

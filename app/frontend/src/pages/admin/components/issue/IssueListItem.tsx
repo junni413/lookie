@@ -11,14 +11,14 @@ interface IssueListItemProps {
 }
 
 export default function IssueListItem({ issue, selected, onClick }: IssueListItemProps) {
-    const isOutOfStock = issue.issue_type === "OUT_OF_STOCK";
+    const isOutOfStock = issue.issueType === "OUT_OF_STOCK";
     const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
 
     const worker = issue.worker || {
         worker_id: -1, // Dummy ID
         status: "OFF_WORK",
-        today_work_count: 0,
-        current_zone_id: null,
+        todayWorkCount: 0,
+        currentZoneId: null,
         name: issue.workerName || "Unknown"
     };
 
@@ -92,13 +92,13 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
                                 <div className="flex justify-between items-center">
                                     <span className="text-xs text-slate-500 font-medium">현재 위치</span>
                                     <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded">
-                                        {worker.current_zone_id ? `Zone ${worker.current_zone_id}` : "-"}
+                                        {worker.currentZoneId ? `Zone ${worker.currentZoneId}` : "-"}
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center">
                                     <span className="text-xs text-slate-500 font-medium">금일 작업량</span>
                                     <span className="text-xs font-bold text-slate-700">
-                                        {worker.today_work_count} 건
+                                        {worker.todayWorkCount} 건
                                     </span>
                                 </div>
                             </div>
@@ -125,7 +125,7 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
                     {isOutOfStock ? "재고 부족" : "물품 파손"}
                 </span>
                 <span className="text-[10px] text-slate-400 font-medium">
-                    {timeAgo(issue.created_at)}
+                    {timeAgo(issue.createdAt)}
                 </span>
             </div>
         </div>

@@ -21,7 +21,7 @@ export default function IssueDetail({ issue, onUpdate, onClose }: IssueDetailPro
         if (confirm(decision === "APPROVED" ? "정상 처리 하시겠습니까?" : "폐기 처리 하시겠습니까?")) {
             setLoading(true);
             try {
-                await issueService.processIssue(issue.issue_id, decision);
+                await issueService.processIssue(issue.issueId, decision);
                 onUpdate(); // 목록 갱신 요청
             } catch (e) {
                 console.error(e);
@@ -37,11 +37,11 @@ export default function IssueDetail({ issue, onUpdate, onClose }: IssueDetailPro
     const isResolved = issue.status === "RESOLVED";
 
     // Image handling
-    const mainImage = issue.images && issue.images.length > 0 ? issue.images[0].image_url : null;
+    const mainImage = issue.images && issue.images.length > 0 ? issue.images[0].imageUrl : null;
 
     const getResolvedText = () => {
-        if (issue.required_action === "WORKER_CONTINUE") return "✅ 정상 처리됨";
-        if (issue.required_action === "AUTO_RESOLVED") return "🗑️ 폐기 처리됨";
+        if (issue.requiredAction === "WORKER_CONTINUE") return "✅ 정상 처리됨";
+        if (issue.requiredAction === "AUTO_RESOLVED") return "🗑️ 폐기 처리됨";
         return "✔️ 처리 완료됨";
     };
 
@@ -56,12 +56,12 @@ export default function IssueDetail({ issue, onUpdate, onClose }: IssueDetailPro
                             {isResolved && <Badge variant="secondary">완료</Badge>}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                            작업자: <span className="font-medium text-foreground">{issue.workerName}</span> • {timeAgo(issue.created_at)}
+                            작업자: <span className="font-medium text-foreground">{issue.workerName}</span> • {timeAgo(issue.createdAt)}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Badge variant={issue.issue_type === "OUT_OF_STOCK" ? "destructive" : "default"}>
-                            {issue.issue_type === "OUT_OF_STOCK" ? "재고 부족" : "파손 감지"}
+                        <Badge variant={issue.issueType === "OUT_OF_STOCK" ? "destructive" : "default"}>
+                            {issue.issueType === "OUT_OF_STOCK" ? "재고 부족" : "파손 감지"}
                         </Badge>
                         {onClose && (
                             <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 ml-2">
@@ -104,12 +104,12 @@ export default function IssueDetail({ issue, onUpdate, onClose }: IssueDetailPro
                                     {getResolvedText()}
                                 </div>
                                 <p className="text-sm text-muted-foreground">
-                                    처리 일시: {issue.resolved_at ? new Date(issue.resolved_at).toLocaleString() : "-"}
+                                    처리 일시: {issue.resolvedAt ? new Date(issue.resolvedAt).toLocaleString() : "-"}
                                 </p>
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {issue.issue_type === "DAMAGED" && (
+                                {issue.issueType === "DAMAGED" && (
                                     <div className="flex items-center justify-center gap-2 p-3 bg-red-100 text-red-700 rounded-lg text-sm font-semibold">
                                         ⚠️ 상품 파손이 감지되었습니다
                                     </div>

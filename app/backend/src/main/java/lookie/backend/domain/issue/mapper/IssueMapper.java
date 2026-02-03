@@ -29,4 +29,14 @@ public interface IssueMapper {
 
     // Issue ID로 AI 판정 조회
     AiJudgmentVO findAiJudgmentByIssueId(@Param("issueId") Long issueId);
+
+    // 관리자 관제 리스트 조회
+    java.util.List<lookie.backend.domain.issue.dto.AdminIssueSummary> findAdminIssues(
+            @Param("adminId") Long adminId,
+            @Param("req") lookie.backend.domain.issue.dto.AdminIssueListRequest req);
+
+    // 관리자 관제 리스트 카운트
+    long countAdminIssues(
+            @Param("adminId") Long adminId,
+            @Param("req") lookie.backend.domain.issue.dto.AdminIssueListRequest req);
 }

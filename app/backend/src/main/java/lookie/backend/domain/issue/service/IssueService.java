@@ -734,4 +734,20 @@ public class IssueService {
             throw new ApiException(ErrorCode.INVALID_ISSUE_TYPE);
         }
     }
+
+    /**
+     * 관리자 관제 이슈 목록 조회
+     */
+    @Transactional(readOnly = true)
+    public lookie.backend.domain.issue.dto.AdminIssueListResponse getAdminIssueList(Long adminId,
+            lookie.backend.domain.issue.dto.AdminIssueListRequest request) {
+        log.info("[IssueService] getAdminIssueList started. adminId={}, status={}, page={}",
+                adminId, request.getStatus(), request.getPage());
+
+        List<lookie.backend.domain.issue.dto.AdminIssueSummary> issues = issueMapper.findAdminIssues(adminId, request);
+        long totalCount = issueMapper.countAdminIssues(adminId, request);
+
+        return lookie.backend.domain.issue.dto.AdminIssueListResponse.of(issues, request.getPage(), request.getSize(),
+                totalCount);
+    }
 }

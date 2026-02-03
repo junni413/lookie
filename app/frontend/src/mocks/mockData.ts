@@ -1,208 +1,282 @@
+
 import type {
+  DB_User,
+  DB_Batch,
+  DB_BatchTask,
+  DB_BatchTaskItem,
   DB_Issue,
   DB_IssueImage,
   DB_AiJudgment,
-  IssueResponse,
   DB_WorkLog,
   DB_WorkLogEvent,
-  DB_BatchTask,
+  DB_Zone,
+  DB_Tote,
+  DB_Product,
+
   DB_Worker,
-  ZoneLayout,
+  ZoneLayout
 } from "@/types/db";
 
-// Helper for dates
+// =============================================================================
+// 1. HELPERS
+// =============================================================================
+
 const now = Date.now();
 const m = (min: number) => new Date(now - min * 60000).toISOString();
 
-// Helper for consistent random (seeded)
+
 function seededRandom(seed: number) {
   const x = Math.sin(seed++) * 10000;
   return x - Math.floor(x);
 }
 
-// Zones
-export type ZoneStatus = "NORMAL" | "BUSY" | "ISSUE";
+function randInt(seed: number, min: number, max: number) {
+  return Math.floor(seededRandom(seed) * (max - min + 1)) + min;
+}
 
-export const zonesMock: { id: number; name: string; status: ZoneStatus }[] = [
-  { id: 1, name: "zone A", status: "NORMAL" },
-  { id: 2, name: "zone B", status: "BUSY" },
-  { id: 3, name: "zone C", status: "ISSUE" },
-  { id: 4, name: "zone D", status: "NORMAL" },
+function randPick<T>(seed: number, arr: T[]): T {
+  return arr[randInt(seed, 0, arr.length - 1)];
+}
+
+// =============================================================================
+// 2. STATIC MASTER DATA (Zones, Users, Products)
+// =============================================================================
+
+// Zones (10 ~ 12 lines each)
+export const db_zones: DB_Zone[] = [
+  { zoneId: 1, mapId: 1 },
+  { zoneId: 2, mapId: 1 },
+  { zoneId: 3, mapId: 1 },
+  { zoneId: 4, mapId: 1 },
 ];
 
-/**
- * Generate Mock Layout for a Zone
- */
-export const generateZoneLayout = (zoneId: number, numLines: number, binsPerLine: number) => {
-  return {
-    zone_id: zoneId,
-    lines: Array.from({ length: numLines }).map((_, i) => ({
-      line_number: i + 1,
-      bins: Array.from({ length: binsPerLine }).map((_, j) => ({
-        bin_number: j + 1
-      }))
-    }))
-  };
-};
+export const zoneNames: Record<number, string> = { 1: "Zone A", 2: "Zone B", 3: "Zone C", 4: "Zone D" };
 
-export const zonesLayoutMock: Record<number, ZoneLayout> = {
-  1: generateZoneLayout(1, 4, 8), // Zone A: 4 lines, 8 bins
-  2: generateZoneLayout(2, 5, 10), // Zone B: 5 lines, 10 bins
-  3: generateZoneLayout(3, 3, 6),  // Zone C: 3 lines, 6 bins
-  4: generateZoneLayout(4, 4, 8),  // Zone D: 4 lines, 8 bins
-};
-
-// ----------------------------------------------------------------------
-// GENERATE 50 MOCK WORKERS
-// ----------------------------------------------------------------------
-
+// Users (Workers 101~150, Admins 1~5)
+export const db_users: DB_User[] = [];
 const NAMES = ["김철수", "이영희", "박지성", "손흥민", "홍길동", "장보고", "이순신", "강감찬", "유관순", "안중근"];
-const LAST_NAMES = ["A", "B", "C", "D", "E"];
 
-export const workersMock: Record<number, string> = {};
-export const db_work_logs: DB_WorkLog[] = [];
-export const db_work_log_events: DB_WorkLogEvent[] = [];
-export const db_batch_tasks: DB_BatchTask[] = [];
-
-// Generate 50 workers (ID 101 ~ 150)
+// Create Workers
 for (let i = 0; i < 50; i++) {
   const id = 101 + i;
-  const name = `${NAMES[i % NAMES.length]} ${LAST_NAMES[Math.floor(i / 10) % 5]}`;
-  workersMock[id] = name;
-
-  // Random Status: 80% Working, 20% Off (Simplified)
-  const rand = seededRandom(id * 7); // 0.0 ~ 1.0
-  let status: "WORKING" | "PAUSED" | "OFF_WORK" = "OFF_WORK";
-
-  if (rand < 0.8) status = "WORKING";
-  // else OFF_WORK
-
-  // Assign Zone if not off work
-  // Distribute across Zone 1, 2, 3, 4 based on id
-  const zoneId = (i % 4) + 1;
-
-  if (status !== "OFF_WORK") {
-    // Create Active Batch Task
-    db_batch_tasks.push({
-      batch_task_id: id * 100,
-      worker_id: id,
-      status: "IN_PROGRESS",
-      zone_id: zoneId,
-      started_at: m(rand * 200)
-    });
-
-    // Create Work Log
-    db_work_logs.push({ work_log_id: id, worker_id: id, started_at: m(rand * 300) });
-
-    // Create Start Event
-    db_work_log_events.push({
-      event_id: id * 10,
-      work_log_id: id,
-      event_type: "START",
-      occurred_at: m(rand * 300)
-    });
-  }
-
-  // Add some completed tasks for everyone
-  const doneCount = Math.floor(seededRandom(id * 3) * 30);
-  for (let k = 0; k < doneCount; k++) {
-    db_batch_tasks.push({
-      batch_task_id: id * 1000 + k,
-      worker_id: id,
-      status: "COMPLETED",
-      zone_id: zoneId,
-      completed_at: m(240 - k * 5)
-    });
-  }
+  db_users.push({
+    userId: id,
+    role: "WORKER",
+    passwordHash: "mock_hash",
+    name: `${NAMES[i % 10]} ${String.fromCharCode(65 + (i % 5))}`,
+    phoneNumber: `010-0000-${id}`,
+    isActive: true,
+    createdAt: m(10000),
+    updatedAt: m(0),
+    assignedZoneId: (i % 4) + 1 // 배정된 구역 (1~4)
+  });
 }
 
+// Create Admins
+for (let i = 1; i <= 5; i++) {
+  db_users.push({
+    userId: i,
+    role: "ADMIN",
+    passwordHash: "admin_hash",
+    name: `관리자${i}`,
+    phoneNumber: `010-9999-000${i}`,
+    isActive: true,
+    createdAt: m(20000),
+    updatedAt: m(0)
+  });
+}
 
-// Issues (Keep static for now, linked to specific workers if needed)
-export const db_issues: DB_Issue[] = [
-  // ... can keep minimal or generate if needed. keeping minimal to avoid clutter
-  {
-    issue_id: 1, issue_type: "OUT_OF_STOCK", status: "OPEN", priority: "HIGH", reason_code: "STOCK_EXISTS", required_action: "WAIT_ADMIN",
-    worker_id: 101, zone_location_id: 2, created_at: m(1),
-  },
-  {
-    issue_id: 2, issue_type: "DAMAGED", status: "OPEN", priority: "MEDIUM", reason_code: "DAMAGED", required_action: "ADMIN_REQUIRED",
-    worker_id: 102, zone_location_id: 3, created_at: m(3),
-  },
-];
+// Products
+export const db_products: DB_Product[] = Array.from({ length: 50 }).map((_, i) => ({
+  productId: 1000 + i,
+  barcode: `880123456${String(i).padStart(4, '0')}`,
+  productName: `상품 ${i + 1}`,
+  productImage: `https://via.placeholder.com/150?text=Product+${i + 1}`,
+  zoneId: (i % 4) + 1,
+  locationId: i * 10
+}));
 
-export const db_issue_images: DB_IssueImage[] = [
-  { issue_image_id: 10, issue_id: 2, image_url: "https://images.unsplash.com/photo-1610931557994-3f5f8bca1d27?q=80&w=600&auto=format&fit=crop", created_at: m(3) }
-];
+// Totes
+export const db_totes: DB_Tote[] = Array.from({ length: 100 }).map((_, i) => ({
+  toteId: 5000 + i,
+  barcode: `TOTE-${5000 + i}`,
+  isActive: true,
+  currentBatchTaskId: null
+}));
 
-export const db_ai_judgments: DB_AiJudgment[] = [
-  { judgment_id: 501, issue_id: 2, ai_decision: "FAIL", confidence: 0.85, summary: "파손", created_at: m(3) }
-];
+// =============================================================================
+// 3. DYNAMIC TRANSACTION DATA (Batches, Tasks, Logs, Issues)
+// =============================================================================
 
+export const db_batches: DB_Batch[] = [];
+export const db_batch_tasks: DB_BatchTask[] = [];
+export const db_batch_task_items: DB_BatchTaskItem[] = [];
+export const db_issues: DB_Issue[] = [];
+export const db_issue_images: DB_IssueImage[] = [];
+export const db_ai_judgments: DB_AiJudgment[] = [];
+export const db_work_logs: DB_WorkLog[] = [];
+export const db_work_log_events: DB_WorkLogEvent[] = [];
 
-// Helper to derive DB_Worker from ID
-export function getDerivedWorker(workerId: number): DB_Worker {
-  const name = workersMock[workerId] || "Unknown Worker";
+// Create 1 Active Batch
+const currentBatchId = 301;
+db_batches.push({
+  batchId: currentBatchId,
+  batchRound: 1,
+  startedAt: m(300),
+  deadlineAt: new Date(now + 120 * 60000).toISOString(), // 2 hours later
+  status: "IN_PROGRESS",
+  createdAt: m(305)
+});
 
-  // 1. Determine Status from WorkLogs/Events
-  const log = db_work_logs.find(l => l.worker_id === workerId && !l.ended_at);
-  let status: "WORKING" | "PAUSED" | "OFF_WORK" = "OFF_WORK";
+// Generate Tasks for Workers
+const workers = db_users.filter(u => u.role === "WORKER");
 
-  if (log) {
-    // Check latest event
-    const events = db_work_log_events.filter(e => e.work_log_id === log.work_log_id);
-    events.sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
-    const lastEvent = events[0];
-    if (lastEvent) {
-      if (lastEvent.event_type === "PAUSE") status = "PAUSED";
-      else if (lastEvent.event_type === "END") status = "OFF_WORK";
-      else status = "WORKING";
-    } else {
-      status = "WORKING";
+workers.forEach((worker) => {
+  const seed = worker.userId;
+  const isWorking = seededRandom(seed) > 0.2; // 80% working
+
+  if (isWorking) {
+    // Work Log
+    const startOffset = Math.floor(seededRandom(seed + 1) * 240); // 0~4 hours ago
+    db_work_logs.push({
+      workLogId: worker.userId * 10,
+      workerId: worker.userId,
+      startedAt: m(startOffset),
+      plannedEndAt: new Date(now + 480 * 60000).toISOString(),
+    });
+
+    db_work_log_events.push({
+      eventId: worker.userId * 100,
+      workLogId: worker.userId * 10,
+      eventType: "START",
+      occurredAt: m(startOffset)
+    });
+
+    // Assign Tasks
+    const taskCount = randInt(seed, 1, 5);
+    for (let t = 0; t < taskCount; t++) {
+      const taskId = worker.userId * 1000 + t;
+      const zoneId = worker.assignedZoneId || 1;
+      const status = t === taskCount - 1 ? "IN_PROGRESS" : "COMPLETED"; // Last one is active
+      const tote = db_totes[(taskId % 100)];
+
+      const task: DB_BatchTask = {
+        batchTaskId: taskId,
+        batchId: currentBatchId,
+        workerId: worker.userId,
+        status: status,
+        zoneId: zoneId,
+        actionStatus: status === "IN_PROGRESS" ? "SCAN_ITEM" : "COMPLETE_TASK",
+        createdAt: m(startOffset - t * 20),
+        updatedAt: m(0),
+        toteId: tote.toteId,
+      };
+
+      db_batch_tasks.push(task);
+      if (status === "IN_PROGRESS") tote.currentBatchTaskId = taskId;
+
+      // Items
+      const itemCount = randInt(seed + t, 2, 5);
+      for (let k = 0; k < itemCount; k++) {
+        const prod = randPick(seed + k, db_products);
+        db_batch_task_items.push({
+          batchTaskItemId: taskId * 10 + k,
+          batchTaskId: taskId,
+          productId: prod.productId,
+          locationId: prod.locationId || 0,
+          requiredQty: randInt(seed + k, 1, 5),
+          pickedQty: status === "COMPLETED" ? 1 : 0,
+          status: status === "COMPLETED" ? "DONE" : "PENDING"
+        });
+      }
+
+      // Random Issue Generation
+      if (seededRandom(taskId) > 0.9) { // 10% chance of issue
+        const isResolved = seededRandom(taskId + 1) > 0.5;
+        const issue: DB_Issue = {
+          issueId: taskId * 5,
+          issueType: seededRandom(taskId) > 0.5 ? "DAMAGED" : "OUT_OF_STOCK",
+          status: isResolved ? "RESOLVED" : "OPEN",
+          priority: isResolved ? "LOW" : "HIGH",
+          reasonCode: "UNKNOWN",
+          issueHandling: "BLOCKING",
+          adminRequired: true,
+          workerId: worker.userId,
+          batchTaskId: taskId,
+          zoneLocationId: zoneId, // proxy
+          createdAt: m(randInt(taskId, 5, 60)),
+          resolvedAt: isResolved ? m(1) : undefined
+        };
+        db_issues.push(issue);
+
+        // Mock Judgment
+        db_ai_judgments.push({
+          judgmentId: issue.issueId * 10,
+          issueId: issue.issueId,
+          aiResult: {},
+          confidence: 0.88,
+          aiDecision: isResolved ? "PASS" : "NEED_CHECK",
+          createdAt: issue.createdAt
+        });
+
+        // Mock Image
+        db_issue_images.push({
+          issueImageId: issue.issueId * 100,
+          issueId: issue.issueId,
+          imageUrl: "https://via.placeholder.com/300x200?text=Issue+Image",
+          createdAt: issue.createdAt
+        });
+      }
     }
   }
+});
 
-  // 2. Count Completed Tasks Today
-  const doneCount = db_batch_tasks.filter(t => t.worker_id === workerId && t.status === "COMPLETED").length;
+// =============================================================================
+// 4. DERIVED DATA HELPERS (For Services)
+// =============================================================================
 
-  // 3. Current Zone
-  const currentTask = db_batch_tasks.find(t => t.worker_id === workerId && t.status === "IN_PROGRESS");
-  const currentZoneId = currentTask?.zone_id || null;
+export function getDerivedWorker(workerId: number): DB_Worker | null {
+  const user = db_users.find(u => u.userId === workerId && u.role === "WORKER");
+  if (!user) return null;
 
-  // 4. Determine Location (Line/Bin) safely
-  let line_number, bin_number;
+  const log = db_work_logs.find(l => l.workerId === workerId && !l.endedAt);
+  const status = log ? "WORKING" : "OFF_WORK";
 
-  if (currentZoneId) {
-    // Get Layout Constraints
-    const layout = zonesLayoutMock[currentZoneId];
-    if (layout) {
-      const numLines = layout.lines.length;
-      // Assume consistent bin count for simplicity or max
-      const numBins = layout.lines[0].bins.length;
-
-      // Deterministic Random based on Worker ID
-      const r1 = seededRandom(workerId * 10);
-      const r2 = seededRandom(workerId * 20);
-
-      line_number = Math.floor(r1 * numLines) + 1;
-      bin_number = Math.floor(r2 * numBins) + 1;
-    }
-  }
+  // Stats
+  const completed = db_batch_tasks.filter(t => t.workerId === workerId && t.status === "COMPLETED").length;
 
   return {
-    worker_id: workerId,
-    name,
-    status,
-    today_work_count: doneCount,
-    work_rate: Math.floor(seededRandom(workerId * 5) * 100), // Mock 0-100%
-    current_zone_id: currentZoneId,
-    line_number,
-    bin_number,
+    ...user,
+    status: status as any,
+    currentZoneId: user.assignedZoneId || null,
+    todayWorkCount: completed,
+    workRate: 85 + (workerId % 15) // mock rate
   };
 }
 
-// Legacy Support
-export type AdminIssueItem = IssueResponse;
+// Zones Layout Mock
+export const zonesLayoutMock: Record<number, ZoneLayout> = {};
+[1, 2, 3, 4].forEach(zId => {
+  zonesLayoutMock[zId] = {
+    zoneId: zId,
+    lines: Array.from({ length: 12 }).map((_, i) => ({
+      lineNumber: i + 1,
+      bins: Array.from({ length: 6 }).map((_, j) => ({ binNumber: j + 1 }))
+    }))
+  };
+});
+
+// Admin Dashboard Mock Data
 export const adminDashboardMock = {
-  summary: { working: 30, waiting: 5, done: 100, progress: 80 },
-  zones: zonesMock.map(z => ({ ...z, working: 0, waiting: 0, done: 0 }))
+  summary: {
+    working: db_work_logs.filter(l => !l.endedAt).length,
+    waiting: db_users.filter(u => u.role === "WORKER").length - db_work_logs.filter(l => !l.endedAt).length,
+    done: db_batch_tasks.filter(t => t.status === "COMPLETED").length,
+    progress: 45 // Dummy
+  },
+  zones: db_zones.map(z => ({
+    id: z.zoneId,
+    name: zoneNames[z.zoneId],
+    status: (z.zoneId === 3 ? "CRITICAL" : "STABLE") as any
+  }))
 };
