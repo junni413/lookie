@@ -71,24 +71,12 @@ function setStats(stats: { done: number; issue: number; waiting: number }) {
  * taskService (Task는 API / Issue는 MOCK)
  * ----------------------------- */
 export const taskService = {
-  /** [MOCKING] 작업 할당 및 시작 */
+  /** 작업 할당 및 시작 */
   startTask: async (): Promise<ApiResponse<TaskResponse<TaskVO>>> => {
-    console.warn("⚠️ 현재 Mock 데이터를 사용 중입니다. (배정 구역 에러 패스)");
-
-    // ✅ errorCode에 null 넣으면 타입에 따라 TS2322 날 수 있어서 아예 제거
-    return {
-      success: true,
-      message: "SUCCESS",
-      // errorCode: undefined, // 넣고 싶으면 undefined로 (대부분은 그냥 필드 제거가 안전)
-      data: {
-        payload: {
-          batchTaskId: 1, // 임의의 ID
-          zoneName: "테스트 구역-A",
-          workerName: "관리자",
-        } as any,
-        nextAction: "SCAN_TOTE",
-      } as any,
-    } as any;
+      // ✅ 실제 백엔드 연동
+      return requestJSON(`/api/tasks`, {
+          method: "POST",
+      });
   },
 
   /** 토트 등록(스캔) */
