@@ -31,12 +31,10 @@
         - workCount: 금일(CURDATE) 처리한 작업 건수(batch_task_items) 서브쿼리로 계산
     -->
     <select id="selectWorkersByZoneId" resultType="lookie.backend.domain.control.dto.ZoneWorkerDto">
-        SELECT
-            u.user_id AS workerId,
+        SELECT DISTINCT  u.user_id AS workerId,
             u.name AS name,
             u.phone_number AS phoneNumber,
             (
-                -- 금일 처리한 작업 아이템 수 카운트 (속도 계산용 기초 데이터)
                 SELECT COUNT(bti.batch_task_item_id)
                 FROM batch_tasks bt
                 JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
@@ -44,12 +42,11 @@
                   AND bti.status != 'PENDING'
                   AND DATE(bti.last_scanned_at) = CURDATE()
             ) AS workCount,
-            0.0 AS processingSpeed,     -- 시간당 처리 속도 (미구현)
-            0.0 AS currentTaskProgress, -- 현재 배치 진행률 (미구현)
-            'WORKING' AS status,        -- 작업 상태 (미구현)
-            'AVAILABLE' AS webrtcStatus -- WebRTC 상태 (미구현)
+            0.0 AS processingSpeed,
+            0.0 AS currentTaskProgress,
+            'WORKING' AS status,
+            'AVAILABLE' AS webrtcStatus
         FROM users u
-        -- 현재 출근 중인 사용자만 조회 (로그가 없으면 조회되지 않음)
         INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
         WHERE u.assigned_zone_id = #{zoneId}
     </select>
