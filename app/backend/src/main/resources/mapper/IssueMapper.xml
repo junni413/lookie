@@ -8,12 +8,14 @@
     <!-- Issue 생성 -->
     <insert id="insertIssue" useGeneratedKeys="true" keyProperty="issueId">
         INSERT INTO issues (
-            issue_type, status, priority, reason_code, issue_handling, admin_required,
-            worker_id, admin_id, batch_task_id, batch_task_item_id, zone_location_id,
+            issue_type, status, reason_code, issue_handling, admin_required,
+            urgency, admin_decision,
+            worker_id, admin_id, batch_task_id, batch_task_item_id, zone_location_id, new_location_id,
             note
         ) VALUES (
-            #{issueType}, #{status}, #{priority}, #{reasonCode}, #{issueHandling}, #{adminRequired},
-            #{workerId}, #{adminId}, #{batchTaskId}, #{batchTaskItemId}, #{zoneLocationId},
+            #{issueType}, #{status}, #{reasonCode}, #{issueHandling}, #{adminRequired},
+            #{urgency}, #{adminDecision},
+            #{workerId}, #{adminId}, #{batchTaskId}, #{batchTaskItemId}, #{zoneLocationId}, #{newLocationId},
             #{note}
         )
     </insert>
@@ -24,15 +26,17 @@
             issue_id AS issueId,
             issue_type AS issueType,
             status,
-            priority,
             reason_code AS reasonCode,
             issue_handling AS issueHandling,
             admin_required AS adminRequired,
+            urgency,
+            admin_decision AS adminDecision,
             worker_id AS workerId,
             admin_id AS adminId,
             batch_task_id AS batchTaskId,
             batch_task_item_id AS batchTaskItemId,
             zone_location_id AS zoneLocationId,
+            new_location_id AS newLocationId,
             created_at AS createdAt,
             resolved_at AS resolvedAt,
             note
@@ -45,10 +49,12 @@
         UPDATE issues
         SET
             status = #{status},
-            priority = #{priority},
             reason_code = #{reasonCode},
             issue_handling = #{issueHandling},
             admin_required = #{adminRequired},
+            urgency = #{urgency},
+            admin_decision = #{adminDecision},
+            new_location_id = #{newLocationId},
             resolved_at = #{resolvedAt}
         WHERE issue_id = #{issueId}
     </update>

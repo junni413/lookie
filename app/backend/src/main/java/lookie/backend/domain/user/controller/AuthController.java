@@ -7,6 +7,8 @@ import lookie.backend.domain.user.dto.*;
 import lookie.backend.domain.user.service.MailService;
 import lookie.backend.domain.user.service.UserService;
 import lookie.backend.domain.user.vo.UserVO;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.global.response.ApiResponse;
 import lookie.backend.global.security.JwtProvider;
 import org.springframework.http.ResponseEntity;
@@ -118,6 +120,24 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Void>> verifyCode(@RequestBody EmailVerifyRequest request) {
         mailService.verifyCode(request.getEmail(), request.getCode());
         return ResponseEntity.ok(ApiResponse.success("이메일 인증에 성공하였습니다.", null));
+    }
+
+    /**
+     * 전화번호 중복 확인
+     * GET /api/auth/check/phone
+     */
+    @Operation(summary = "전화번호 중복 확인", description = "입력한 전화번호가 이미 등록되어 있는지 확인합니다 (true: 중복, false: 사용 가능)")
+    @GetMapping("/check/phone")
+    public ResponseEntity<ApiResponse<Boolean>> checkPhoneNumber(@RequestParam String phoneNumber) {
+        // 1. 유효성 검사 (010으로 시작하는 11자리 숫자, 하이픈 불가)
+        if (phoneNumber == null || !phoneNumber.matches("^010\\d{8}$")) {
+            throw new ApiException(ErrorCode.INVALID_PHONE_FORMAT);
+        }
+
+        // 2. 서비스 호출
+        boolean exists = userService.checkPhoneNumberDuplicate(phoneNumber);
+
+        return ResponseEntity.ok(ApiResponse.success("중복 확인 완료", exists));
     }
 
     // ==================== 비밀번호 재설정 ====================

@@ -2,6 +2,7 @@ package lookie.backend.domain.issue.service;
 
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
+import lookie.backend.domain.issue.dto.AdminDecision;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
 import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueResponse;
@@ -88,7 +89,8 @@ class IssueServiceTest {
         // 기본 정책 검증 (IssueVO.createInitial 기본값)
         assertEquals("DAMAGED", capturedIssue.getIssueType());
         assertEquals("OPEN", capturedIssue.getStatus());
-        assertEquals("MEDIUM", capturedIssue.getPriority());
+        // assertEquals("MEDIUM", capturedIssue.getPriority()); // 삭제
+        assertEquals(3, capturedIssue.getUrgency()); // 신규 필드 검증
         assertEquals("NON_BLOCKING", capturedIssue.getIssueHandling());
         assertEquals(false, capturedIssue.getAdminRequired());
         assertEquals("UNKNOWN", capturedIssue.getReasonCode());
@@ -270,7 +272,7 @@ class IssueServiceTest {
     // ================================================================
 
     @Test
-    @DisplayName("AI 결과 처리 성공 - PASS (자동 해결)")
+    @DisplayName("AI 결과 처리 성공 - PASS (분기표 D1: OPEN 유지, 사후 확정 필요)")
     void processAiResult_Pass_AutoResolved() {
         // given
         Long issueId = 1L;
@@ -291,12 +293,13 @@ class IssueServiceTest {
 
         // then
         assertNotNull(response);
-        assertEquals("RESOLVED", response.getStatus());
-        assertEquals("LOW", response.getPriority());
+        assertEquals("OPEN", response.getStatus()); // OPEN 유지
+        // assertEquals("MEDIUM", response.getPriority()); // 삭제
+        assertEquals(4, response.getUrgency()); // urgency=4
         assertEquals("NON_BLOCKING", response.getIssueHandling());
-        assertEquals(false, response.getAdminRequired());
-        assertEquals("AUTO_RESOLVED", response.getReasonCode());
-        assertNotNull(response.getResolvedAt());
+        assertEquals(true, response.getAdminRequired()); // 관리자 사후 확정 필요
+        assertEquals("UNKNOWN", response.getReasonCode());
+        assertNull(response.getResolvedAt()); // RESOLVED 아님
 
         verify(issueMapper).updateAiJudgment(any(AiJudgmentVO.class));
         verify(issueMapper).updateIssueStatus(issue);
@@ -323,7 +326,8 @@ class IssueServiceTest {
 
         // then
         assertEquals("OPEN", response.getStatus());
-        assertEquals("HIGH", response.getPriority());
+        // assertEquals("HIGH", response.getPriority()); // 삭제
+        assertEquals(1, response.getUrgency()); // urgency=1
         assertEquals("BLOCKING", response.getIssueHandling()); // 가이드에 따라 BLOCKING으로 변경됨
         assertEquals(true, response.getAdminRequired());
         assertEquals("UNKNOWN", response.getReasonCode());
@@ -349,8 +353,9 @@ class IssueServiceTest {
         AiResultResponse response = issueService.processAiResult(issueId, request);
 
         // then
-        assertEquals("MEDIUM", response.getPriority());
-        assertEquals(false, response.getAdminRequired());
+        // assertEquals("MEDIUM", response.getPriority()); // 삭제
+        assertEquals(3, response.getUrgency()); // urgency=3
+        assertEquals(true, response.getAdminRequired()); // 사후 확정 필요
         assertEquals("DAMAGED", response.getReasonCode());
     }
 
@@ -418,7 +423,8 @@ class IssueServiceTest {
         issue.setIssueId(issueId);
         issue.setIssueType("DAMAGED");
         issue.setStatus("RESOLVED");
-        issue.setPriority("LOW");
+        // issue.setPriority("LOW"); // 삭제
+        issue.setUrgency(5); // LOW 대응
         issue.setIssueHandling("NON_BLOCKING");
         issue.setAdminRequired(false);
         issue.setReasonCode("AUTO_RESOLVED");
@@ -442,7 +448,7 @@ class IssueServiceTest {
         assertEquals("PASS", response.getAiResult());
         assertEquals(0.95f, response.getConfidence());
         assertEquals("정상 상품으로 판정됨", response.getSummary());
-        assertEquals("AUTO_RESOLVED", response.getNextAction());
+        assertEquals("AUTO_RESOLVED", response.getIssueNextAction());
         assertTrue(response.getAvailableActions().isEmpty());
     }
 
@@ -456,7 +462,8 @@ class IssueServiceTest {
         issue.setIssueId(issueId);
         issue.setIssueType("DAMAGED");
         issue.setStatus("OPEN");
-        issue.setPriority("HIGH");
+        // issue.setPriority("HIGH"); // 삭제
+        issue.setUrgency(1); // HIGH 대응
         issue.setIssueHandling("BLOCKING");
         issue.setAdminRequired(true);
         issue.setReasonCode("UNKNOWN");
@@ -474,7 +481,7 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
         assertEquals("NEED_CHECK", response.getAiResult());
-        assertEquals("WAIT_ADMIN", response.getNextAction());
+        assertEquals("WAIT_ADMIN", response.getIssueNextAction());
         assertEquals(1, response.getAvailableActions().size());
         assertTrue(response.getAvailableActions().contains("CONNECT_ADMIN"));
     }
@@ -492,5 +499,297 @@ class IssueServiceTest {
         });
 
         assertEquals(ErrorCode.ISSUE_NOT_FOUND, exception.getErrorCode());
+    }
+
+    // ================================================================
+    // WebRTC 후처리 테스트
+    // ================================================================
+
+    @Test
+    @DisplayName("WebRTC CONNECTED - urgency=5, adminRequired=false")
+    void handleWebRtcConnected_Success() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("OPEN");
+        issue.setUrgency(1); // 초기 urgency
+        issue.setAdminRequired(true);
+        issue.setIssueHandling("BLOCKING");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        issueService.handleWebRtcConnected(issueId);
+
+        // then
+        assertEquals(5, issue.getUrgency());
+        assertEquals(false, issue.getAdminRequired());
+        assertEquals("NON_BLOCKING", issue.getIssueHandling());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("WebRTC MISSED (NEED_CHECK) - urgency=1 유지")
+    void handleWebRtcMissed_NeedCheck() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("OPEN");
+        issue.setUrgency(1);
+        issue.setReasonCode("UNKNOWN");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("NEED_CHECK");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        issueService.handleWebRtcMissed(issueId);
+
+        // then
+        assertEquals(1, issue.getUrgency()); // NEED_CHECK → urgency=1
+        assertEquals(true, issue.getAdminRequired());
+        assertEquals("NON_BLOCKING", issue.getIssueHandling());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("WebRTC MISSED (STOCK_EXISTS) - urgency=1")
+    void handleWebRtcMissed_StockExists() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("OPEN");
+        issue.setUrgency(1);
+        issue.setReasonCode("STOCK_EXISTS");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("PASS");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        issueService.handleWebRtcMissed(issueId);
+
+        // then
+        assertEquals(1, issue.getUrgency()); // STOCK_EXISTS → urgency=1
+        assertEquals(true, issue.getAdminRequired());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("WebRTC MISSED (PASS/FAIL) - urgency=2")
+    void handleWebRtcMissed_Other() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("OPEN");
+        issue.setUrgency(4);
+        issue.setReasonCode("UNKNOWN");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("PASS");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        issueService.handleWebRtcMissed(issueId);
+
+        // then
+        assertEquals(2, issue.getUrgency()); // 기타 → urgency=2
+        assertEquals(true, issue.getAdminRequired());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("WebRTC CONNECTED - 이미 RESOLVED면 스킵")
+    void handleWebRtcConnected_AlreadyResolved() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("RESOLVED");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        issueService.handleWebRtcConnected(issueId);
+
+        // then
+        verify(issueMapper, never()).updateIssueStatus(any());
+    }
+
+    // ================================================================
+    // AdminNextAction 검증 테스트
+    // ================================================================
+
+    @Test
+    @DisplayName("AdminNextAction - STOCK_EXISTS는 ADMIN_JOIN_CALL")
+    void calculateAdminNextAction_StockExists() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("OUT_OF_STOCK");
+        issue.setStatus("OPEN");
+        issue.setIssueHandling("BLOCKING");
+        issue.setAdminRequired(true);
+        issue.setReasonCode("STOCK_EXISTS");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("PASS");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertEquals("ADMIN_JOIN_CALL", response.getAdminNextAction());
+    }
+
+    @Test
+    @DisplayName("AdminNextAction - NEED_CHECK는 ADMIN_JOIN_CALL")
+    void calculateAdminNextAction_NeedCheck() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+        issue.setIssueHandling("BLOCKING");
+        issue.setAdminRequired(true);
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("NEED_CHECK");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertEquals("ADMIN_JOIN_CALL", response.getAdminNextAction());
+    }
+
+    @Test
+    @DisplayName("AdminNextAction - NON_BLOCKING + adminRequired는 ADMIN_CONFIRM_LATER")
+    void calculateAdminNextAction_ConfirmLater() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+        issue.setIssueHandling("NON_BLOCKING");
+        issue.setAdminRequired(true);
+        issue.setReasonCode("DAMAGED");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setAiDecision("FAIL");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertEquals("ADMIN_CONFIRM_LATER", response.getAdminNextAction());
+    }
+
+    // ================================================================
+    // 관리자 확정 테스트
+    // ================================================================
+
+    @Test
+    @DisplayName("관리자 확정 성공 - DAMAGED + NORMAL")
+    void confirmIssue_Damaged_Normal() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        issueService.confirmIssue(issueId, AdminDecision.NORMAL);
+
+        // then
+        assertEquals("RESOLVED", issue.getStatus());
+        assertEquals("NORMAL", issue.getAdminDecision());
+        assertNotNull(issue.getResolvedAt());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("관리자 확정 성공 - OUT_OF_STOCK + FIXED")
+    void confirmIssue_OutOfStock_Fixed() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("OUT_OF_STOCK");
+        issue.setStatus("OPEN");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        issueService.confirmIssue(issueId, AdminDecision.FIXED);
+
+        // then
+        assertEquals("RESOLVED", issue.getStatus());
+        assertEquals("FIXED", issue.getAdminDecision());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("관리자 확정 실패 - 이미 RESOLVED")
+    void confirmIssue_AlreadyResolved() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("RESOLVED");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when, then
+        ApiException exception = assertThrows(ApiException.class, () -> {
+            issueService.confirmIssue(issueId, AdminDecision.NORMAL);
+        });
+
+        assertEquals(ErrorCode.ISSUE_ALREADY_RESOLVED, exception.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("관리자 확정 실패 - 유효하지 않은 Decision (DAMAGED에 FIXED)")
+    void confirmIssue_InvalidDecision() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when, then
+        ApiException exception = assertThrows(ApiException.class, () -> {
+            issueService.confirmIssue(issueId, AdminDecision.FIXED);
+        });
+
+        assertEquals(ErrorCode.INVALID_ADMIN_DECISION, exception.getErrorCode());
     }
 }

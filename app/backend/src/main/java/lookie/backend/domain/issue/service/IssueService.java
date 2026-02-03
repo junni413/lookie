@@ -9,6 +9,8 @@ import lookie.backend.infra.ai.dto.AiAnalysisRequest;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
 import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueNextAction;
+import lookie.backend.domain.issue.dto.WorkerNextAction;
+import lookie.backend.domain.issue.dto.AdminNextAction;
 import lookie.backend.domain.issue.dto.IssueResponse;
 import lookie.backend.domain.issue.mapper.IssueMapper;
 import lookie.backend.domain.issue.vo.AiJudgmentVO;
@@ -25,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import lookie.backend.domain.issue.dto.AdminDecision;
 
 /**
  * Issue 도메인 비즈니스 로직 처리 서비스
@@ -117,26 +121,34 @@ public class IssueService {
         // 2. AI 판정 결과 조회
         AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
 
-        // 3. nextAction 계산
-        IssueNextAction nextAction = calculateNextAction(issue);
+        // 3. nextAction 계산 (분기표 기준)
+        WorkerNextAction workerNextAction = calculateWorkerNextAction(issue, judgment);
+        IssueNextAction issueNextAction = calculateIssueNextAction(issue, judgment);
+        AdminNextAction adminNextAction = calculateAdminNextAction(issue, judgment);
 
         // 4. availableActions 생성
         List<String> availableActions = generateAvailableActions(issue);
 
         // 5. DTO 매핑 및 반환
-        return IssueDetailResponse.from(issue, judgment, nextAction.name(), availableActions);
+        return IssueDetailResponse.from(
+                issue,
+                judgment,
+                workerNextAction != null ? workerNextAction.name() : null,
+                issueNextAction != null ? issueNextAction.name() : null,
+                adminNextAction != null ? adminNextAction.name() : null,
+                availableActions);
     }
 
     /**
      * AI 판정 결과 반영
      * - AI 서버로부터 판정 결과 수신 시 호출
      * - AI 결과에 따라 Issue 정책 자동 업데이트
-     * - PASS 케이스는 자동 해결 처리
+     * - reasonCode와 newLocation 정보 처리
      */
     @Transactional
     public AiResultResponse processAiResult(Long issueId, AiResultRequest request) {
-        log.info("[IssueService] processAiResult started. issueId={}, aoDecision={}",
-                issueId, request.getAiDecision());
+        log.info("[IssueService] processAiResult started. issueId={}, aiDecision={}, reasonCode={}",
+                issueId, request.getAiDecision(), request.getReasonCode());
 
         // 0. Confidence == 0.0 처리 (신뢰 불가 → NEED_CHECK 강제)
         String decision = request.getAiDecision();
@@ -169,15 +181,22 @@ public class IssueService {
         judgment.setAiResult(request.getAiResult());
         issueMapper.updateAiJudgment(judgment);
 
-        // 3. AI 결과 → Issue 정책 매핑
-        applyAiResultPolicy(issue, request.getAiDecision());
+        // 3. newLocation 처리 (MOVE_LOCATION 케이스)
+        if ("MOVE_LOCATION".equals(request.getReasonCode()) && request.getNewLocation() != null) {
+            issue.setNewLocationId(request.getNewLocation().getZoneLocationId());
+            log.info("[IssueService] newLocation set. issueId={}, newLocationId={}",
+                    issueId, issue.getNewLocationId());
+        }
 
-        // 4. Issue 업데이트
+        // 4. AI 결과 → Issue 정책 매핑
+        applyAiResultPolicy(issue, request.getAiDecision(), request.getReasonCode());
+
+        // 5. Issue 업데이트
         issueMapper.updateIssueStatus(issue);
-        log.info("[IssueService] Issue updated by AI result. issueId={}, status={}, priority={}",
-                issueId, issue.getStatus(), issue.getPriority());
+        log.info("[IssueService] Issue updated by AI result. issueId={}, status={}, reasonCode={}",
+                issueId, issue.getStatus(), issue.getReasonCode());
 
-        // 5. nextAction 계산
+        // 6. nextAction 계산
         IssueNextAction nextAction = calculateNextAction(issue);
 
         return AiResultResponse.from(issue, nextAction);
@@ -185,12 +204,14 @@ public class IssueService {
 
     /**
      * AI 판정 결과에 따른 Issue 정책 매핑
-     * - issue_type과 ai_decision 조합으로 정책 결정
+     * - issue_type, ai_decision, reasonCode 조합으로 정책 결정
      * 
      * @param issue      Issue VO (업데이트할 객체)
-     * @param aiDecision AI 판정 결과 (PASS, FAIL, NEED_CHECK, UNKNOWN)
+     * @param aiDecision AI 판정 결과 (PASS, FAIL, NEED_CHECK, RETAKE)
+     * @param reasonCode AI 세부 분류 (STOCK_EXISTS, MOVE_LOCATION, WAITING_RETURN,
+     *                   DAMAGED, UNKNOWN)
      */
-    private void applyAiResultPolicy(IssueVO issue, String aiDecision) {
+    private void applyAiResultPolicy(IssueVO issue, String aiDecision, String reasonCode) {
         String issueType = issue.getIssueType();
 
         // DAMAGED 케이스
@@ -199,7 +220,7 @@ public class IssueService {
         }
         // OUT_OF_STOCK 케이스
         else if ("OUT_OF_STOCK".equals(issueType)) {
-            applyOutOfStockPolicy(issue, aiDecision);
+            applyOutOfStockPolicy(issue, aiDecision, reasonCode);
         } else {
             log.warn("[IssueService] Unknown issue_type={}. Applying default policy.", issueType);
             applyDefaultPolicy(issue);
@@ -207,40 +228,55 @@ public class IssueService {
     }
 
     /**
-     * DAMAGED 타입 정책
+     * DAMAGED 타입 정책 (분기표 D1, D5, D8, D12 노드 기준)
+     */
+    /**
+     * DAMAGED 타입 정책 (분기표 D1, D5, D8, D12 노드 기준)
      */
     private void applyDamagedPolicy(IssueVO issue, String aiDecision) {
         switch (aiDecision) {
             case "PASS":
-                // 정상: 자동 해결
-                issue.setStatus("RESOLVED");
-                issue.setPriority("LOW");
+                // D1: 정상 판정 - OPEN 유지, 관리자 사후 확정 필요
+                issue.setStatus("OPEN");
+                issue.setUrgency(4);
                 issue.setIssueHandling("NON_BLOCKING");
-                issue.setAdminRequired(false);
-                issue.setReasonCode("AUTO_RESOLVED");
-                issue.setResolvedAt(java.time.LocalDateTime.now());
-                log.info("[IssueService] DAMAGED + PASS → Auto-resolved. issueId={}", issue.getIssueId());
+                issue.setAdminRequired(true);
+                issue.setReasonCode("UNKNOWN");
+                log.info("[IssueService] DAMAGED + PASS → OPEN, urgency=4, adminRequired=true. issueId={}",
+                        issue.getIssueId());
                 break;
 
             case "NEED_CHECK":
-                // 확인 필요: 관리자 검토 필요 (일단 BLOCKING 진입)
+                // D5: 애매함 - BLOCKING, 관리자 필수 연결
                 issue.setStatus("OPEN");
-                issue.setPriority("HIGH");
+                issue.setUrgency(1);
                 issue.setIssueHandling("BLOCKING");
                 issue.setAdminRequired(true);
                 issue.setReasonCode("UNKNOWN");
-                log.info("[IssueService] DAMAGED + NEED_CHECK → Initial Admin required (BLOCKING). issueId={}",
+                log.info("[IssueService] DAMAGED + NEED_CHECK → BLOCKING, urgency=1. issueId={}",
                         issue.getIssueId());
                 break;
 
             case "FAIL":
-                // 명확한 파손
+                // D8: 파손 가능성 - NON_BLOCKING, 사후 확정 필요
                 issue.setStatus("OPEN");
-                issue.setPriority("MEDIUM");
+                issue.setUrgency(3);
                 issue.setIssueHandling("NON_BLOCKING");
-                issue.setAdminRequired(false);
+                issue.setAdminRequired(true);
                 issue.setReasonCode("DAMAGED");
-                log.info("[IssueService] DAMAGED + FAIL → Damaged confirmed. issueId={}", issue.getIssueId());
+                log.info("[IssueService] DAMAGED + FAIL → urgency=3, adminRequired=true. issueId={}",
+                        issue.getIssueId());
+                break;
+
+            case "RETAKE":
+                // D12: 재촬영 필요 - BLOCKING, 관리자 개입 없음, 관제 미노출
+                issue.setStatus("OPEN");
+                issue.setUrgency(0); // 관제 큐 제외
+                issue.setIssueHandling("BLOCKING");
+                issue.setAdminRequired(false);
+                issue.setReasonCode("UNKNOWN");
+                log.info("[IssueService] DAMAGED + RETAKE → BLOCKING, urgency=0 (queue excluded). issueId={}",
+                        issue.getIssueId());
                 break;
 
             case "UNKNOWN":
@@ -251,45 +287,64 @@ public class IssueService {
     }
 
     /**
-     * OUT_OF_STOCK 타입 정책
+     * OUT_OF_STOCK 타입 정책 (분기표 S1, S4, S5, S6 노드 기준)
+     * 
+     * AI가 reasonCode를 직접 반환하므로, aiDecision + reasonCode 조합으로 정책 적용
      */
-    private void applyOutOfStockPolicy(IssueVO issue, String aiDecision) {
-        switch (aiDecision) {
-            case "PASS":
-                // 지번 이동
+    private void applyOutOfStockPolicy(IssueVO issue, String aiDecision, String reasonCode) {
+        // reasonCode가 없으면 기본 정책 적용
+        if (reasonCode == null || "UNKNOWN".equals(reasonCode)) {
+            applyDefaultPolicy(issue);
+            return;
+        }
+
+        switch (reasonCode) {
+            case "STOCK_EXISTS":
+                // S1: 전산상 재고 있음 - BLOCKING, 관리자 필수
+                issue.setStatus("OPEN");
+                issue.setUrgency(1);
+                issue.setIssueHandling("BLOCKING");
+                issue.setAdminRequired(true);
+                issue.setReasonCode("STOCK_EXISTS");
+                log.info("[IssueService] OUT_OF_STOCK + STOCK_EXISTS → BLOCKING, urgency=1. issueId={}",
+                        issue.getIssueId());
+                break;
+
+            case "MOVE_LOCATION":
+                // S4: 지번 이동 - 즉시 RESOLVED
                 issue.setStatus("RESOLVED");
-                issue.setPriority("LOW");
+                issue.setUrgency(5);
                 issue.setIssueHandling("NON_BLOCKING");
                 issue.setAdminRequired(false);
                 issue.setReasonCode("MOVE_LOCATION");
                 issue.setResolvedAt(java.time.LocalDateTime.now());
-                log.info("[IssueService] OUT_OF_STOCK + PASS → Move location. issueId={}", issue.getIssueId());
-                break;
-
-            case "NEED_CHECK":
-                // 전산상 재고 있음 (140 브랜치: 일단 BLOCKING 진입)
-                issue.setStatus("OPEN");
-                issue.setPriority("HIGH");
-                issue.setIssueHandling("BLOCKING");
-                issue.setAdminRequired(true);
-                issue.setReasonCode("STOCK_EXISTS");
-                // WebRTC 결과 수신 구현 후 달라질 수 있음
-                issue.setReasonCode("UNKNOWN");
-                log.info("[IssueService] OUT_OF_STOCK + NEED_CHECK → Initial Stock check (BLOCKING). issueId={}",
+                // newLocationId는 processAiResult에서 설정됨
+                log.info("[IssueService] OUT_OF_STOCK + MOVE_LOCATION → RESOLVED, urgency=5. issueId={}",
                         issue.getIssueId());
                 break;
 
-            case "FAIL":
-                // 파손 원인 (1단계: DAMAGED 통합)
+            case "WAITING_RETURN":
+                // S5: 원복 대기 - NON_BLOCKING
                 issue.setStatus("OPEN");
-                issue.setPriority("MEDIUM");
+                issue.setUrgency(3);
+                issue.setIssueHandling("NON_BLOCKING");
+                issue.setAdminRequired(false);
+                issue.setReasonCode("WAITING_RETURN");
+                log.info("[IssueService] OUT_OF_STOCK + WAITING_RETURN → urgency=3. issueId={}",
+                        issue.getIssueId());
+                break;
+
+            case "DAMAGED":
+                // S6: 파손 원인 - NON_BLOCKING
+                issue.setStatus("OPEN");
+                issue.setUrgency(3);
                 issue.setIssueHandling("NON_BLOCKING");
                 issue.setAdminRequired(false);
                 issue.setReasonCode("DAMAGED");
-                log.info("[IssueService] OUT_OF_STOCK + FAIL → Damaged cause. issueId={}", issue.getIssueId());
+                log.info("[IssueService] OUT_OF_STOCK + DAMAGED → urgency=3. issueId={}",
+                        issue.getIssueId());
                 break;
 
-            case "UNKNOWN":
             default:
                 applyDefaultPolicy(issue);
                 break;
@@ -301,7 +356,6 @@ public class IssueService {
      */
     private void applyDefaultPolicy(IssueVO issue) {
         issue.setStatus("OPEN");
-        issue.setPriority("MEDIUM");
         issue.setIssueHandling("NON_BLOCKING");
         issue.setAdminRequired(false);
         issue.setReasonCode("UNKNOWN");
@@ -335,8 +389,8 @@ public class IssueService {
             return IssueNextAction.AUTO_RESOLVED;
         }
 
-        // 나머지 → CONTINUE_PICKING
-        return IssueNextAction.CONTINUE_PICKING;
+        // 나머지 → NEXT_ITEM
+        return IssueNextAction.NEXT_ITEM;
     }
 
     /**
@@ -356,5 +410,263 @@ public class IssueService {
 
         // 그 외의 경우 빈 배열 반환
         return actions;
+    }
+
+    /**
+     * 작업자 다음 행동 계산 (분기표 WorkerNextAction 컬럼 기준)
+     */
+    private WorkerNextAction calculateWorkerNextAction(IssueVO issue, AiJudgmentVO judgment) {
+        // RETAKE 케이스
+        if (judgment != null && "RETAKE".equals(judgment.getAiDecision())) {
+            return WorkerNextAction.UPLOAD_IMAGE;
+        }
+
+        // BLOCKING 상태면 WAIT_ADMIN
+        if ("BLOCKING".equals(issue.getIssueHandling())) {
+            return WorkerNextAction.WAIT_ADMIN;
+        }
+
+        // MOVE_LOCATION 케이스
+        if ("RESOLVED".equals(issue.getStatus()) && "MOVE_LOCATION".equals(issue.getReasonCode())) {
+            return WorkerNextAction.MOVE_LOCATION;
+        }
+
+        // 기본값: CONTINUE_PICKING
+        return WorkerNextAction.CONTINUE_PICKING;
+    }
+
+    /**
+     * 이슈 다음 행동 계산 (분기표 IssueNextAction 컬럼 기준)
+     */
+    private IssueNextAction calculateIssueNextAction(IssueVO issue, AiJudgmentVO judgment) {
+        // RETAKE 케이스
+        if (judgment != null && "RETAKE".equals(judgment.getAiDecision())) {
+            return IssueNextAction.WAIT_RETAKE;
+        }
+
+        // BLOCKING 상태면 WAIT_ADMIN
+        if ("BLOCKING".equals(issue.getIssueHandling())) {
+            return IssueNextAction.WAIT_ADMIN;
+        }
+
+        // MOVE_LOCATION 케이스
+        if ("RESOLVED".equals(issue.getStatus()) && "MOVE_LOCATION".equals(issue.getReasonCode())) {
+            return IssueNextAction.MOVE_LOCATION;
+        }
+
+        // AUTO_RESOLVED 케이스
+        if ("RESOLVED".equals(issue.getStatus())) {
+            return IssueNextAction.AUTO_RESOLVED;
+        }
+
+        // 기본값: NEXT_ITEM
+        return IssueNextAction.NEXT_ITEM;
+    }
+
+    /**
+     * 관리자 다음 행동 계산 (분기표 AdminNextAction 컬럼 기준)
+     */
+    private AdminNextAction calculateAdminNextAction(IssueVO issue, AiJudgmentVO judgment) {
+        // RETAKE 케이스 - 관리자 개입 없음
+        if (judgment != null && "RETAKE".equals(judgment.getAiDecision())) {
+            return AdminNextAction.RETAKE_IMAGE;
+        }
+
+        // RESOLVED 상태면 관리자 액션 없음
+        if ("RESOLVED".equals(issue.getStatus())) {
+            return null;
+        }
+
+        // BLOCKING 상태는 즉시 통화 필요 (NEED_CHECK, STOCK_EXISTS)
+        if ("BLOCKING".equals(issue.getIssueHandling())) {
+            return AdminNextAction.ADMIN_JOIN_CALL;
+        }
+
+        // adminRequired가 true이면 사후 확정 필요 (NON_BLOCKING + adminRequired=true)
+        if (Boolean.TRUE.equals(issue.getAdminRequired())) {
+            return AdminNextAction.ADMIN_CONFIRM_LATER;
+        }
+
+        return null;
+    }
+
+    // ================================================================
+    // WebRTC 후처리 (분기표 D2~D4, D6~D7, D10~D11, S2~S3)
+    // ================================================================
+
+    /**
+     * WebRTC 통화 연결 성공 처리
+     * - 분기표 D3, D6, D10, S2 노드
+     * - urgency=5 (최하위), adminRequired=false, handling=NON_BLOCKING
+     * - 작업자는 즉시 다음 작업 진행, 관리자는 확정 필요
+     * 
+     * @param issueId Issue ID
+     */
+    @Transactional
+    public void handleWebRtcConnected(Long issueId) {
+        log.info("[IssueService] handleWebRtcConnected started. issueId={}", issueId);
+
+        // 1. Issue 조회
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            log.warn("[IssueService] Issue not found. issueId={}", issueId);
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 2. 이미 RESOLVED면 처리 안 함
+        // NOTE: Issue가 이미 RESOLVED면 WebRTC 결과로 상태를 덮어쓰지 않는다.
+        // (MOVE_LOCATION 등 자동 해결 케이스 포함)
+        if ("RESOLVED".equals(issue.getStatus())) {
+            log.info("[IssueService] Issue already resolved. Skip WebRTC processing. issueId={}", issueId);
+            return;
+        }
+
+        // 3. WebRTC CONNECTED 정책 적용
+        issue.setUrgency(5); // 최하위 우선순위
+        issue.setAdminRequired(false); // 관리자 확인 불필요 (통화 완료)
+        issue.setIssueHandling("NON_BLOCKING"); // 작업자 즉시 진행 가능
+
+        // 4. Issue 업데이트
+        issueMapper.updateIssueStatus(issue);
+        log.info("[IssueService] WebRTC CONNECTED processed. issueId={}, urgency=5, adminRequired=false",
+                issueId);
+    }
+
+    /**
+     * WebRTC 통화 연결 실패 처리 (MISSED/REJECTED/TIMEOUT)
+     * - 분기표 D4, D7, D11, S3 노드
+     * - urgency 조정: NEED_CHECK/STOCK_EXISTS → 1, 나머지 → 2
+     * - adminRequired=true 유지, handling=NON_BLOCKING
+     * - 작업자는 계속 진행, 관제 큐 유지
+     * 
+     * @param issueId Issue ID
+     */
+    @Transactional
+    public void handleWebRtcMissed(Long issueId) {
+        log.info("[IssueService] handleWebRtcMissed started. issueId={}", issueId);
+
+        // 1. Issue 조회
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            log.warn("[IssueService] Issue not found. issueId={}", issueId);
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 2. 이미 RESOLVED면 처리 안 함
+        // NOTE: Issue가 이미 RESOLVED면 WebRTC 결과로 상태를 덮어쓰지 않는다.
+        if ("RESOLVED".equals(issue.getStatus())) {
+            log.info("[IssueService] Issue already resolved. Skip WebRTC processing. issueId={}", issueId);
+            return;
+        }
+
+        // 3. AI 판정 결과 조회
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
+        String aiDecision = judgment != null ? judgment.getAiDecision() : "UNKNOWN";
+        String reasonCode = issue.getReasonCode();
+
+        // 4. WebRTC MISSED 정책 적용
+        // NOTE: OUT_OF_STOCK은 reasonCode만 신뢰 (aiDecision은 참고용)
+        // NEED_CHECK 또는 STOCK_EXISTS는 최상위 urgency=1
+        if ("NEED_CHECK".equals(aiDecision) || "STOCK_EXISTS".equals(reasonCode)) {
+            issue.setUrgency(1); // 관제 큐 최상위
+            log.info("[IssueService] NEED_CHECK/STOCK_EXISTS → urgency=1. issueId={}", issueId);
+        } else {
+            issue.setUrgency(2); // 그 외 → urgency=2
+            log.info("[IssueService] Other cases → urgency=2. issueId={}", issueId);
+        }
+
+        issue.setAdminRequired(true); // 관리자 확인 필요 (연결 실패)
+        issue.setIssueHandling("NON_BLOCKING"); // 작업자는 계속 진행 가능
+
+        // 5. Issue 업데이트
+        issueMapper.updateIssueStatus(issue);
+        log.info("[IssueService] WebRTC MISSED processed. issueId={}, urgency={}, adminRequired=true",
+                issueId, issue.getUrgency());
+    }
+
+    // ================================================================
+    // 관리자 확정 (분기표 D14, S7)
+    // ================================================================
+
+    private static final Set<AdminDecision> DAMAGED_ALLOWED = Set.of(
+            AdminDecision.NORMAL, AdminDecision.DAMAGED, AdminDecision.CALLED_OTHER_PROCESS);
+
+    private static final Set<AdminDecision> OUT_OF_STOCK_ALLOWED = Set.of(
+            AdminDecision.FIXED);
+
+    /**
+     * 관리자 확정 처리
+     * - 분기표 D14, S7 노드
+     * - status → RESOLVED
+     * - adminDecision 저장
+     * - resolvedAt 설정
+     * - Inventory Event 기록 (DAMAGED만, 현재는 주석 처리)
+     * 
+     * @param issueId       Issue ID
+     * @param adminDecision 관리자 확정 결과 (NORMAL/DAMAGED/CALLED_OTHER_PROCESS/FIXED)
+     */
+    @Transactional
+    public void confirmIssue(Long issueId, AdminDecision adminDecision) {
+        log.info("[IssueService] confirmIssue started. issueId={}, adminDecision={}",
+                issueId, adminDecision);
+
+        // 1. Issue 조회
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            log.warn("[IssueService] Issue not found. issueId={}", issueId);
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 2. 이미 RESOLVED면 중복 확정 방지
+        if ("RESOLVED".equals(issue.getStatus())) {
+            log.warn("[IssueService] Issue already resolved. issueId={}", issueId);
+            throw new ApiException(ErrorCode.ISSUE_ALREADY_RESOLVED);
+        }
+
+        // 3. adminDecision 검증
+        validateAdminDecision(issue.getIssueType(), adminDecision);
+
+        // 4. 확정 처리
+        issue.setStatus("RESOLVED");
+        issue.setAdminDecision(adminDecision.name());
+        issue.setResolvedAt(java.time.LocalDateTime.now());
+
+        // 5. Issue 업데이트
+        issueMapper.updateIssueStatus(issue);
+        log.info("[IssueService] Admin confirmed. issueId={}, adminDecision={}",
+                issueId, adminDecision);
+
+        // 6. Inventory Event 기록 (DAMAGED 타입 + DAMAGED 확정만)
+        if ("DAMAGED".equals(issue.getIssueType()) && AdminDecision.DAMAGED.equals(adminDecision)) {
+            // TODO: Inventory Event 시스템 구현 후 활성화
+            // eventService.recordInventoryEvent(
+            // issue.getProductId(),
+            // "PICK_DAMAGED_FINAL",
+            // -1,
+            // issueId
+            // );
+            log.info(
+                    "[IssueService] Inventory event required (currently commented). issueId={}, type=PICK_DAMAGED_FINAL, qty=-1",
+                    issueId);
+        }
+    }
+
+    /**
+     * adminDecision 유효성 검증
+     */
+    private void validateAdminDecision(String issueType, AdminDecision adminDecision) {
+        if ("DAMAGED".equals(issueType)) {
+            // DAMAGED 타입 허용 값 검증
+            if (!DAMAGED_ALLOWED.contains(adminDecision)) {
+                throw new ApiException(ErrorCode.INVALID_ADMIN_DECISION);
+            }
+        } else if ("OUT_OF_STOCK".equals(issueType)) {
+            // OUT_OF_STOCK 타입 허용 값 검증
+            if (!OUT_OF_STOCK_ALLOWED.contains(adminDecision)) {
+                throw new ApiException(ErrorCode.INVALID_ADMIN_DECISION);
+            }
+        } else {
+            throw new ApiException(ErrorCode.INVALID_ISSUE_TYPE);
+        }
     }
 }
