@@ -109,11 +109,11 @@
 
     <!-- 관리자 관제 리스트 조회 -->
     <select id="findAdminIssues" resultType="lookie.backend.domain.issue.dto.AdminIssueSummary">
-        SELECT
+        SELECT DISTINCT
             i.issue_id AS issueId,
             i.issue_type AS issueType,
             i.status,
-            i.urgency,
+            COALESCE(i.urgency, 5) AS urgency,
             i.worker_id AS workerId,
             u.name AS workerName,
             p.product_name AS productName,
@@ -139,7 +139,7 @@
           AND i.status = #{req.status}
         <choose>
             <when test="req.status.name() == 'OPEN'">
-                ORDER BY i.urgency ASC, i.created_at DESC
+                ORDER BY COALESCE(i.urgency, 5) ASC, i.created_at DESC
             </when>
             <otherwise>
                 ORDER BY i.resolved_at DESC
@@ -150,7 +150,7 @@
 
     <!-- 관리자 관제 리스트 카운트 -->
     <select id="countAdminIssues" resultType="long">
-        SELECT count(*)
+        SELECT count(DISTINCT i.issue_id)
         FROM issues i
         JOIN zone_locations zl ON i.zone_location_id = zl.location_id
         JOIN zones z ON zl.zone_id = z.zone_id
@@ -158,5 +158,4 @@
         WHERE aa.admin_id = #{adminId}
           AND i.status = #{req.status}
     </select>
-
 </mapper>
