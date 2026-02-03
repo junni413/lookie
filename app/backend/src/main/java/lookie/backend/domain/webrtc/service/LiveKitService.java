@@ -161,6 +161,9 @@ public class LiveKitService {
         // 리소스 정리
         clearUserStatus(call.getCalleeId());
         closeLiveKitRoom(call.getRoomName());
+
+        // [WebSocket] 통화 종료 알림 전송
+        sendSignal(call.getId(), WebRtcSignalType.ENDED, null);
     }
 
     /**
