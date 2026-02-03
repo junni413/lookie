@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 import lookie.backend.domain.webrtc.event.CallEndedEvent;
 import lookie.backend.domain.webrtc.event.CallRejectedEvent;
 
@@ -106,7 +107,7 @@ public class LiveKitService {
         String token = generateToken(call.getCalleeId().toString(), call.getRoomName());
 
         // 5. [WebSocket] Caller에게 수락 알림 전송 (Polling 대체)
-        sendSignal(call.getId(), WebRtcSignalType.ACCEPTED, call.getRoomName());
+        sendSignal(call.getId(), WebRtcSignalType.ACCEPTED, call.getRoomName(), call.getCalleeId());
 
         return token;
     }
@@ -137,7 +138,7 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [WebSocket] Caller에게 거절 알림 전송
-        sendSignal(call.getId(), WebRtcSignalType.REJECTED, null);
+        sendSignal(call.getId(), WebRtcSignalType.REJECTED, null, call.getCalleeId());
     }
 
     /**
@@ -158,12 +159,18 @@ public class LiveKitService {
                     call.getId(), call.getIssueId(), call.getCallerId(), call.getCalleeId()));
         }
 
-        // 리소스 정리
-        clearUserStatus(call.getCalleeId());
-        closeLiveKitRoom(call.getRoomName());
+        Long senderId = getCurrentUserId(); // 현재 종료 요청한 사용자 (없으면 null or 0L)
 
-        // [WebSocket] 통화 종료 알림 전송
-        sendSignal(call.getId(), WebRtcSignalType.ENDED, null);
+        try {
+            // 리소스 정리 (에러 발생해도 시그널은 가야 함)
+            clearUserStatus(call.getCalleeId());
+            closeLiveKitRoom(call.getRoomName());
+        } catch (Exception e) {
+            log.error("[endCall] 리소스 정리 중 오류 발생: {}", e.getMessage());
+        } finally {
+            // [WebSocket] 통화 종료 알림 전송 (필수 보장)
+            sendSignal(call.getId(), WebRtcSignalType.ENDED, null, senderId);
+        }
     }
 
     /**
@@ -205,7 +212,7 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [WebSocket] Callee에게 취소 알림 전송 (벨소리 중단용)
-        sendSignal(call.getId(), WebRtcSignalType.CANCELED, null);
+        sendSignal(call.getId(), WebRtcSignalType.CANCELED, null, call.getCallerId());
     }
 
     // --- 내부 메서드 ---
@@ -292,10 +299,23 @@ public class LiveKitService {
      * WebSocket 시그널 전송 공통 메서드
      * Destination: /topic/video-calls/{callId}
      */
-    private void sendSignal(Long callId, WebRtcSignalType type, String roomName) {
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName);
+    private void sendSignal(Long callId, WebRtcSignalType type, String roomName, Long senderId) {
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName, senderId);
 
         messagingTemplate.convertAndSend("/topic/video-calls/" + callId, payload);
-        log.info("[WebSocket] Signal sent: callId={}, type={}", callId, type);
+        log.info("[WebSocket] Signal sent: callId={}, type={}, senderId={}", callId, type, senderId);
+    }
+
+    /**
+     * SecurityContext에서 현재 사용자 ID 추출
+     */
+    private Long getCurrentUserId() {
+        try {
+            String userId = SecurityContextHolder.getContext().getAuthentication().getName();
+            return Long.parseLong(userId);
+        } catch (Exception e) {
+            log.warn("[getCurrentUserId] 사용자 ID 추출 실패: {}", e.getMessage());
+            return null;
+        }
     }
 }
