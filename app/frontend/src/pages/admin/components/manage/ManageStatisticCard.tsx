@@ -1,10 +1,11 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/utils/cn";
-import { Users, Activity } from "lucide-react";
+import { getZoneStyle } from "@/utils/zoneUtils";
+import type { ZoneStatus } from "@/mocks/mockData";
 
 interface ManageStatisticCardProps {
     zoneName: string;
-    status: "NORMAL" | "BUSY" | "ISSUE";
+    status: ZoneStatus;
     workerCount: number;
     workRate: number;
 }
@@ -15,35 +16,40 @@ export default function ManageStatisticCard({
     workerCount,
     workRate
 }: ManageStatisticCardProps) {
-    const statusDot = {
-        NORMAL: "bg-emerald-500",
-        BUSY: "bg-amber-500",
-        ISSUE: "bg-rose-500"
-    };
+    const style = getZoneStyle(status);
 
     return (
-        <Card className="border-0 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] hover:shadow-[0_4px_12px_-2px_rgba(0,0,0,0.08)] bg-white rounded-2xl h-full transition-all">
-            <CardContent className="p-5 flex flex-col justify-between h-full">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-slate-800">{zoneName}</h3>
-                    <div className={cn("w-2 h-2 rounded-full ring-2 ring-offset-1 ring-offset-white", statusDot[status])} />
+        <Card className="border-0 shadow-sm hover:shadow-md bg-white transition-all duration-300 rounded-2xl h-full group ring-1 ring-slate-100/80 cursor-pointer">
+            <CardContent className="p-5 h-full flex items-center gap-3">
+                {/* 왼쪽: 원형 구역 배지 */}
+                <div className="shrink-0 w-14 h-14 rounded-full bg-[#EEF2FF] flex items-center justify-center transition-transform group-hover:scale-110">
+                    <span className="text-2xl font-bold text-primary">
+                        {zoneName.replace(/^zone\s*/i, '')}
+                    </span>
                 </div>
 
-                {/* Stats Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="flex flex-col">
-                        <span className="text-xs font-medium text-slate-400 mb-0.5">Workers</span>
-                        <div className="flex items-center gap-1.5">
-                            <Users size={14} className="text-slate-300" />
-                            <span className="text-xl font-bold text-slate-700 tracking-tight">{workerCount}</span>
+                {/* 오른쪽: 배지 및 정보 */}
+                <div className="flex-1 flex flex-col justify-between h-full py-0">
+                    {/* 상단: 상태 배지 */}
+                    <div className="flex justify-end">
+                        <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1", style.badge)}>
+                            {style.badgeIcon}
+                            <span>{style.badgeLabel}</span>
                         </div>
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-xs font-medium text-slate-400 mb-0.5">Rate</span>
-                        <div className="flex items-center gap-1.5">
-                            <Activity size={14} className="text-slate-300" />
-                            <span className="text-xl font-bold text-slate-700 tracking-tight">{workRate}%</span>
+
+                    {/* 하단: 작업자 및 진행률 */}
+                    <div className="flex items-center gap-4">
+                        {/* 작업자 */}
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs font-medium text-slate-400 whitespace-nowrap">작업자</span>
+                            <span className="text-base font-bold text-slate-800 whitespace-nowrap">{workerCount}명</span>
+                        </div>
+
+                        {/* 진행률 */}
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs font-medium text-slate-400 whitespace-nowrap">진행률</span>
+                            <span className="text-base font-bold text-slate-800 whitespace-nowrap">{workRate}%</span>
                         </div>
                     </div>
                 </div>

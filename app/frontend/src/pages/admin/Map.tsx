@@ -2,14 +2,11 @@ import { useEffect, useState } from "react";
 import { manageService, type ZoneStat } from "@/services/manageService";
 import type { DB_Worker, ZoneLayout } from "@/types/db";
 import ZoneSummaryCard from "./components/map/ZoneSummaryCard";
-import ZoneDetailPanel from "./components/map/ZoneDetailPanel";
+import ZoneMapModal from "./components/map/ZoneMapModal";
 import WorkerList from "./components/map/WorkerList";
-import { X, Layers, User } from "lucide-react";
-import { Button } from "@/components/ui/button";
-
 import { cn } from "@/utils/cn";
 
-type RightPanelView = "MAP" | "LIST" | null;
+import AdminPageHeader from "@/components/layout/AdminPageHeader";
 
 export default function Map() {
     const [stats, setStats] = useState<ZoneStat[]>([]);
@@ -18,20 +15,23 @@ export default function Map() {
     const [error, setError] = useState<string | null>(null);
 
     // Interaction State
+    const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+
+    // Panel State
     const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
-    const [rightPanelView, setRightPanelView] = useState<RightPanelView>(null);
+    const [isWorkerPanelOpen, setIsWorkerPanelOpen] = useState(false);
     const [selectedLayout, setSelectedLayout] = useState<ZoneLayout | null>(null);
 
     useEffect(() => {
         loadData();
     }, []);
 
-    // Load Layout when Zone is selected for MAP view
+    // Load Layout when Zone is selected for MAP modal
     useEffect(() => {
-        if (selectedZoneId !== null && rightPanelView === 'MAP') {
+        if (selectedZoneId !== null && isMapModalOpen) {
             loadZoneLayout(selectedZoneId);
         }
-    }, [selectedZoneId, rightPanelView]);
+    }, [selectedZoneId, isMapModalOpen]);
 
     const loadData = async () => {
         setLoading(true);
@@ -60,31 +60,47 @@ export default function Map() {
         }
     };
 
-    // 1. Click on Card Body -> Show Map
+    // 1. Click on Card Body -> Show Map Modal
     const handleCardClick = (zoneId: number) => {
-        if (selectedZoneId === zoneId && rightPanelView === 'MAP') {
-            handleClosePanel();
+        setSelectedZoneId(zoneId);
+        setIsMapModalOpen(true);
+    };
+
+    // 2. Click on Zone List Button -> Toggle Worker Panel
+    const handleListButtonClick = (zoneId: number) => {
+        if (selectedZoneId === zoneId && isWorkerPanelOpen) {
+            // Close if already open for this zone
+            setIsWorkerPanelOpen(false);
+            setSelectedZoneId(null);
         } else {
+            // Open for new zone
             setSelectedZoneId(zoneId);
-            setRightPanelView("MAP");
+            setIsWorkerPanelOpen(true);
         }
     };
 
-    // 2. Click on Zone Name -> Show List
-    const handleNameClick = (zoneId: number) => {
-        if (selectedZoneId === zoneId && rightPanelView === 'LIST') {
-            handleClosePanel();
-        } else {
-            setSelectedZoneId(zoneId);
-            setRightPanelView("LIST");
+    const handleCloseMapModal = () => {
+        setIsMapModalOpen(false);
+        // Don't reset selectedZoneId if worker panel is open, 
+        // but here map modal takes full focus, so maybe we should?
+        // Let's keep separate logic.
+        if (!isWorkerPanelOpen) {
+            setSelectedZoneId(null);
         }
     };
 
-    const handleClosePanel = () => {
-        // Only close right panel, keep selection potentially? 
-        // Requirement implies simpler toggle.
+    const handleCloseWorkerPanel = () => {
+        setIsWorkerPanelOpen(false);
         setSelectedZoneId(null);
-        setRightPanelView(null);
+    };
+
+    // 3. WorkerList에서 구역 필터 변경 -> 왼쪽 맵도 동기화
+    const handleWorkerFilterChange = (zoneId: number | 'all') => {
+        if (zoneId === 'all') {
+            setSelectedZoneId(null);
+        } else {
+            setSelectedZoneId(zoneId);
+        }
     };
 
     if (loading && stats.length === 0) {
@@ -97,78 +113,76 @@ export default function Map() {
 
     const selectedZoneName = stats.find(s => s.zone_id === selectedZoneId)?.name || "";
 
-    // Derived state for layout calculation
-    const isPanelOpen = rightPanelView && selectedZoneId !== null;
-
     return (
-        <div className="flex flex-col h-[calc(100vh-theme(spacing.24))] space-y-4">
-
-
-            <div className="flex-1 flex overflow-hidden min-h-0 gap-4">
-                {/* Main Content Area (Center) */}
+        <div className="flex flex-col h-full relative">
+            <AdminPageHeader
+                title="현장 관제 맵"
+                description="공장 전체의 구역 배치와 작업자 현황을 시각적으로 모니터링합니다."
+            />
+            <div className="flex-1 flex overflow-hidden min-h-0 gap-4 h-full pb-6 px-8">
+                {/* Left Panel: Zone Cards Grid - Resizes when panel opens */}
                 <div className={cn(
-                    "flex-1 flex flex-col overflow-y-auto transition-all duration-300 rounded-xl border border-slate-200 bg-white/50 shadow-sm",
-                    isPanelOpen ? "mr-0" : ""
+                    "flex flex-col overflow-y-auto transition-all duration-300 rounded-xl border border-slate-200 bg-white/50 shadow-sm h-full",
+                    isWorkerPanelOpen ? "w-[60%]" : "w-full"
                 )}>
-
                     {/* Zone Cards Grid */}
-                    <div className="p-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mx-auto">
+                    <div className="p-6 h-full">
+                        <div className={cn(
+                            "grid gap-4 w-full mx-auto h-full content-stretch",
+                            isWorkerPanelOpen ? "grid-cols-1 xl:grid-cols-2" : "grid-cols-1 md:grid-cols-2"
+                        )}>
                             {stats.map(stat => (
-                                <ZoneSummaryCard
-                                    key={stat.zone_id}
-                                    zoneName={stat.name}
-                                    status={stat.status}
-                                    workerCount={stat.worker_count}
-                                    workRate={stat.work_rate}
-                                    isSelected={selectedZoneId === stat.zone_id}
-                                    onCardClick={() => handleCardClick(stat.zone_id)}
-                                    onNameClick={() => handleNameClick(stat.zone_id)}
-                                />
+                                <div key={stat.zone_id} className="h-full">
+                                    <ZoneSummaryCard
+                                        zoneName={stat.name}
+                                        status={stat.status}
+                                        workerCount={stat.worker_count}
+                                        workRate={stat.work_rate}
+                                        isSelected={selectedZoneId === stat.zone_id}
+                                        onCardClick={() => handleCardClick(stat.zone_id)}
+                                        onNameClick={() => handleListButtonClick(stat.zone_id)}
+                                    />
+                                </div>
                             ))}
                         </div>
                     </div>
                 </div>
 
-                {/* Right Panel Container (Flex Item) */}
-                {isPanelOpen && (
-                    <div className="h-full flex flex-col bg-white border rounded-xl shadow-lg w-[480px] shrink-0 transition-all overflow-hidden z-10">
-                        {/* Header */}
-                        <div className="flex items-center justify-between p-4 border-b bg-white shrink-0">
-                            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                {rightPanelView === 'MAP' ? (
-                                    <><Layers className="text-primary w-5 h-5" /> {selectedZoneName} 공간 구조</>
-                                ) : (
-                                    <><User className="text-primary w-5 h-5" /> {selectedZoneName} 작업자 현황</>
-                                )}
-                            </h2>
-                            <Button variant="ghost" size="icon" onClick={handleClosePanel} className="h-8 w-8 hover:bg-slate-100 rounded-full">
-                                <X size={18} />
-                            </Button>
+                {/* Right Panel: Worker List - Slides in */}
+                <div className={cn(
+                    "flex flex-col rounded-xl border border-slate-200 bg-white shadow-xl h-full transition-all duration-300 overflow-hidden",
+                    isWorkerPanelOpen ? "w-[40%] translate-x-0 opacity-100 ml-2" : "w-0 translate-x-full opacity-0 ml-0 border-0"
+                )}>
+                    {isWorkerPanelOpen && (
+                        <div className="flex-1 overflow-hidden p-0">
+                            <WorkerList
+                                currentZoneId={selectedZoneId}
+                                allWorkers={workers}
+                                onFilterChange={handleWorkerFilterChange}
+                                onClose={handleCloseWorkerPanel}
+                            />
                         </div>
+                    )}
+                </div>
 
-                        {/* Content */}
-                        <div className="flex-1 overflow-hidden p-0 relative bg-slate-50 flex flex-col h-full">
-                            {/* Enforce flex-col and h-full to fill the panel regardless of content */}
-                            {rightPanelView === 'MAP' ? (
-                                <div className="flex-1 h-full overflow-hidden">
-                                    <ZoneDetailPanel
-                                        layout={selectedLayout}
-                                        allWorkers={workers}
-                                    />
-                                </div>
-                            ) : (
-                                <div className="flex-1 h-full overflow-hidden">
-                                    <WorkerList
-                                        currentZoneId={selectedZoneId}
-                                        allWorkers={workers}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
             </div>
+
+            {/* Zone Map Modal */}
+            <ZoneMapModal
+                isOpen={isMapModalOpen}
+                onClose={handleCloseMapModal}
+                zoneName={selectedZoneName}
+                layout={selectedLayout}
+                workers={workers}
+            />
+
+            {/* 스크롤바 숨김 스타일 */}
+            <style>{`
+                .overflow-y-auto::-webkit-scrollbar {
+                    width: 0px;
+                    display: none;
+                }
+            `}</style>
         </div>
     );
 }

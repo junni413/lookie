@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { issueService } from "@/services/issueService";
 import type { IssueResponse } from "@/types/db";
 import IssueList from "./components/issue/IssueList";
@@ -61,79 +62,98 @@ export default function Issue() {
     const showDetailOnLeft = selectedIssue && selectedIssue.status === "RESOLVED";
     const showDetailOnRight = selectedIssue && selectedIssue.status === "OPEN";
 
+
+
+    // ... (other imports)
+
+    // ... (Page Component)
+
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
-            {/* LEFT COLUMN: Open List OR Resolved Detail */}
-            <section className="col-span-1 h-full flex flex-col min-h-0">
-                {showDetailOnLeft ? (
-                    <IssueDetail
-                        issue={selectedIssue}
-                        onUpdate={() => {
-                            fetchIssues();
-                        }}
-                        onClose={() => setSelectedId(null)}
-                    />
-                ) : (
-                    <Card className="h-full border-0 shadow-sm border rounded-xl flex flex-col overflow-hidden bg-card">
-                        <div className="flex items-center justify-between p-6 border-b shrink-0">
-                            <CardTitle className="text-xl">판정 요청 목록</CardTitle>
-                            <div className="flex bg-muted rounded-lg p-1">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className={cn("h-7 px-3 text-xs", listSortKey === "TIME" && "bg-background shadow-sm")}
-                                    onClick={() => setListSortKey("TIME")}
-                                >
-                                    시간순
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className={cn("h-7 px-3 text-xs", listSortKey === "PRIORITY" && "bg-background shadow-sm")}
-                                    onClick={() => setListSortKey("PRIORITY")}
-                                >
-                                    긴급도순
-                                </Button>
+        <div className="flex flex-col h-full overflow-hidden relative">
+            <AdminPageHeader
+                title="이슈 관리"
+                description="작업자가 요청한 판정 내역을 검토하고 처리합니다."
+            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0 px-8 pb-6">
+                {/* LEFT COLUMN: Open List OR Resolved Detail */}
+                <section className="col-span-1 h-full flex flex-col min-h-0">
+                    {showDetailOnLeft ? (
+                        <IssueDetail
+                            issue={selectedIssue}
+                            onUpdate={() => {
+                                fetchIssues();
+                            }}
+                            onClose={() => setSelectedId(null)}
+                        />
+                    ) : (
+                        <Card className="h-full border-0 shadow-sm border rounded-xl flex flex-col overflow-hidden bg-card">
+                            <div className="flex items-center justify-between p-6 border-b shrink-0">
+                                <CardTitle className="text-xl">판정 요청 목록</CardTitle>
+                                <div className="flex bg-muted rounded-lg p-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={cn("h-7 px-3 text-xs", listSortKey === "TIME" && "bg-background shadow-sm")}
+                                        onClick={() => setListSortKey("TIME")}
+                                    >
+                                        시간순
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={cn("h-7 px-3 text-xs", listSortKey === "PRIORITY" && "bg-background shadow-sm")}
+                                        onClick={() => setListSortKey("PRIORITY")}
+                                    >
+                                        긴급도순
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
-                        <CardContent className="flex-1 overflow-y-auto p-4 bg-muted/10">
-                            <IssueList
-                                issues={sortedOpen}
-                                selectedId={selectedId}
-                                onSelect={setSelectedId}
-                            />
-                        </CardContent>
-                    </Card>
-                )}
-            </section>
+                            <CardContent className="flex-1 overflow-y-auto p-4 bg-muted/10">
+                                <IssueList
+                                    issues={sortedOpen}
+                                    selectedId={selectedId}
+                                    onSelect={setSelectedId}
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
+                </section>
 
-            {/* RIGHT COLUMN: Resolved List OR Open Detail */}
-            <section className="col-span-1 h-full flex flex-col min-h-0">
-                {showDetailOnRight ? (
-                    <IssueDetail
-                        issue={selectedIssue}
-                        onUpdate={() => {
-                            fetchIssues();
-                            setSelectedId(null);
-                        }}
-                        onClose={() => setSelectedId(null)}
-                    />
-                ) : (
-                    <Card className="h-full border-0 shadow-sm border rounded-xl flex flex-col overflow-hidden">
-                        <CardHeader className="p-6 border-b shrink-0">
-                            <CardTitle className="text-xl">처리 완료 목록</CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex-1 overflow-y-auto p-4 bg-muted/10">
-                            <IssueList
-                                issues={sortedResolved}
-                                selectedId={selectedId}
-                                onSelect={setSelectedId}
-                            />
-                        </CardContent>
-                    </Card>
-                )}
-            </section>
+                {/* RIGHT COLUMN: Resolved List OR Open Detail */}
+                <section className="col-span-1 h-full flex flex-col min-h-0">
+                    {showDetailOnRight ? (
+                        <IssueDetail
+                            issue={selectedIssue}
+                            onUpdate={() => {
+                                fetchIssues();
+                                setSelectedId(null);
+                            }}
+                            onClose={() => setSelectedId(null)}
+                        />
+                    ) : (
+                        <Card className="h-full border-0 shadow-sm border rounded-xl flex flex-col overflow-hidden">
+                            <CardHeader className="p-6 border-b shrink-0">
+                                <CardTitle className="text-xl">처리 완료 목록</CardTitle>
+                            </CardHeader>
+                            <CardContent className="flex-1 overflow-y-auto p-4 bg-muted/10">
+                                <IssueList
+                                    issues={sortedResolved}
+                                    selectedId={selectedId}
+                                    onSelect={setSelectedId}
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
+                </section>
+            </div>
+
+            {/* 스크롤바 숨김 스타일 */}
+            <style>{`
+                .overflow-y-auto::-webkit-scrollbar {
+                    width: 0px;
+                    display: none;
+                }
+            `}</style>
         </div>
-
     );
 }

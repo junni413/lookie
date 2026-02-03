@@ -1,5 +1,6 @@
 import type { DB_Worker } from "@/types/db";
 import ManageWorkerCard from "./ManageWorkerCard";
+import { Users } from "lucide-react";
 
 interface ManageZoneColumnProps {
     zoneId: number;
@@ -12,7 +13,7 @@ interface ManageZoneColumnProps {
 export default function ManageZoneColumn({ zoneId, zoneName, workers, onDrop, highlightWorkerIds }: ManageZoneColumnProps) {
 
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault(); // Essential to allow drop
+        e.preventDefault();
     };
 
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -23,7 +24,6 @@ export default function ManageZoneColumn({ zoneId, zoneName, workers, onDrop, hi
         }
     };
 
-    // Custom drag start handler to pass down
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, workerId: number) => {
         e.dataTransfer.setData("workerId", String(workerId));
         e.dataTransfer.effectAllowed = "move";
@@ -31,17 +31,12 @@ export default function ManageZoneColumn({ zoneId, zoneName, workers, onDrop, hi
 
     return (
         <div
-            className="flex flex-col bg-slate-50/50 rounded-2xl h-full border border-transparent hover:border-blue-100 transition-colors"
+            className="flex flex-col bg-white rounded-xl h-full border border-slate-200 hover:border-primary/30 transition-colors shadow-sm"
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            {/* Header */}
-            <div className="p-4 text-center border-b border-slate-100/50">
-                <h3 className="text-xl font-bold text-slate-800">{zoneName}</h3>
-            </div>
-
             {/* Droppable Area */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-3 min-h-[300px]">
+            <div className="flex-1 p-3 overflow-y-auto space-y-2 min-h-[300px]">
                 {workers.map(worker => (
                     <ManageWorkerCard
                         key={worker.worker_id}
@@ -52,8 +47,11 @@ export default function ManageZoneColumn({ zoneId, zoneName, workers, onDrop, hi
                 ))}
 
                 {workers.length === 0 && (
-                    <div className="h-full flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
-                        Drop Worker Here
+                    <div className="h-full flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-lg">
+                        <div className="text-center">
+                            <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                            <p className="text-xs">작업자를 드래그하세요</p>
+                        </div>
                     </div>
                 )}
             </div>

@@ -1,25 +1,42 @@
 import { useEffect, useState, useMemo } from "react";
+import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import StatusCard from "./components/dashboard/StatusCard";
 import ZoneGrid from "./components/dashboard/ZoneGrid";
 import IssueList from "./components/issue/IssueList";
 import { adminDashboardMock } from "@/mocks/mockData";
+import { manageService } from "@/services/manageService";
 import { issueService } from "@/services/issueService";
 import type { IssueResponse } from "@/types/db";
 import { Users, Package, CheckCircle2, History } from "lucide-react";
 import { cn } from "@/utils/cn";
+import type { ZoneItem } from "./components/dashboard/ZoneGrid";
 
 type SortKey = "TIME" | "PRIORITY";
 const priorityMap: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
 export default function Dashboard() {
-  const { summary, zones } = adminDashboardMock;
+  const { summary } = adminDashboardMock;
   const [issues, setIssues] = useState<IssueResponse[]>([]);
+  const [zoneData, setZoneData] = useState<ZoneItem[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("TIME");
 
   useEffect(() => {
+    // Fetch Issues
     issueService.getIssues().then((data) => {
       const unresolved = data.filter((i) => i.status === "OPEN");
       setIssues(unresolved);
+    });
+
+    // Fetch Zone Stats
+    manageService.getZoneStats().then((data) => {
+      const formattedZones: ZoneItem[] = data.map(z => ({
+        id: z.zone_id,
+        name: z.name,
+        status: z.status,
+        working: z.worker_count,
+        work_rate: z.work_rate
+      }));
+      setZoneData(formattedZones);
     });
   }, []);
 
@@ -35,20 +52,21 @@ export default function Dashboard() {
     return arr;
   }, [issues, sortKey]);
 
+
+
   return (
     // Global Container: strict h-full to fit parent, no overflow on body
     // 🔒 LOCKED LAYOUT: The container structure and Grid Split (50/50) are FIXED. Do not modify layout sizing.
     // SPACING UPDATE: Red (Top/Left 30px) > Blue (Right/Bottom 24px)
-    // Global Container: strict h-full to fit parent, no overflow on body
-    // 🔒 LOCKED LAYOUT: The container structure and Grid Split (50/50) are FIXED. Do not modify layout sizing.
-    // SPACING UPDATE: Red (Top/Left 30px) > Blue (Right/Bottom 24px)
-    // Global Container: strict h-full to fit parent, no overflow on body
-    // 🔒 LOCKED LAYOUT: The container structure and Grid Split (50/50) are FIXED. Do not modify layout sizing.
-    // SPACING UPDATE: Red (Top/Left 30px) > Blue (Right/Bottom 24px)
     <div className="flex flex-col h-full bg-[#f8f9fc] overflow-hidden relative">
+      <AdminPageHeader
+        title="통합 대시보드"
+        description="전체 구역의 실시간 현황과 판정 요청을 한눈에 확인합니다."
+        className="pb-0"
+      />
 
       {/* Top Section: Tight Packing (pb-5 ensures gap to bottom section) */}
-      <div className="shrink-0 pt-[30px] pr-6 pb-5 pl-[30px]">
+      <div className="shrink-0 pt-6 pr-6 pb-5 pl-[30px]">
         <section className="grid grid-cols-4 gap-3">
           <StatusCard
             title="작업중인 작업자"
@@ -87,7 +105,7 @@ export default function Dashboard() {
         {/* Left: Zone Cards (Grid) - Takes remaining width */}
         <div className="flex-1 flex flex-col min-h-0 relative h-[calc(100%+20px)] -mt-5">
           <div className="absolute inset-0 pl-[30px] pr-1 pt-5">
-            <ZoneGrid zones={zones} />
+            <ZoneGrid zones={zoneData} />
           </div>
         </div>
 
@@ -143,6 +161,14 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* 스크롤바 숨김 스타일 */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 0px;
+          display: none;
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 
 import { manageService, type ZoneStat } from "@/services/manageService";
@@ -115,14 +116,17 @@ export default function Manage() {
     // Optimized diff check
     const hasChanges = hasWorkerStateChanged(workers, lastAppliedWorkers);
 
+
     return (
-        <div className="flex flex-col h-[calc(100vh-60px)] space-y-4 pt-2 pb-2 px-1">
-            {/* Header Area */}
-            <div className="flex justify-end pb-4 px-2">
+        <div className="flex flex-col h-full overflow-hidden relative">
+            <AdminPageHeader
+                title="작업자 배치 관리"
+                description="각 구역에 작업자를 배치하거나 AI 추천 배치를 적용합니다."
+            >
                 <div className="flex gap-2">
                     <Button
                         onClick={handleAiReallocate}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 shadow-sm"
+                        className="bg-primary hover:bg-primary/90 text-white gap-2 shadow-sm"
                         size="sm"
                     >
                         <Wand2 size={16} />
@@ -165,53 +169,70 @@ export default function Manage() {
                         적용
                     </Button>
                 </div>
-            </div>
+            </AdminPageHeader>
 
-            {/* Top Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-                {stats.map(stat => (
-                    <ManageStatisticCard
-                        key={stat.zone_id}
-                        zoneName={stat.name}
-                        status={stat.status}
-                        workerCount={workers.filter(w => w.current_zone_id === stat.zone_id).length} // Dynamic count
-                        workRate={stat.work_rate}
-                    />
-                ))}
-            </div>
-
-            {/* Bottom Zones Columns */}
-            <div className="flex-1 overflow-x-auto min-h-0 pb-2">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-full min-w-[1000px] lg:min-w-0">
+            <div className="flex-1 flex flex-col min-h-0 px-8 pb-6 space-y-5 overflow-hidden">
+                {/* Top Stats Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
                     {stats.map(stat => (
-                        <ManageZoneColumn
+                        <ManageStatisticCard
                             key={stat.zone_id}
-                            zoneId={stat.zone_id}
                             zoneName={stat.name}
-                            workers={workers.filter(w => w.current_zone_id === stat.zone_id)}
-                            onDrop={handleDrop}
+                            status={stat.status}
+                            workerCount={workers.filter(w => w.current_zone_id === stat.zone_id).length} // Dynamic count
+                            workRate={stat.work_rate}
                         />
                     ))}
-
-                    {/* Unassigned / Waiting Area (Optional, if we have workers with null zone) */}
-                    {workers.some(w => !w.current_zone_id) && (
-                        <ManageZoneColumn
-                            zoneId={0} // 0 for unassigned
-                            zoneName="대기중"
-                            workers={workers.filter(w => !w.current_zone_id)}
-                            onDrop={handleDrop}
-                        />
-                    )}
                 </div>
+
+                {/* Bottom Zones Columns */}
+                <div className="flex-1 overflow-x-auto min-h-0 pb-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 h-full min-w-[1000px] lg:min-w-0">
+                        {stats.map(stat => (
+                            <ManageZoneColumn
+                                key={stat.zone_id}
+                                zoneId={stat.zone_id}
+                                zoneName={stat.name}
+                                workers={workers.filter(w => w.current_zone_id === stat.zone_id)}
+                                onDrop={handleDrop}
+                            />
+                        ))}
+
+                        {/* Unassigned / Waiting Area (Optional, if we have workers with null zone) */}
+                        {workers.some(w => !w.current_zone_id) && (
+                            <ManageZoneColumn
+                                zoneId={0} // 0 for unassigned
+                                zoneName="대기중"
+                                workers={workers.filter(w => !w.current_zone_id)}
+                                onDrop={handleDrop}
+                            />
+                        )}
+                    </div>
+                </div>
+                {/* AI Modal */}
+                <AiReallocationModal
+                    isOpen={isAiModalOpen}
+                    onClose={() => setIsAiModalOpen(false)}
+                    onApply={handleAiApply}
+                    currentWorkers={workers}
+                    zoneStats={stats}
+                />
             </div>
-            {/* AI Modal */}
-            <AiReallocationModal
-                isOpen={isAiModalOpen}
-                onClose={() => setIsAiModalOpen(false)}
-                onApply={handleAiApply}
-                currentWorkers={workers}
-                zoneStats={stats}
-            />
+
+            {/* 스크롤바 숨김 스타일 */}
+            <style>{`
+                .overflow-y-auto::-webkit-scrollbar,
+                .overflow-x-auto::-webkit-scrollbar {
+                    width: 0px;
+                    height: 0px;
+                    display: none;
+                }
+                .overflow-y-auto,
+                .overflow-x-auto {
+                    -ms-overflow-style: none;
+                    scrollbar-width: none;
+                }
+            `}</style>
         </div>
     );
 }

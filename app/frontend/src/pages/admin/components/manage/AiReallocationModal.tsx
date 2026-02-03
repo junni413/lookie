@@ -54,7 +54,7 @@ export default function AiReallocationModal({
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 bg-white border-b shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                        <div className="p-2 bg-primary/10 rounded-lg text-primary">
                             <Wand2 size={24} />
                         </div>
                         <div>
@@ -97,7 +97,7 @@ export default function AiReallocationModal({
                         취소
                     </Button>
                     <Button
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 px-6"
+                        className="bg-primary hover:bg-primary/90 text-white gap-2 px-6"
                         onClick={() => onApply(simulatedWorkers)}
                     >
                         <Wand2 size={16} />
