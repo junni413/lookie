@@ -16,11 +16,11 @@ logger = logging.getLogger("AI_SERVER")
 # Lifespan: 서버 시작/종료 시점 훅
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. 시작 시 모델 로드
+    # 1. 시작 시 모델 로드 (동기 함수지만 내부에서 client 생성)
     vision_service.load_models()
     yield
-    # 2. 종료 시 정리
-    vision_service.unload_models()
+    # 2. 종료 시 정리 (★ await 추가 필수)
+    await vision_service.unload_models()
 
 # 앱 생성
 app = FastAPI(lifespan=lifespan)
