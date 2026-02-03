@@ -1,21 +1,66 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import type { MobileLayoutContext } from "../../components/layout/MobileLayout";
 import { taskService } from "../../services/taskService";
-import { workLogApi } from "../../services/attend.api"; // API 추가
+import { workLogApi } from "../../services/attend.api";
 
 type WorkStatus = "WORKING" | "PAUSED";
 type Stats = { done: number; issue: number; waiting: number };
 
-// 구역 카드 컴포넌트
-function ZoneCard({
-  zone,
-  status,
-}: {
-  zone: string;
-  status: string;
-}) {
+// ✅ 백 응답(스웨거 기준)
+type WorkLogStatus = "START" | "PAUSE" | "RESUME" | "END";
+type ApiResponse<T> = {
+  success: boolean;
+  message: string;
+  errorCode: string | null;
+  data: T;
+};
+type WorkLogData = {
+  workLogId: number;
+  workerId: number;
+  workerName: string;
+  zoneId: number | null;
+  currentStatus: WorkLogStatus;
+  startedAt: string; // ISO string
+  endedAt?: string | null;
+  plannedEndAt?: string | null;
+  lastStatusChangedAt?: string | null;
+  lineId?: number | null;
+  locationCode?: string | null;
+  workCount?: number;
+  workRate?: number;
+};
+
+// ✅ 시간 포맷 통일 (UTC(Z) -> 브라우저 로컬(KST) 표시)
+function formatHHmmKST(isoLike: string) {
+  const hasTZ = /Z$|[+\-]\d{2}:\d{2}$/.test(isoLike);
+  const safeIso = hasTZ ? isoLike : `${isoLike}Z`;
+
+  const d = new Date(safeIso);
+  return d.toLocaleTimeString("ko-KR", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+
+// zoneId -> A/B/C...
+function zoneLabelFromId(zoneId: number | null | undefined) {
+  if (zoneId === null || zoneId === undefined) return "—";
+  // ✅ 현재는 0->A 가정. 만약 1->A면 64+zoneId로 바꾸기
+  return String.fromCharCode(65 + zoneId);
+}
+
+function mapBackendStatusToUi(status: WorkLogStatus): WorkStatus {
+  if (status === "PAUSE") return "PAUSED";
+  return "WORKING"; // START/RESUME
+}
+
+// 구역 카드
+function ZoneCard({ zone, status }: { zone: string; status: string }) {
   return (
     <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between">
@@ -56,66 +101,150 @@ export default function Home() {
   const [workStatus, setWorkStatus] = useState<WorkStatus>("WORKING");
   const [savedTime, setSavedTime] = useState<string>("— —");
   const [stats, setStats] = useState<Stats>({ done: 0, issue: 0, waiting: 0 });
-  const [isProcessing, setIsProcessing] = useState(false); // API 처리 상태
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // 임시 근무 구역 데이터
-  const mockZone = {
-    zone: "A",
-    status: "근무중",
-  };
+  const [zoneLabel, setZoneLabel] = useState<string>("—");
+  const [zoneStatusText, setZoneStatusText] = useState<string>("근무중");
 
   useEffect(() => {
     setTitle("홈");
 
-    // 1. 로컬 스토리지에서 출근 시간 로드
-    const t = localStorage.getItem("worker_attend_time");
-    if (t) setSavedTime(t);
+    // ✅ 1) 홈 진입 시 current로 출근 여부/시간/구역/상태 동기화
+    (async () => {
+      try {
+        const res = await workLogApi.current();
+        console.log("[current raw]", res.data);
+        console.log("[startedAt raw]", res.data?.data?.startedAt);
+        console.log("[zoneId raw]", res.data?.data?.zoneId);
+        const body = res.data as ApiResponse<WorkLogData>;
+        const cur = body?.data;
 
-    // 2. 통계 데이터 로드
-    taskService.getWorkStats()
+        if (!cur || cur.currentStatus === "END") {
+          navigate("/worker/attend", { replace: true });
+          return;
+        }
+
+        // ✅ 출근 시간은 startedAt 기준(항상 로컬 포맷으로)
+        if (cur.startedAt) {
+          const t = formatHHmmKST(cur.startedAt);
+          setSavedTime(t);
+          localStorage.setItem("worker_attend_time", t); // fallback
+        } else {
+          const t = localStorage.getItem("worker_attend_time");
+          if (t) setSavedTime(t);
+        }
+
+        // 상태
+        const uiStatus = mapBackendStatusToUi(cur.currentStatus);
+        setWorkStatus(uiStatus);
+        setZoneStatusText(uiStatus === "WORKING" ? "근무중" : "근무중단");
+
+        // 구역
+        setZoneLabel(zoneLabelFromId(cur.zoneId));
+      } catch (e: any) {
+        const status = e.response?.status;
+        if (status === 403) {
+          alert("세션이 만료되었습니다. 다시 로그인해주세요.");
+          navigate("/login", { replace: true });
+          return;
+        }
+
+        // current 실패 시: 로컬 저장값이라도 표시
+        const t = localStorage.getItem("worker_attend_time");
+        if (t) setSavedTime(t);
+
+        console.error("근무 상태 조회 실패:", e);
+      }
+    })();
+
+    // ✅ 2) 통계 로드
+    taskService
+      .getWorkStats()
       .then(setStats)
       .catch((err) => console.error("통계 로드 실패:", err));
-  }, [setTitle]);
+  }, [setTitle, navigate]);
 
-  const workStats = [
-    { id: "done", label: "처리한 작업", value: stats.done, icon: "📦" },
-    { id: "issue", label: "전체 이슈", value: stats.issue, icon: "🧾" },
-    { id: "waiting", label: "처리 대기 중", value: stats.waiting, icon: "⏳" },
-  ];
+  const workStats = useMemo(
+    () => [
+      { id: "done", label: "처리한 작업", value: stats.done, icon: "📦" },
+      { id: "issue", label: "전체 이슈", value: stats.issue, icon: "🧾" },
+      { id: "waiting", label: "처리 대기 중", value: stats.waiting, icon: "⏳" },
+    ],
+    [stats]
+  );
 
   const onStartNewTask = () => navigate("/worker/task/loading");
-  const onPause = () => setWorkStatus("PAUSED");
-  const onResume = () => setWorkStatus("WORKING");
 
-  // ✅ 백엔드 연동 퇴근 처리
+  // ✅ 중단/재개는 백 반영
+  const onPause = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await workLogApi.pause("휴식");
+      setWorkStatus("PAUSED");
+      setZoneStatusText("근무중단");
+    } catch (e: any) {
+      const status = e.response?.status;
+      if (status === 403) {
+        alert("세션이 만료되었습니다. 다시 로그인해주세요.");
+        navigate("/login", { replace: true });
+      } else {
+        alert("근무 중단에 실패했습니다.");
+      }
+      console.error("중단 실패:", e);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const onResume = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await workLogApi.resume();
+      setWorkStatus("WORKING");
+      setZoneStatusText("근무중");
+    } catch (e: any) {
+      const status = e.response?.status;
+      if (status === 403) {
+        alert("세션이 만료되었습니다. 다시 로그인해주세요.");
+        navigate("/login", { replace: true });
+      } else {
+        alert("근무 재개에 실패했습니다.");
+      }
+      console.error("재개 실패:", e);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ✅ 퇴근 처리
   const onCheckout = async () => {
     if (isProcessing) return;
     if (!window.confirm("정말 퇴근하시겠습니까?\n오늘의 통계가 초기화됩니다.")) return;
 
     setIsProcessing(true);
     try {
-      // 1. 서버에 퇴근 요청 전송
       await workLogApi.end();
 
-      // 2. 성공 시 로컬 스토리지 데이터 및 상태 초기화
       localStorage.removeItem("worker_attend_time");
       localStorage.removeItem("work_stats");
       localStorage.removeItem("my_issues");
-      
+
       setSavedTime("— —");
       setStats({ done: 0, issue: 0, waiting: 0 });
 
       alert("퇴근 처리가 완료되었습니다.");
-      navigate("/worker/attend");
+      navigate("/worker/attend", { replace: true });
     } catch (e: any) {
       console.error("퇴근 처리 실패:", e);
       const status = e.response?.status;
-      
+
       if (status === 403) {
         alert("세션이 만료되었습니다. 다시 로그인해주세요.");
-        navigate("/login");
+        navigate("/login", { replace: true });
       } else {
-        alert("서버 오류로 퇴근 처리에 실패했습니다. (OpenVidu 연결 확인)");
+        alert("서버 오류로 퇴근 처리에 실패했습니다.");
       }
     } finally {
       setIsProcessing(false);
@@ -129,7 +258,7 @@ export default function Home() {
 
   return (
     <div className="space-y-4">
-      {/* 인사 섹션 */}
+      {/* 인사 */}
       <div className="px-1 pt-2">
         <h1 className="text-[26px] font-black tracking-tight text-slate-900">
           {user?.name ?? "작업자"}님
@@ -153,9 +282,7 @@ export default function Home() {
               </p>
             </div>
           </div>
-          <span className={statusChipClass}>
-            {workStatus === "WORKING" ? "근무중" : "근무중단"}
-          </span>
+          <span className={statusChipClass}>{zoneStatusText}</span>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2">
@@ -179,10 +306,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 근무 구역 카드 */}
-      <ZoneCard zone={mockZone.zone} status={mockZone.status as any} />
+      {/* 근무 구역 */}
+      <ZoneCard zone={zoneLabel} status={zoneStatusText} />
 
-      {/* 오늘의 작업 통계 */}
+      {/* 작업 통계 */}
       <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-[18px] font-black text-slate-900">오늘의 작업</h2>
@@ -202,7 +329,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 새로운 작업 시작 버튼 */}
+      {/* 새로운 작업 시작 */}
       <div className="space-y-2">
         <button
           type="button"
@@ -210,7 +337,11 @@ export default function Home() {
           className="flex h-14 w-full items-center justify-between rounded-[22px] border border-slate-100 bg-white px-5 text-left shadow-sm active:scale-[0.99] transition disabled:opacity-60"
           disabled={workStatus === "PAUSED" || isProcessing}
         >
-          <span className={`text-sm font-extrabold ${workStatus === "PAUSED" ? "text-slate-400" : "text-slate-900"}`}>
+          <span
+            className={`text-sm font-extrabold ${
+              workStatus === "PAUSED" ? "text-slate-400" : "text-slate-900"
+            }`}
+          >
             새로운 작업 시작
           </span>
           <span className="text-[22px] text-slate-300">›</span>
