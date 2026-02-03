@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.control.dto.DashboardSummaryDto;
+import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
 import lookie.backend.domain.control.service.WorkerMonitoringService;
@@ -63,6 +64,19 @@ public class ControlController {
     @GetMapping("/summary")
     public ApiResponse<DashboardSummaryDto> getDashboardSummary() {
         DashboardSummaryDto result = workerMonitoringService.getDashboardSummary();
+        return ApiResponse.success(result);
+    }
+
+    /**
+     * 4. 작업자 호버 정보 조회 API
+     * 관제 맵에서 작업자 마우스 오버 시 표시될 요약 정보(위치, 작업량, 이슈)를 반환
+     * 권한: ADMIN
+     */
+    @Operation(summary = "작업자 호버 정보 조회", description = "작업자 마우스 오버 시 필요한 요약 정보를 조회합니다.")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    @GetMapping("/workers/{workerId}/hover")
+    public ApiResponse<WorkerHoverDto> getWorkerHoverInfo(@PathVariable Long workerId) {
+        WorkerHoverDto result = workerMonitoringService.getWorkerHoverInfo(workerId);
         return ApiResponse.success(result);
     }
 }

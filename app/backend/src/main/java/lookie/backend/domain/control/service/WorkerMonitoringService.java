@@ -4,6 +4,8 @@ import java.util.List;
 
 import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
+import lookie.backend.domain.control.dto.WorkerHoverDto;
+
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
 
 /**
@@ -32,5 +34,14 @@ public interface WorkerMonitoringService {
      *
      * @return 대시보드 요약 정보 (전체 작업자 수, 이슈 현황 등)
      */
+
     DashboardSummaryDto getDashboardSummary();
+
+    /**
+     * 작업자 마우스 오버 시 정보를 조회합니다.
+     *
+     * @param workerId 작업자 ID
+     * @return 작업자 호버 정보 DTO
+     */
+    WorkerHoverDto getWorkerHoverInfo(Long workerId);
 }

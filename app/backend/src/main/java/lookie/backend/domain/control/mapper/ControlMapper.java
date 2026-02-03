@@ -2,6 +2,8 @@ package lookie.backend.domain.control.mapper;
 
 import java.util.List;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
+import lookie.backend.domain.control.dto.WorkerHoverDto;
+
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -38,4 +40,11 @@ public interface ControlMapper {
      * 5. 금일 해결(RESOLVED)된 이슈 건수를 조회
      */
     Integer countTodayCompletedIssues();
+
+    /**
+     * 6. 작업자 마우스 오버 상세 정보 조회
+     *
+     * @param workerId 작업자 ID
+     */
+    WorkerHoverDto selectWorkerHoverInfo(@Param("workerId") Long workerId);
 }

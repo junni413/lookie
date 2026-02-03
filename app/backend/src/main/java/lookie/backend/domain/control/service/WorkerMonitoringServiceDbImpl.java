@@ -4,6 +4,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
+import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
 import lookie.backend.domain.control.mapper.ControlMapper;
 import lookie.backend.global.common.type.ZoneType;
@@ -12,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * WorkerMonitoringService의 DB 기반 구현체
- * <p>
  * MyBatis를 사용하여 MySQL DB에서 관제 데이터를 직접 조회합니다.
  * 추후 Redis 기반 구현체로 전환 시 이 클래스는 Deprecated 될 수 있습니다.
  */
@@ -44,7 +44,6 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
 
     /**
      * 구역별 작업자 조회 구현
-     * <p>
      * 1. 해당 구역의 작업자 리스트를 조회합니다.
      * 2. 개인정보 보호를 위해 이름을 '실명 + 전화번호 뒷 4자리' 형식(예: 홍길동 1234)으로 포맷팅합니다.
      */
@@ -60,7 +59,7 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
 
             if (originalName != null && phoneNumber != null && phoneNumber.length() >= 4) {
                 String last4Digits = phoneNumber.substring(phoneNumber.length() - 4);
-                worker.setName(originalName + " " + last4Digits);
+                worker.setName(originalName + last4Digits);
             }
         }
 
@@ -69,7 +68,6 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
 
     /**
      * 대시보드 요약 조회 구현
-     * <p>
      * 1. Mapper를 통해 전체 작업자 수, 이슈 통계 등을 각각 카운트합니다.
      * 2. 구역별 현황은 기존 getZoneOverviews() 로직과 동일하게 Enum 매핑을 수행하여 리스트에 포함합니다.
      */
@@ -95,5 +93,38 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
                 .totalProgressRate(0.0) // 현재는 0.0으로 하드코딩 (추후 구현 예정)
                 .zoneSummaries(zoneSummaries)
                 .build();
+    }
+
+    /**
+     * 작업자 호버 정보 조회 구현
+     * 1. Mapper 호출하여 기본 데이터 조회
+     * 2. 데이터가 없으면 예외 발생 (작업자 없음 or 현재 미활동)
+     * 3. 이름 포맷팅 (이름 + 전화번호 뒷 4자리)
+     * 4. ZoneType Enum을 이용해 zoneName 매핑
+     */
+    @Override
+    public WorkerHoverDto getWorkerHoverInfo(Long workerId) {
+        WorkerHoverDto dto = controlMapper.selectWorkerHoverInfo(workerId);
+
+        // Validation: 데이터가 조회되지 않았으면(null) 예외 처리
+        if (dto == null) {
+            throw new RuntimeException("해당 작업자가 존재하지 않거나 현재 활동 중이 아닙니다.");
+        }
+
+        // Business Logic 1: Name Formatting (Name + Last 4 digits)
+        String originalName = dto.getName();
+        String phoneNumber = dto.getPhoneNumber();
+
+        if (originalName != null && phoneNumber != null && phoneNumber.length() >= 4) {
+            String last4Digits = phoneNumber.substring(phoneNumber.length() - 4);
+            dto.setName(originalName + last4Digits);
+        }
+
+        // Business Logic 2: Zone Mapping (ZoneId -> ZoneName)
+        if (dto.getZoneId() != null) {
+            dto.setCurrentZoneName(ZoneType.getNameById(dto.getZoneId()));
+        }
+
+        return dto;
     }
 }

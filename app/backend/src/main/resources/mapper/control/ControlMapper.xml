@@ -73,4 +73,39 @@
           AND DATE(resolved_at) = CURDATE()
     </select>
 
+    <!-- 6. 작업자 마우스 오버 상세 정보 조회 -->
+    <select id="selectWorkerHoverInfo" resultType="lookie.backend.domain.control.dto.WorkerHoverDto">
+        SELECT
+            u.user_id AS workerId,
+            u.name AS name,
+            u.assigned_zone_id AS zoneId,
+            u.phone_number AS phoneNumber,
+            zl.location_code AS currentLocationCode,
+            -- 금일 작업 처리량 (서브쿼리)
+            (
+                SELECT COUNT(bti.batch_task_item_id)
+                FROM batch_tasks bt_sub
+                JOIN batch_task_items bti ON bti.batch_task_id = bt_sub.batch_task_id
+                WHERE bt_sub.worker_id = u.user_id
+                  AND bti.status != 'PENDING'
+                  AND DATE(bti.last_scanned_at) = CURDATE()
+            ) AS todayWorkCount,
+            -- 최근 발생한 이슈 (서브쿼리)
+            (
+                SELECT issue_type
+                FROM issues
+                WHERE worker_id = u.user_id
+                  AND status = 'OPEN'
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) AS recentIssueType
+        FROM users u
+        -- 활성 작업자 확인 (출근 중)
+        INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        -- 현재 위치 (진행 중인 작업의 위치)
+        LEFT JOIN batch_tasks bt ON bt.worker_id = u.user_id AND bt.status = 'IN_PROGRESS'
+        LEFT JOIN zone_locations zl ON zl.location_id = bt.current_location_id
+        WHERE u.user_id = #{workerId}
+    </select>
+
 </mapper>
