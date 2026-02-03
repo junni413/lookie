@@ -29,15 +29,15 @@ export default function MyPage() {
 
   useEffect(() => {
     if (token && !user) {
-      fetchMe().catch(() => {});
+      fetchMe().catch(() => { });
     }
   }, [token, user, fetchMe]);
 
   const view = useMemo(
     () => ({
       name: user?.name || "작업자",
-      phone: formatPhone(user?.phoneNumber),
-      birth: user?.birthDate || "-",
+      phone: formatPhone(user?.phone_number),
+      birth: user?.birth_date || "-",
       email: user?.email || "-",
     }),
     [user]
@@ -48,6 +48,8 @@ export default function MyPage() {
   return (
     <div className="flex h-full flex-col space-y-6">
       <div className="flex flex-col items-center justify-center py-6">
+        <div className="font-medium text-slate-800">{user.name} / {user.phone_number}</div>
+        <div className="text-xs text-slate-500">{user.user_id}</div>
         <h2 className="mt-4 text-[22px] font-black tracking-tight text-slate-900">
           {view.name}님
         </h2>

@@ -12,7 +12,7 @@ export default function ManageWorkerCard({ worker, onDragStart, isMoved }: Manag
     return (
         <div
             draggable
-            onDragStart={(e) => onDragStart(e, worker.worker_id)}
+            onDragStart={(e) => onDragStart(e, worker.user_id)}
             className="group cursor-grab active:cursor-grabbing hover:-translate-y-0.5 transition-transform duration-150"
         >
             <Card className={cn(
@@ -24,7 +24,7 @@ export default function ManageWorkerCard({ worker, onDragStart, isMoved }: Manag
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                         <div className="min-w-0 flex-1">
                             <h4 className="font-semibold text-sm text-slate-800 leading-tight truncate">{worker.name}</h4>
-                            <span className="text-[10px] text-slate-400">#{worker.worker_id}</span>
+                            <span className="text-[10px] text-slate-400">#{worker.user_id}</span>
                         </div>
                     </div>
 

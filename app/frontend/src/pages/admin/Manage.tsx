@@ -47,7 +47,7 @@ export default function Manage() {
 
     const handleDrop = (workerId: number, targetZoneId: number) => {
         setWorkers(prev => prev.map(w => {
-            if (w.worker_id === workerId) {
+            if (w.user_id === workerId) {
                 return { ...w, current_zone_id: targetZoneId };
             }
             return w;
@@ -58,7 +58,7 @@ export default function Manage() {
     const hasWorkerStateChanged = (current: DB_Worker[], original: DB_Worker[]) => {
         if (current.length !== original.length) return true;
         for (let i = 0; i < current.length; i++) {
-            if (current[i].worker_id !== original[i].worker_id) return true; // Order changed (shouldn't happen if sorted, but safe check)
+            if (current[i].user_id !== original[i].user_id) return true; // Order changed (shouldn't happen if sorted, but safe check)
             if (current[i].current_zone_id !== original[i].current_zone_id) return true; // Zone changed
         }
         return false;

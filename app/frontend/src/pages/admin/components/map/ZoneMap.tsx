@@ -72,7 +72,7 @@ export default function ZoneMap({ layout, workers }: ZoneMapProps) {
 
                                                 return (
                                                     <div
-                                                        key={worker.worker_id}
+                                                        key={worker.user_id}
                                                         className={cn(
                                                             "w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white",
                                                             dotColor

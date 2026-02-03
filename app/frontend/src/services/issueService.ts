@@ -2,10 +2,11 @@ import {
     db_issues,
     db_issue_images,
     db_ai_judgments,
-    workersMock,
-    zonesMock,
-    getDerivedWorker,
+    db_users,
+
+    zoneNames
 } from "@/mocks/mockData";
+import { getDerivedWorker } from "@/mocks/mockData"; // Separated import if needed
 import type { IssueResponse } from "@/types/db";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -13,38 +14,49 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const getJoinedIssues = (): IssueResponse[] => {
     return db_issues.map((issue) => {
         // Join Worker Name
-        const workerName = workersMock[issue.worker_id] || "알 수 없음";
+        const workerUser = db_users.find(u => u.user_id === issue.worker_id);
+        const workerName = workerUser ? workerUser.name : "알 수 없음";
 
         // Join Zone Name
-        // In mock, zone_id is number, but old mock used "A", "B".
-        // We map 1->"A 존", etc.
-        const zone = zonesMock.find((z) => z.id === issue.zone_location_id);
-        const zoneName = zone ? zone.name : "Unknown Zone";
+        // Mock data now uses db_zones and zoneNames map.
+        // issue.zone_location_id might be the location_id, but for simple display we map to Zone Name.
+        // Assume zone_location_id implies zone_id for now or logic to find zone.
+        // In mockData generation, I used zone_id as zone_location_id proxy.
+        const zoneName = zoneNames[issue.zone_location_id || 1] || "Unknown Zone";
 
         // Join Images
         const images = db_issue_images.filter((img) => img.issue_id === issue.issue_id);
 
-        // Join AI Judgment (Assume 1:1 for simplicity or take latest)
+        // Join AI Judgment
         const judgment = db_ai_judgments.find((j) => j.issue_id === issue.issue_id);
 
         // Join Enhanced Worker Info
         const worker = getDerivedWorker(issue.worker_id);
+
+        if (!worker) {
+            // Fallback if worker not found (shouldn't happen with correct mock data)
+            return {
+                ...issue,
+                workerName,
+                zoneName,
+                images,
+                judgment: judgment!,
+                worker: workerUser as any // Cast or handle error
+            } as IssueResponse;
+        }
 
         return {
             ...issue,
             workerName,
             zoneName,
             images,
-            judgment,
+            judgment: judgment!,
             worker,
         };
     });
 };
 
 export const issueService = {
-    /**
-     * 이슈 목록 조회 (Simulate GET /api/admin/issues)
-     */
     /**
      * 이슈 목록 조회 (Simulate GET /api/admin/issues)
      */
@@ -69,14 +81,6 @@ export const issueService = {
                 all.sort((a, b) => priorityMap[b.priority] - priorityMap[a.priority]);
             } else {
                 // TIME (Default)
-                // For RESOLVED, sort by resolved_at descending if available, else created_at
-                // But simplified requirement said "Approved Completed list -> always latest sort"
-                // "Approved Pending list -> Time or Urgency"
-                // Let's just default all to Time (created_at desc) unless specified otherwise 
-                // However, RESOLVED usually sorts by resolved_at? The user said "resolvedAt" is a column. 
-                // Let's assume Time sort means created_at desc for OPEN, and resolved_at desc for RESOLVED if possible.
-                // But for simplicity in this mock service, we'll sort by created_at desc generally, or resolved_at if status is RESOLVED and sort is TIME.
-
                 if (params.status === "RESOLVED") {
                     all.sort((a, b) => {
                         const timeA = a.resolved_at ? new Date(a.resolved_at).getTime() : new Date(a.created_at).getTime();
@@ -115,22 +119,18 @@ export const issueService = {
 
     /**
      * 이슈 판정 (Simulate PATCH /api/admin/issues/:id)
-     * decision을 status 업데이트 또는 required_action 업데이트로 매핑
      */
     processIssue: async (id: number, decision: "APPROVED" | "REJECTED"): Promise<void> => {
         await delay(800);
-
-        // In strict ERD terms, "APPROVED"(정상) -> status: RESOLVED, action: WORKER_CONTINUE
-        // "REJECTED"(폐기) -> status: RESOLVED, action: AUTO_RESOLVED (or similar legacy concept)
 
         const target = db_issues.find(i => i.issue_id === id);
         if (target) {
             target.status = "RESOLVED";
             target.resolved_at = new Date().toISOString();
             if (decision === "APPROVED") {
-                target.required_action = "WORKER_CONTINUE";
+                target.issue_handling = "NON_BLOCKING"; // Or equivalent logic
             } else {
-                target.required_action = "AUTO_RESOLVED"; // 폐기완료
+                target.issue_handling = "BLOCKING"; // Or logic for rejection
             }
         }
     },

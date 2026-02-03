@@ -1,18 +1,9 @@
-// src/stores/authStore.ts
 import { create } from "zustand";
 import { apiFetch } from "@/lib/apiFetch";
+import type { DB_User, UserRole } from "@/types/db";
 
-export type UserRole = "WORKER" | "ADMIN";
-
-export type User = {
-  userId: number;
-  name: string;
-  phoneNumber: string;
-  email: string;
-  birthDate?: string;
-  role: UserRole;
-  isActive?: boolean;
-};
+// Use DB_User directly.
+export type User = DB_User;
 
 type ApiResponse<T> = {
   success: boolean;
@@ -21,26 +12,16 @@ type ApiResponse<T> = {
   data: T;
 };
 
-type UserProfileResponse = {
-  userId: number;
-  name: string;
-  phoneNumber: string;
-  email: string;
-  birthDate: string | null;
-  role: UserRole; // 백에서 내려준다고 가정(없으면 아래 매핑에서 보완 가능)
-  isActive: boolean;
-};
-
 type AuthState = {
   token: string | null;
   refreshToken: string | null;
   role: UserRole | null;
-  user: User | null;
+  user: DB_User | null;
 
-  login: (payload: { token: string; refreshToken: string; user: User }) => void;
+  login: (payload: { token: string; refreshToken: string; user: DB_User }) => void;
   logout: () => void;
 
-  fetchMe: () => Promise<void>; // ✅ 추가
+  fetchMe: () => Promise<void>;
 };
 
 const TOKEN_KEY = "accessToken";
@@ -54,7 +35,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   role: (localStorage.getItem(ROLE_KEY) as UserRole | null) ?? null,
   user: (() => {
     const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as User) : null;
+    return raw ? (JSON.parse(raw) as DB_User) : null;
   })(),
 
   login: ({ token, refreshToken, user }) => {
@@ -76,34 +57,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   fetchMe: async () => {
-    // 토큰 없으면 아무 것도 안 함
     const token = get().token;
     if (!token) return;
 
-    const res = await apiFetch<ApiResponse<UserProfileResponse>>("/api/users/me", {
-      method: "GET",
-    });
+    try {
+      const res = await apiFetch<ApiResponse<any>>("/api/users/me", {
+        method: "GET",
+      });
 
-    if (!res.success) {
-      throw new Error(res.message);
+      if (!res.success) {
+        throw new Error(res.message);
+      }
+
+      const d = res.data;
+
+      // MAP camelCase -> snake_case to match DB_User
+      const nextUser: DB_User = {
+        user_id: d.userId ?? d.user_id,
+        role: d.role ?? (get().role ?? "WORKER"),
+        password_hash: "",
+        name: d.name,
+        phone_number: d.phoneNumber ?? d.phone_number,
+        email: d.email,
+        birth_date: d.birthDate ?? d.birth_date,
+        is_active: d.isActive ?? d.is_active ?? true,
+        created_at: d.createdAt ?? d.created_at,
+        updated_at: d.updatedAt ?? d.updated_at,
+        assigned_zone_id: d.assignedZoneId ?? d.assigned_zone_id ?? null,
+      };
+
+      localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+      localStorage.setItem(ROLE_KEY, nextUser.role);
+
+      set({ user: nextUser, role: nextUser.role });
+    } catch (e) {
+      console.error("fetchMe Error:", e);
+      // Optional: Logout if invalid token?
     }
-
-    const d = res.data;
-
-    // ✅ 백 응답 기반으로 User로 맞춰 저장
-    const nextUser: User = {
-      userId: d.userId,
-      name: d.name,
-      phoneNumber: d.phoneNumber,
-      email: d.email,
-      birthDate: d.birthDate ?? undefined,
-      role: d.role ?? (get().role ?? "WORKER"), // role이 혹시 안 오면 fallback
-      isActive: d.isActive,
-    };
-
-    localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-    localStorage.setItem(ROLE_KEY, nextUser.role);
-
-    set({ user: nextUser, role: nextUser.role });
   },
 }));

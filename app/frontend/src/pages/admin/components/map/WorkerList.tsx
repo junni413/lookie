@@ -31,7 +31,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
             alert("로그인이 필요합니다.");
             return;
         }
-        startCall(user.userId, worker.worker_id, null, worker.name);
+        startCall(user.user_id, worker.user_id, null, worker.name);
     };
 
     const ZONES = [
@@ -133,7 +133,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                     <div className="divide-y divide-slate-100">
                         {sortedWorkers.map(worker => {
                             return (
-                                <div key={worker.worker_id} className="group flex items-center gap-5 pl-7 pr-6 py-4 hover:bg-slate-50 transition-colors">
+                                <div key={worker.user_id} className="group flex items-center gap-5 pl-7 pr-6 py-4 hover:bg-slate-50 transition-colors">
 
                                     {/* 정보 영역 */}
                                     <div className="flex-1 min-w-0">

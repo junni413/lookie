@@ -39,7 +39,7 @@ export default function AiReallocationModal({
 
     const handleDrop = (workerId: number, targetZoneId: number) => {
         setSimulatedWorkers(prev => prev.map(w => {
-            if (w.worker_id === workerId) {
+            if (w.user_id === workerId) {
                 return { ...w, current_zone_id: targetZoneId };
             }
             return w;
@@ -80,11 +80,11 @@ export default function AiReallocationModal({
                                 onDrop={handleDrop}
                                 highlightWorkerIds={simulatedWorkers
                                     .filter(sim => {
-                                        const orig = currentWorkers.find(c => c.worker_id === sim.worker_id);
+                                        const orig = currentWorkers.find(c => c.user_id === sim.user_id);
                                         // Highlight if zone changed AND not unassigned (optional check)
                                         return orig && orig.current_zone_id !== sim.current_zone_id;
                                     })
-                                    .map(w => w.worker_id)
+                                    .map(w => w.user_id)
                                 }
                             />
                         ))}

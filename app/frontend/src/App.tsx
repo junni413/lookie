@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { useAuthStore, type UserRole } from "./stores/authStore";
+import { useAuthStore } from "./stores/authStore";
+import type { UserRole } from "@/types/db";
 
 import AdminLayout from "./components/layout/AdminLayout";
 import MobileLayout from "./components/layout/MobileLayout";

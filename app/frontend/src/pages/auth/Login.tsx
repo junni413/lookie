@@ -77,13 +77,16 @@ export default function Login() {
         token: d.accessToken,
         refreshToken: d.refreshToken,
         user: {
-          userId: d.userId,
+          user_id: d.userId,
           name: d.name,
-          phoneNumber: d.phoneNumber,
+          phone_number: d.phoneNumber,
           email: d.email,
-          birthDate: d.birthDate ?? undefined,
+          birth_date: d.birthDate ?? undefined,
           role: d.role,
-          isActive: d.isActive,
+          is_active: d.isActive,
+          password_hash: "", // Not returned by API
+          created_at: new Date().toISOString(), // Mock if missing
+          updated_at: new Date().toISOString(), // Mock if missing
         },
       });
 
