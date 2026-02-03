@@ -4,8 +4,8 @@ import type { User } from "@/stores/authStore";
 // ========================================
 // 🔧 Mock 데이터 설정
 // ========================================
-// 백엔드 API가 준비되면 이 값을 false로 변경하세요
-const USE_MOCK = true; // ← 이 한 줄만 바꾸면 됩니다!
+// 환경 변수로 자동 전환 (개발: true, 운영: false)
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
 // Mock 관리자 데이터
 const MOCK_ADMINS: User[] = [

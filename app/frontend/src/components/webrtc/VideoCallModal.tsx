@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useCallStore } from "@/stores/callStore";
+import { useLiveKitRoom } from "@/hooks/useLiveKitRoom";
 
 import {
     Phone,
@@ -12,15 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import UserVideoComponent from "./UserVideoComponent";
-import {
-    Room,
-    RoomEvent,
-    RemoteParticipant,
-    LocalVideoTrack,
-    RemoteVideoTrack,
-    Track, // Keep Track as it's used for track.kind
-    VideoPresets // Keep VideoPresets as it's used for videoCaptureDefaults
-} from "livekit-client";
+
 
 export default function VideoCallModal() {
     const status = useCallStore((state) => state.status);
@@ -157,11 +150,6 @@ function ActiveView({
     const token = useCallStore((state) => state.token);
 
     // LiveKit State
-    const [room, setRoom] = useState<Room | undefined>(undefined);
-    const [localTrack, setLocalTrack] = useState<LocalVideoTrack | undefined>(undefined);
-    const [remoteTrack, setRemoteTrack] = useState<RemoteVideoTrack | undefined>(undefined);
-    const [remoteParticipant, setRemoteParticipant] = useState<RemoteParticipant | undefined>(undefined);
-
     const [isMicOn, setIsMicOn] = useState(true);
     const [isCamOn, setIsCamOn] = useState(true);
 
@@ -175,99 +163,20 @@ function ActiveView({
     // application.properties: livekit.url=${LIVEKIT_URL:wss://lookie-of5j44vq.livekit.cloud}
     const [liveKitUrl] = useState(import.meta.env.VITE_LIVEKIT_URL || "wss://lookie-of5j44vq.livekit.cloud");
 
-    useEffect(() => {
-        if (!token) return;
-
-        let aborted = false; // Cleanup 플래그
-
-        // 1. Create Room
-        const newRoom = new Room({
-            videoCaptureDefaults: {
-                resolution: VideoPresets.h720.resolution,
-            },
-            adaptiveStream: true,
-            dynacast: true,
-        });
-
-        setRoom(newRoom);
-
-        // 2. Event Listeners
-        newRoom
-            .on(RoomEvent.Connected, () => {
-                console.log("✅ [LiveKit] Connected to Room:", newRoom.name);
-            })
-            .on(RoomEvent.Disconnected, () => {
-                console.log("🚫 [LiveKit] Disconnected");
-            })
-            .on(RoomEvent.ParticipantConnected, (participant) => {
-                console.log("👤 [LiveKit] Participant Connected:", participant.identity);
-                setRemoteParticipant(participant);
-            })
-            .on(RoomEvent.ParticipantDisconnected, (participant) => {
-                console.log("👋 [LiveKit] Participant Left:", participant.identity);
-                if (participant === remoteParticipant) {
-                    setRemoteParticipant(undefined);
-                    setRemoteTrack(undefined);
-                }
-            })
-            .on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
-                console.log("🎥 [LiveKit] Track Subscribed:", track.kind, participant.identity);
-                if (track.kind === Track.Kind.Video) {
-                    setRemoteTrack(track as RemoteVideoTrack);
-                    setRemoteParticipant(participant);
-                }
-            })
-            .on(RoomEvent.TrackUnsubscribed, (track, _publication, _participant) => {
-                console.log("❌ [LiveKit] Track Unsubscribed:", track.kind);
-                if (track.kind === Track.Kind.Video) {
-                    setRemoteTrack(undefined);
-                }
-            })
-            .on(RoomEvent.LocalTrackPublished, (publication) => {
-                // 로컬 트랙이 발행되면 여기서 처리
-                console.log("� [LiveKit] Local Track Published:", publication.kind, publication.source);
-                if (publication.kind === Track.Kind.Video && publication.source === Track.Source.Camera) {
-                    if (publication.track) {
-                        setLocalTrack(publication.track as LocalVideoTrack);
-                    }
-                }
-            });
-
-        // 3. Connect
-        newRoom
-            .connect(liveKitUrl, token)
-            .then(async () => {
-                if (aborted) return; // Cleanup 이미 호출됨
-
-                // 4. Publish Local Camera & Mic
-                console.log("📸 [LiveKit] Publishing Camera & Mic...");
-                await newRoom.localParticipant.enableCameraAndMicrophone();
-
-                // 이미 방에 있는 참가자 확인
-                if (newRoom.remoteParticipants.size > 0) {
-                    const participant = Array.from(newRoom.remoteParticipants.values())[0];
-                    setRemoteParticipant(participant);
-
-                    // 이미 비디오를 켜둔 경우 트랙 찾기
-                    participant.trackPublications.forEach((pub) => {
-                        if (pub.kind === Track.Kind.Video && pub.track) {
-                            setRemoteTrack(pub.track as RemoteVideoTrack);
-                        }
-                    });
-                }
-            })
-            .catch((e) => {
-                if (!aborted) {
-                    console.error("❌ [LiveKit] Connection Failed:", e);
-                }
-            });
-
-        // Cleanup
-        return () => {
-            aborted = true;
-            newRoom.disconnect();
-        };
-    }, [token, liveKitUrl]);
+    // LiveKit Room 연결 (커스텀 훅 사용)
+    const { room, localTrack, remoteTrack, remoteParticipant } = useLiveKitRoom({
+        url: liveKitUrl,
+        token,
+        onConnected: () => {
+            console.log('✅ [LiveKit] Room connection established');
+        },
+        onDisconnected: () => {
+            console.log('🚫 [LiveKit] Room disconnected');
+        },
+        onError: (error: Error) => {
+            console.error('❌ [LiveKit] Connection error:', error);
+        }
+    });
 
     const toggleMic = async () => {
         if (room?.localParticipant) {
@@ -282,17 +191,7 @@ function ActiveView({
             const newVal = !isCamOn;
             await room.localParticipant.setCameraEnabled(newVal);
             setIsCamOn(newVal);
-
-            if (newVal) {
-                // 켜짐 -> 트랙 다시 가져오기
-                room.localParticipant.trackPublications.forEach((pub) => {
-                    if (pub.kind === Track.Kind.Video && pub.source === Track.Source.Camera && pub.track) {
-                        setLocalTrack(pub.track as LocalVideoTrack);
-                    }
-                });
-            } else {
-                setLocalTrack(undefined);
-            }
+            // Note: localTrack is automatically updated by useLiveKitRoom hook
         }
     };
 
