@@ -22,34 +22,28 @@ export default function OtherIssue() {
     }, [setTitle]);
 
     const handleConnectAdmin = async () => {
-        try {
-            // 1. 이슈 리포트 (기존 로직 유지)
-            if (nav?.product) {
-                await taskService.reportIssue({
-                    productName: nav.product.productName,
-                    sku: nav.product.barcode,
-                    location: nav.product.locationCode,
-                    type: "기타",
-                });
-            } else {
-                await taskService.reportIssue();
-            }
-
-            // 2. WebRTC 화상 요청
-            await webrtcService.requestCall({
-                callerId: workerId,
-                calleeId: adminId, // ← 여기서 관리자 결정
-                issueId: issueId,
-            });
-
-            // 3. 상태 변경 → 다음 작업 버튼 활성화
-            setIsCallRequested(true);
-
-        } catch (e) {
-            console.error(e);
-            alert("관리자 연결에 실패했습니다.");
+    try {
+        // 1) 이슈만 기록
+        if (nav?.product) {
+        await taskService.reportIssue({
+            productName: nav.product.productName,
+            sku: nav.product.barcode,
+            location: nav.product.locationCode,
+            type: "기타",
+        });
+        } else {
+        await taskService.reportIssue();
         }
+
+        // 2) WebRTC는 아직 미연동: 임시 처리
+        alert("관리자 연결 기능은 준비 중입니다. (이슈는 접수되었습니다)");
+        navigate("/worker/home");
+    } catch (e) {
+        console.error(e);
+        alert("이슈 접수에 실패했습니다.");
+    }
     };
+
 
     return (
         <div className="flex flex-col h-full space-y-12 px-2">

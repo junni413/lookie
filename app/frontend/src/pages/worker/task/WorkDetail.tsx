@@ -31,17 +31,23 @@ export default function WorkDetail() {
 
   useEffect(() => setTitle("작업 진행"), [setTitle]);
 
+  // ✅ 가장 먼저 방어: task/toteBarcode 없으면 화면 진입 자체를 막음
   useEffect(() => {
     if (!task || !toteBarcode) {
       navigate("/worker/home", { replace: true });
-      return;
     }
+  }, [task, toteBarcode, navigate]);
 
+  // ✅ 방어 후, TS가 확정할 수 있게 safeTask로 고정
+  if (!task || !toteBarcode) return null;
+  const safeTask = task; // 이제부터 safeTask는 TaskVO로 확정
+
+  useEffect(() => {
     const fetchItems = async () => {
       setLoading(true);
       try {
-        // ✅ 백: GET /api/tasks/{taskId}/items -> ApiResponse<List<TaskItemVO>>
-        const response = await taskService.getTaskItems(task.batchTaskId);
+        // ✅ GET /api/tasks/{taskId}/items -> ApiResponse<List<TaskItemVO>>
+        const response = await taskService.getTaskItems(safeTask.batchTaskId);
 
         if (response.success && Array.isArray(response.data)) {
           setItems(response.data);
@@ -59,7 +65,7 @@ export default function WorkDetail() {
     };
 
     fetchItems();
-  }, [task, toteBarcode, navigate, toast]);
+  }, [safeTask.batchTaskId, toast]);
 
   const currentItem = items[currentIndex];
 
@@ -90,7 +96,7 @@ export default function WorkDetail() {
 
   const handleScanned = useCallback(
     async (barcode: string) => {
-      if (!currentItem || !task) return;
+      if (!currentItem) return;
 
       if (scanType === "LOCATION") {
         // 1) 프론트 1차 검증
@@ -102,7 +108,7 @@ export default function WorkDetail() {
         // 2) 백 호출: POST /api/tasks/{taskId}/locations/check
         try {
           setScannerOpen(false);
-          const res = await taskService.scanLocation(task.batchTaskId, barcode);
+          const res = await taskService.scanLocation(safeTask.batchTaskId, barcode);
 
           if (res.success && res.data) {
             setNextAction(res.data.nextAction);
@@ -130,7 +136,7 @@ export default function WorkDetail() {
       // 2) 백 호출: POST /api/tasks/{taskId}/items/scan
       try {
         setScannerOpen(false);
-        const res = await taskService.scanItem(task.batchTaskId, barcode);
+        const res = await taskService.scanItem(safeTask.batchTaskId, barcode);
 
         if (res.success && res.data) {
           setNextAction(res.data.nextAction);
@@ -153,7 +159,7 @@ export default function WorkDetail() {
         toast({ title: "상품 인식 실패", description: err?.message, variant: "destructive" });
       }
     },
-    [currentItem, scanType, task, items, toast]
+    [currentItem, scanType, safeTask.batchTaskId, items, toast]
   );
 
   const handleQuantityChange = async (increment: number) => {
@@ -201,7 +207,7 @@ export default function WorkDetail() {
 
       // ✅ POST /api/tasks/{taskId}/complete (바디 없음)
       try {
-        const res = await taskService.completeTask(task.batchTaskId);
+        const res = await taskService.completeTask(safeTask.batchTaskId);
 
         if (res.success) {
           alert("축하합니다! 모든 배정 작업을 완료했습니다.");
@@ -233,19 +239,18 @@ export default function WorkDetail() {
     }
     if (type === "MISSING") {
       setIssueOpen(false);
-      navigate("/worker/issue/stock-analysis", { state: { task, toteBarcode, product: currentItem } });
+      navigate("/worker/issue/stock-analysis", { state: { task: safeTask, toteBarcode, product: currentItem } });
       return;
     }
     if (type === "OTHER") {
       setIssueOpen(false);
-      navigate("/worker/issue/other", { state: { task, toteBarcode, product: currentItem } });
+      navigate("/worker/issue/other", { state: { task: safeTask, toteBarcode, product: currentItem } });
       return;
     }
     setIssueOpen(false);
   };
 
   // 방어
-  if (!task || !toteBarcode) return null;
   if (loading) return null;
   if (!currentItem) return null;
 
@@ -254,7 +259,7 @@ export default function WorkDetail() {
       <div className="space-y-4 px-2 relative">
         <div className="flex justify-start">
           <button
-            onClick={() => navigate("/worker/task/list", { state: { task, toteBarcode } })}
+            onClick={() => navigate("/worker/task/list", { state: { task: safeTask, toteBarcode } })}
             className="p-2 -mt-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <div className="flex flex-col gap-1 w-6">
@@ -386,9 +391,7 @@ export default function WorkDetail() {
             {items.map((_, idx) => (
               <div
                 key={idx}
-                className={`h-2 rounded-full transition-all duration-500 ${
-                  idx === currentIndex ? "w-6 bg-blue-600" : "w-2 bg-gray-200"
-                }`}
+                className={`h-2 rounded-full transition-all duration-500 ${idx === currentIndex ? "w-6 bg-blue-600" : "w-2 bg-gray-200"}`}
               />
             ))}
           </div>

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
-import { ChevronRight, Lock, Phone } from "lucide-react";
+import { Lock, Phone } from "lucide-react";
 
 type LoginRole = "WORKER" | "ADMIN";
 
@@ -75,6 +75,7 @@ export default function Login() {
 
       login({
         token: d.accessToken,
+        refreshToken: d.refreshToken,
         user: {
           userId: d.userId,
           name: d.name,

@@ -3,20 +3,18 @@ import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import type { MobileLayoutContext } from "../../components/layout/MobileLayout";
 import { taskService } from "../../services/taskService";
+import { workLogApi } from "../../services/attend.api"; // API 추가
 
 type WorkStatus = "WORKING" | "PAUSED";
 type Stats = { done: number; issue: number; waiting: number };
 
+// 구역 카드 컴포넌트
 function ZoneCard({
   zone,
-  line,
-  slot,
   status,
 }: {
   zone: string;
-  line: string;
-  slot: string;
-  status: "근무중" | "대기중";
+  status: string;
 }) {
   return (
     <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
@@ -24,7 +22,6 @@ function ZoneCard({
         <div>
           <p className="text-sm font-extrabold text-slate-900">오늘 근무 구역</p>
         </div>
-
         <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
           {status}
         </span>
@@ -34,11 +31,8 @@ function ZoneCard({
         <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-blue-50 text-blue-600">
           <span className="text-[18px] font-black">{zone}</span>
         </div>
-
         <div className="flex-1">
-          <div className="text-[16px] font-black text-slate-900">
-            {zone}구역
-          </div>
+          <div className="text-[16px] font-black text-slate-900">{zone}구역</div>
           <div className="mt-1 text-[12px] font-semibold text-slate-400">
             작업 시작 전 구역이 맞는지 확인해주세요.
           </div>
@@ -62,19 +56,25 @@ export default function Home() {
   const [workStatus, setWorkStatus] = useState<WorkStatus>("WORKING");
   const [savedTime, setSavedTime] = useState<string>("— —");
   const [stats, setStats] = useState<Stats>({ done: 0, issue: 0, waiting: 0 });
+  const [isProcessing, setIsProcessing] = useState(false); // API 처리 상태
 
-  // ✅ 임시(하드코딩) 근무 구역 값
+  // 임시 근무 구역 데이터
   const mockZone = {
     zone: "A",
+    status: "근무중",
   };
 
   useEffect(() => {
     setTitle("홈");
 
+    // 1. 로컬 스토리지에서 출근 시간 로드
     const t = localStorage.getItem("worker_attend_time");
     if (t) setSavedTime(t);
 
-    taskService.getWorkStats().then(setStats);
+    // 2. 통계 데이터 로드
+    taskService.getWorkStats()
+      .then(setStats)
+      .catch((err) => console.error("통계 로드 실패:", err));
   }, [setTitle]);
 
   const workStats = [
@@ -83,25 +83,43 @@ export default function Home() {
     { id: "waiting", label: "처리 대기 중", value: stats.waiting, icon: "⏳" },
   ];
 
-  const onStartNewTask = () => {
-    navigate("/worker/task/loading");
-  };
-
+  const onStartNewTask = () => navigate("/worker/task/loading");
   const onPause = () => setWorkStatus("PAUSED");
   const onResume = () => setWorkStatus("WORKING");
 
-  const onCheckout = () => {
-    if (!window.confirm("정말 퇴근하시겠습니까?\n오늘의 통계가 초기화됩니다.")) {
-      return;
+  // ✅ 백엔드 연동 퇴근 처리
+  const onCheckout = async () => {
+    if (isProcessing) return;
+    if (!window.confirm("정말 퇴근하시겠습니까?\n오늘의 통계가 초기화됩니다.")) return;
+
+    setIsProcessing(true);
+    try {
+      // 1. 서버에 퇴근 요청 전송
+      await workLogApi.end();
+
+      // 2. 성공 시 로컬 스토리지 데이터 및 상태 초기화
+      localStorage.removeItem("worker_attend_time");
+      localStorage.removeItem("work_stats");
+      localStorage.removeItem("my_issues");
+      
+      setSavedTime("— —");
+      setStats({ done: 0, issue: 0, waiting: 0 });
+
+      alert("퇴근 처리가 완료되었습니다.");
+      navigate("/worker/attend");
+    } catch (e: any) {
+      console.error("퇴근 처리 실패:", e);
+      const status = e.response?.status;
+      
+      if (status === 403) {
+        alert("세션이 만료되었습니다. 다시 로그인해주세요.");
+        navigate("/login");
+      } else {
+        alert("서버 오류로 퇴근 처리에 실패했습니다. (OpenVidu 연결 확인)");
+      }
+    } finally {
+      setIsProcessing(false);
     }
-
-    localStorage.removeItem("worker_attend_time");
-    localStorage.removeItem("work_stats");
-    localStorage.removeItem("my_issues");
-    setSavedTime("— —");
-    setStats({ done: 0, issue: 0, waiting: 0 });
-
-    navigate("/worker/attend");
   };
 
   const statusChipClass =
@@ -129,120 +147,80 @@ export default function Home() {
               ⏱️
             </div>
             <div>
-              <p className="text-sm font-extrabold text-slate-900">
-                오늘의 출근 시간
-              </p>
+              <p className="text-sm font-extrabold text-slate-900">오늘의 출근 시간</p>
               <p className="mt-1 text-[28px] font-black leading-none tracking-tight text-slate-900">
                 {savedTime}
               </p>
             </div>
           </div>
-
           <span className={statusChipClass}>
             {workStatus === "WORKING" ? "근무중" : "근무중단"}
           </span>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2">
-          {workStatus === "WORKING" ? (
-            <>
-              <button
-                type="button"
-                className="h-11 rounded-[18px] border border-slate-200 bg-white text-sm font-extrabold text-slate-700 active:scale-[0.99] transition"
-                onClick={onPause}
-              >
-                중단
-              </button>
+          <button
+            type="button"
+            className="h-11 rounded-[18px] border border-slate-200 bg-white text-sm font-extrabold text-slate-700 active:scale-[0.99] transition disabled:opacity-50"
+            onClick={workStatus === "WORKING" ? onPause : onResume}
+            disabled={isProcessing}
+          >
+            {workStatus === "WORKING" ? "중단" : "재개"}
+          </button>
 
-              <button
-                type="button"
-                className="h-11 rounded-[18px] border border-red-200 bg-red-50 text-sm font-extrabold text-red-600 active:scale-[0.99] transition"
-                onClick={onCheckout}
-              >
-                퇴근
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="h-11 rounded-[18px] bg-blue-600 text-sm font-extrabold text-white shadow-sm active:scale-[0.99] transition"
-                onClick={onResume}
-              >
-                재개
-              </button>
-
-              <button
-                type="button"
-                className="h-11 rounded-[18px] border border-red-200 bg-red-50 text-sm font-extrabold text-red-600 active:scale-[0.99] transition"
-                onClick={onCheckout}
-              >
-                퇴근
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            className="h-11 rounded-[18px] border border-red-200 bg-red-50 text-sm font-extrabold text-red-600 active:scale-[0.99] transition disabled:opacity-50"
+            onClick={onCheckout}
+            disabled={isProcessing}
+          >
+            {isProcessing ? "처리 중..." : "퇴근"}
+          </button>
         </div>
       </section>
 
-      {/* ✅ 오늘 근무 구역(추가) - 오늘의 작업 위 */}
-      <ZoneCard
-        zone={mockZone.zone}
-        line={mockZone.line}
-        slot={mockZone.slot}
-        status={mockZone.status}
-      />
+      {/* 근무 구역 카드 */}
+      <ZoneCard zone={mockZone.zone} status={mockZone.status as any} />
 
-      {/* 오늘의 작업 카드 */}
+      {/* 오늘의 작업 통계 */}
       <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-[18px] font-black text-slate-900">오늘의 작업</h2>
         </div>
-
         <div className="mt-4 grid grid-cols-3 gap-3">
           {workStats.map((s) => (
-            <div
-              key={s.id}
-              className="rounded-[22px] bg-slate-50 p-3 text-center"
-            >
+            <div key={s.id} className="rounded-[22px] bg-slate-50 p-3 text-center">
               <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[14px] bg-white text-base">
                 {s.icon}
               </div>
-
               <p className="mt-3 text-[26px] font-black leading-none text-slate-900">
                 {s.value}
               </p>
-              <p className="mt-2 text-[12px] font-bold text-slate-500">
-                {s.label}
-              </p>
+              <p className="mt-2 text-[12px] font-bold text-slate-500">{s.label}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* 새로운 작업 시작 */}
-      <button
-        type="button"
-        onClick={onStartNewTask}
-        className="flex h-14 w-full items-center justify-between rounded-[22px] border border-slate-100 bg-white px-5 text-left shadow-sm active:scale-[0.99] transition disabled:opacity-60"
-        disabled={workStatus === "PAUSED"}
-      >
-        <span
-          className={
-            workStatus === "PAUSED"
-              ? "text-sm font-extrabold text-slate-400"
-              : "text-sm font-extrabold text-slate-900"
-          }
+      {/* 새로운 작업 시작 버튼 */}
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={onStartNewTask}
+          className="flex h-14 w-full items-center justify-between rounded-[22px] border border-slate-100 bg-white px-5 text-left shadow-sm active:scale-[0.99] transition disabled:opacity-60"
+          disabled={workStatus === "PAUSED" || isProcessing}
         >
-          새로운 작업 시작
-        </span>
-        <span className="text-[22px] text-slate-300">›</span>
-      </button>
-
-      {workStatus === "PAUSED" && (
-        <p className="px-1 text-[12px] font-semibold text-slate-400">
-          근무가 중단된 상태에서는 새로운 작업을 시작할 수 없어요.
-        </p>
-      )}
+          <span className={`text-sm font-extrabold ${workStatus === "PAUSED" ? "text-slate-400" : "text-slate-900"}`}>
+            새로운 작업 시작
+          </span>
+          <span className="text-[22px] text-slate-300">›</span>
+        </button>
+        {workStatus === "PAUSED" && (
+          <p className="px-1 text-[12px] font-semibold text-slate-400">
+            근무가 중단된 상태에서는 새로운 작업을 시작할 수 없어요.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
