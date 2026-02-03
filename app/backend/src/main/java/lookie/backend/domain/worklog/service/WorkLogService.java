@@ -143,25 +143,37 @@ public class WorkLogService {
      * @param loginId 로그인한 사용자 ID
      * @param targetWorkerId (Optional) 조회 대상 작업자 ID. 관리자가 사용.
      */
+    /**
+     * [Modified] 6. 현재 근무 상태 단건 조회 (Polling용)
+     * - 수정사항: 근무 중이 아닐 때(Empty) 단순히 빈 객체를 주는 게 아니라,
+     * '최근 근무 이력'을 조회해서 이름과 마지막 퇴근 시간을 채워서 반환함.
+     */
     @Transactional(readOnly = true)
     public WorkLogResponseDto getCurrentStatus(Long loginId, Long targetWorkerId) {
-        // 관리자가 조회 시 targetWorkerId 사용, 아니면 로그인한 본인 ID 사용
         Long finalWorkerId = (targetWorkerId != null) ? targetWorkerId : loginId;
 
-        // 최적화된 Mapper 사용하여 조회 (위치 정보 등 포함)
-        List<WorkLogResponseDto> logs = workLogMapper.findActiveWorkLogs(finalWorkerId);
+        // 1. 현재 근무 중인(Active) 로그 조회
+        List<WorkLogResponseDto> activeLogs = workLogMapper.findActiveWorkLogs(finalWorkerId);
 
-        if (logs.isEmpty()) {
-            // 근무 기록 없음 = 퇴근 상태(END) 또는 출근 전
-            // 프론트엔드 폴링 시 404 에러 대신 명시적인 '종료' 상태를 반환하여 처리 용이하게 함
-            return WorkLogResponseDto.builder()
-                    .workerId(finalWorkerId)
-                    .currentStatus(WorkLogEventType.END) // 또는 null로 처리
-                    .build();
+        if (!activeLogs.isEmpty()) {
+            return activeLogs.get(0);
         }
 
-        // 가장 최근 1건 반환
-        return logs.get(0);
+        // 2. 근무 중이 아님 -> 가장 최근의 '지난 근무 이력' 조회 (이름, 구역, 퇴근시간 확보용)
+        // (findWorkHistories는 이미 정렬되어 있으므로 0번째가 가장 최신)
+        List<WorkLogResponseDto> historyLogs = workLogMapper.findWorkHistories(finalWorkerId);
+
+        if (!historyLogs.isEmpty()) {
+            // 퇴근한 기록을 반환 (이름, ZoneId, EndedAt 등이 다 들어있음)
+            return historyLogs.get(0);
+        }
+
+        // 3. 신규 입사자라 근무 기록이 아예 없는 경우 (Edge Case)
+        // 이때는 어쩔 수 없이 이름 없이 ID와 상태만 반환 (또는 UserMapper를 통해 이름만 조회하도록 추가 구현 가능)
+        return WorkLogResponseDto.builder()
+                .workerId(finalWorkerId)
+                .currentStatus(WorkLogEventType.END)
+                .build();
     }
 
     /**

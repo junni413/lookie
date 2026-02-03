@@ -34,7 +34,13 @@
 
     <!-- 3. 현재 진행중인 세션 조회 -->
     <select id="findActiveWorkLogByWorkerId" resultMap="WorkLogResultMap">
-        SELECT * FROM work_logs
+        SELECT
+            work_log_id,
+            worker_id,
+            started_at AS startedAt,
+            planned_end_at AS plannedEndAt,
+            ended_at AS endedAt
+        FROM work_logs
         WHERE worker_id = #{workerId} AND ended_at IS NULL
         ORDER BY started_at DESC
         LIMIT 1
