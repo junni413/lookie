@@ -267,6 +267,59 @@ class IssueServiceTest {
         verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
     }
 
+    @Test
+    @DisplayName("재촬영 요청 성공 - AI 판정 초기화 및 분석 재요청")
+    void retakeIssue_Success() {
+        // given
+        Long workerId = 1L;
+        Long issueId = 100L;
+        String newImageUrl = "https://example.com/new-image.jpg";
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setWorkerId(workerId);
+        issue.setBatchTaskItemId(200L); // for taskItemService.getTaskItem
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setIssueId(issueId);
+        judgment.setAiDecision("RETAKE"); // 기존 상태가 RETAKE라고 가정
+
+        TaskItemVO item = new TaskItemVO();
+        item.setProductId(500L);
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+        when(taskItemService.getTaskItem(200L)).thenReturn(item);
+
+        // when
+        issueService.retakeIssue(workerId, issueId, newImageUrl);
+
+        // then
+        // 1. 새 이미지 저장 검증
+        ArgumentCaptor<IssueImageVO> imageCaptor = ArgumentCaptor.forClass(IssueImageVO.class);
+        verify(issueMapper).insertIssueImage(imageCaptor.capture());
+        assertEquals(newImageUrl, imageCaptor.getValue().getImageUrl());
+        assertEquals(issueId, imageCaptor.getValue().getIssueId());
+
+        // 2. AI 판정 상태 리셋 검증 (핵심)
+        ArgumentCaptor<AiJudgmentVO> judgmentCaptor = ArgumentCaptor.forClass(AiJudgmentVO.class);
+        verify(issueMapper).updateAiJudgment(judgmentCaptor.capture());
+        AiJudgmentVO updatedJudgment = judgmentCaptor.getValue();
+
+        assertEquals("UNKNOWN", updatedJudgment.getAiDecision()); // 상태 리셋
+        assertEquals(newImageUrl, updatedJudgment.getImageUrl()); // URL 교체
+        assertNull(updatedJudgment.getConfidence()); // 신뢰도 초기화
+        assertNull(updatedJudgment.getAiResult()); // 결과 초기화
+
+        // 3. AI 분석 요청 재전송 검증
+        ArgumentCaptor<AiAnalysisRequest> requestCaptor = ArgumentCaptor.forClass(AiAnalysisRequest.class);
+        verify(aiAnalysisClient).requestAnalysis(requestCaptor.capture());
+
+        assertEquals(issueId, requestCaptor.getValue().getIssueId());
+        assertEquals(500L, requestCaptor.getValue().getProductId());
+        assertEquals(newImageUrl, requestCaptor.getValue().getImageUrl());
+    }
+
     // ================================================================
     // AI 판정 결과 처리 테스트
     // ================================================================

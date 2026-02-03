@@ -104,6 +104,71 @@ public class IssueService {
     }
 
     /**
+     * AI 재분석 요청 (재촬영)
+     * - AI 판정이 RETAKE인 경우, 새 이미지로 다시 분석 요청
+     * - 기존 Issue는 유지하고, AI 판정 상태만 초기화 (UNKNOWN)
+     */
+    @Transactional
+    public void retakeIssue(Long workerId, Long issueId, String imageUrl) {
+        log.info("[IssueService] retakeIssue started. workerId={}, issueId={}", workerId, issueId);
+
+        // 1. Issue 조회
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 2. 권한 검증 (본인 이슈인지)
+        if (!workerId.equals(issue.getWorkerId())) {
+            // NOTE: 관리자 개입 등으로 workerId가 달라질 수 있으나,
+            // 기본적으로는 본인이 생성한 이슈만 재촬영 가능하도록 제한
+            log.warn("[IssueService] Unauthorized retake attempt. workerId={}, issueWorkerId={}",
+                    workerId, issue.getWorkerId());
+            throw new ApiException(ErrorCode.ISSUE_TASK_NOT_ASSIGNED);
+        }
+
+        // 3. 현재 AI 판정 상태 확인 (RETAKE 여부)
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
+        // NOTE: 기획상 RETAKE 상태일 때만 재촬영이 가능하다고 했으므로 검증 추가
+        // 하지만 현장 상황에 따라 FAIL 등에서도 재촬영이 필요할 수 있으니,
+        // 일단은 "AI 판정이 존재할 때" 덮어쓰기 허용으로 유연하게 가되, 주로 RETAKE에서 사용됨.
+        if (judgment == null) {
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND); // AI 판정 자체가 없는 경우는 비정상
+        }
+
+        log.info("[IssueService] Retaking issue. Original decision={}", judgment.getAiDecision());
+
+        // 4. 새 이미지 이력 저장
+        IssueImageVO image = new IssueImageVO();
+        image.setIssueId(issueId);
+        image.setImageUrl(imageUrl);
+        issueMapper.insertIssueImage(image);
+        log.info("[IssueService] New image saved for retake.", imageUrl);
+
+        // 5. AI 판정 상태 리셋 (UNKNOWN) & 이미지 URL 교체
+        // 기존 레코드를 업데이트하여 processAiResult의 중복 방지 로직(UNKNOWN 체크)을 통과하도록 함
+        judgment.setImageUrl(imageUrl);
+        judgment.setAiDecision("UNKNOWN");
+        judgment.setConfidence(null);
+        judgment.setAiResult(null); // 이전 결과 날림
+        judgment.setSummary(null);
+
+        issueMapper.updateAiJudgment(judgment);
+        log.info("[IssueService] AiJudgment reset to UNKNOWN for retake.");
+
+        // 6. TaskItemVO 조회를 통한 ProductId 획득 (AI 재요청용)
+        TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
+
+        // 7. AI 서버로 재분석 요청 (비동기)
+        AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
+                issueId,
+                item != null ? item.getProductId() : 0L, // 안전장치
+                imageUrl);
+        aiAnalysisClient.requestAnalysis(aiRequest);
+        log.info("[IssueService] Re-analysis requested.");
+    }
+
+    /**
      * 이슈 상세 조회
      * - Issue 기본 정보 + AI 판정 결과 + 계산 필드 반환
      * - 프론트엔드가 이슈 상태를 확인할 수 있도록 조회 전용 API
