@@ -11,6 +11,7 @@ interface ManageZoneColumnProps {
 }
 
 export default function ManageZoneColumn({ zoneId, zoneName, workers, onDrop, highlightWorkerIds }: ManageZoneColumnProps) {
+    void zoneName; // Used by AIReallocationModal
 
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
