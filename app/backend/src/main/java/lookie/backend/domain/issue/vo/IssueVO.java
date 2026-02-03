@@ -16,7 +16,7 @@ public class IssueVO {
     private Long issueId;
     private String issueType; // ENUM('DAMAGED','OUT_OF_STOCK')
     private String status; // ENUM('OPEN','RESOLVED')
-    private String priority; // ENUM('LOW','MEDIUM','HIGH') - 사용 중단, urgency로 대체
+    // private String priority; // 삭제됨 (urgency 대체)
     private String reasonCode; // ENUM('DAMAGED','MOVE_LOCATION','WAITING_RETURN','STOCK_EXISTS','UNKNOWN')
     private String issueHandling; // ENUM('BLOCKING','NON_BLOCKING')
     private Boolean adminRequired;
@@ -46,7 +46,6 @@ public class IssueVO {
         // 기본 정책 (분기표 D0/S0 노드)
         issue.setIssueType(issueType); // 입력받은 유형으로 설정 (DAMAGED 또는 OUT_OF_STOCK)
         issue.setStatus("OPEN"); // 상태: 열림
-        issue.setPriority("MEDIUM"); // 우선순위: 중간 (사용 중단 예정)
         issue.setUrgency(3); // 관제 큐 우선순위: 3 (중간)
         issue.setIssueHandling("NON_BLOCKING"); // 처리 방식: 비차단
         issue.setAdminRequired(false); // 관리자 필요: 아니오

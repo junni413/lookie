@@ -88,7 +88,7 @@ class IssueServiceTest {
         // 기본 정책 검증 (IssueVO.createInitial 기본값)
         assertEquals("DAMAGED", capturedIssue.getIssueType());
         assertEquals("OPEN", capturedIssue.getStatus());
-        assertEquals("MEDIUM", capturedIssue.getPriority());
+        // assertEquals("MEDIUM", capturedIssue.getPriority()); // 삭제
         assertEquals(3, capturedIssue.getUrgency()); // 신규 필드 검증
         assertEquals("NON_BLOCKING", capturedIssue.getIssueHandling());
         assertEquals(false, capturedIssue.getAdminRequired());
@@ -293,7 +293,7 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
         assertEquals("OPEN", response.getStatus()); // OPEN 유지
-        assertEquals("MEDIUM", response.getPriority());
+        // assertEquals("MEDIUM", response.getPriority()); // 삭제
         assertEquals(4, response.getUrgency()); // urgency=4
         assertEquals("NON_BLOCKING", response.getIssueHandling());
         assertEquals(true, response.getAdminRequired()); // 관리자 사후 확정 필요
@@ -325,7 +325,7 @@ class IssueServiceTest {
 
         // then
         assertEquals("OPEN", response.getStatus());
-        assertEquals("HIGH", response.getPriority());
+        // assertEquals("HIGH", response.getPriority()); // 삭제
         assertEquals(1, response.getUrgency()); // urgency=1
         assertEquals("BLOCKING", response.getIssueHandling()); // 가이드에 따라 BLOCKING으로 변경됨
         assertEquals(true, response.getAdminRequired());
@@ -352,7 +352,7 @@ class IssueServiceTest {
         AiResultResponse response = issueService.processAiResult(issueId, request);
 
         // then
-        assertEquals("MEDIUM", response.getPriority());
+        // assertEquals("MEDIUM", response.getPriority()); // 삭제
         assertEquals(3, response.getUrgency()); // urgency=3
         assertEquals(true, response.getAdminRequired()); // 사후 확정 필요
         assertEquals("DAMAGED", response.getReasonCode());
@@ -422,7 +422,8 @@ class IssueServiceTest {
         issue.setIssueId(issueId);
         issue.setIssueType("DAMAGED");
         issue.setStatus("RESOLVED");
-        issue.setPriority("LOW");
+        // issue.setPriority("LOW"); // 삭제
+        issue.setUrgency(5); // LOW 대응
         issue.setIssueHandling("NON_BLOCKING");
         issue.setAdminRequired(false);
         issue.setReasonCode("AUTO_RESOLVED");
@@ -460,7 +461,8 @@ class IssueServiceTest {
         issue.setIssueId(issueId);
         issue.setIssueType("DAMAGED");
         issue.setStatus("OPEN");
-        issue.setPriority("HIGH");
+        // issue.setPriority("HIGH"); // 삭제
+        issue.setUrgency(1); // HIGH 대응
         issue.setIssueHandling("BLOCKING");
         issue.setAdminRequired(true);
         issue.setReasonCode("UNKNOWN");

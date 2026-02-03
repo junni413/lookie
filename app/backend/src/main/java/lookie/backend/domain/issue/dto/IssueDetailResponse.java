@@ -53,7 +53,8 @@ public class IssueDetailResponse {
                 .issueId(issue.getIssueId())
                 .type(issue.getIssueType())
                 .status(issue.getStatus())
-                .priority(issue.getPriority())
+                .status(issue.getStatus())
+                // .priority(issue.getPriority()) // 삭제됨
                 .issueHandling(issue.getIssueHandling())
                 .adminRequired(issue.getAdminRequired())
                 .reasonCode(issue.getReasonCode())

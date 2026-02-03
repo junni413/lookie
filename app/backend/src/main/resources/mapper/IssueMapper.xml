@@ -8,12 +8,12 @@
     <!-- Issue 생성 -->
     <insert id="insertIssue" useGeneratedKeys="true" keyProperty="issueId">
         INSERT INTO issues (
-            issue_type, status, priority, reason_code, issue_handling, admin_required,
+            issue_type, status, reason_code, issue_handling, admin_required,
             urgency, admin_decision,
             worker_id, admin_id, batch_task_id, batch_task_item_id, zone_location_id, new_location_id,
             note
         ) VALUES (
-            #{issueType}, #{status}, #{priority}, #{reasonCode}, #{issueHandling}, #{adminRequired},
+            #{issueType}, #{status}, #{reasonCode}, #{issueHandling}, #{adminRequired},
             #{urgency}, #{adminDecision},
             #{workerId}, #{adminId}, #{batchTaskId}, #{batchTaskItemId}, #{zoneLocationId}, #{newLocationId},
             #{note}
@@ -26,7 +26,6 @@
             issue_id AS issueId,
             issue_type AS issueType,
             status,
-            priority,
             reason_code AS reasonCode,
             issue_handling AS issueHandling,
             admin_required AS adminRequired,
@@ -50,7 +49,6 @@
         UPDATE issues
         SET
             status = #{status},
-            priority = #{priority},
             reason_code = #{reasonCode},
             issue_handling = #{issueHandling},
             admin_required = #{adminRequired},

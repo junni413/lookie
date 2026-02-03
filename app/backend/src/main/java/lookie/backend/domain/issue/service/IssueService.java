@@ -228,12 +228,14 @@ public class IssueService {
     /**
      * DAMAGED 타입 정책 (분기표 D1, D5, D8, D12 노드 기준)
      */
+    /**
+     * DAMAGED 타입 정책 (분기표 D1, D5, D8, D12 노드 기준)
+     */
     private void applyDamagedPolicy(IssueVO issue, String aiDecision) {
         switch (aiDecision) {
             case "PASS":
                 // D1: 정상 판정 - OPEN 유지, 관리자 사후 확정 필요
                 issue.setStatus("OPEN");
-                issue.setPriority("MEDIUM"); // 사용 중단 예정
                 issue.setUrgency(4);
                 issue.setIssueHandling("NON_BLOCKING");
                 issue.setAdminRequired(true);
@@ -245,7 +247,6 @@ public class IssueService {
             case "NEED_CHECK":
                 // D5: 애매함 - BLOCKING, 관리자 필수 연결
                 issue.setStatus("OPEN");
-                issue.setPriority("HIGH"); // 사용 중단 예정
                 issue.setUrgency(1);
                 issue.setIssueHandling("BLOCKING");
                 issue.setAdminRequired(true);
@@ -257,7 +258,6 @@ public class IssueService {
             case "FAIL":
                 // D8: 파손 가능성 - NON_BLOCKING, 사후 확정 필요
                 issue.setStatus("OPEN");
-                issue.setPriority("MEDIUM"); // 사용 중단 예정
                 issue.setUrgency(3);
                 issue.setIssueHandling("NON_BLOCKING");
                 issue.setAdminRequired(true);
@@ -269,7 +269,6 @@ public class IssueService {
             case "RETAKE":
                 // D12: 재촬영 필요 - BLOCKING, 관리자 개입 없음, 관제 미노출
                 issue.setStatus("OPEN");
-                issue.setPriority("MEDIUM"); // 사용 중단 예정
                 issue.setUrgency(0); // 관제 큐 제외
                 issue.setIssueHandling("BLOCKING");
                 issue.setAdminRequired(false);
@@ -301,7 +300,6 @@ public class IssueService {
             case "STOCK_EXISTS":
                 // S1: 전산상 재고 있음 - BLOCKING, 관리자 필수
                 issue.setStatus("OPEN");
-                issue.setPriority("HIGH"); // 사용 중단 예정
                 issue.setUrgency(1);
                 issue.setIssueHandling("BLOCKING");
                 issue.setAdminRequired(true);
@@ -313,7 +311,6 @@ public class IssueService {
             case "MOVE_LOCATION":
                 // S4: 지번 이동 - 즉시 RESOLVED
                 issue.setStatus("RESOLVED");
-                issue.setPriority("MEDIUM"); // 사용 중단 예정
                 issue.setUrgency(5);
                 issue.setIssueHandling("NON_BLOCKING");
                 issue.setAdminRequired(false);
@@ -327,7 +324,6 @@ public class IssueService {
             case "WAITING_RETURN":
                 // S5: 원복 대기 - NON_BLOCKING
                 issue.setStatus("OPEN");
-                issue.setPriority("MEDIUM"); // 사용 중단 예정
                 issue.setUrgency(3);
                 issue.setIssueHandling("NON_BLOCKING");
                 issue.setAdminRequired(false);
@@ -339,7 +335,6 @@ public class IssueService {
             case "DAMAGED":
                 // S6: 파손 원인 - NON_BLOCKING
                 issue.setStatus("OPEN");
-                issue.setPriority("MEDIUM"); // 사용 중단 예정
                 issue.setUrgency(3);
                 issue.setIssueHandling("NON_BLOCKING");
                 issue.setAdminRequired(false);
@@ -359,7 +354,6 @@ public class IssueService {
      */
     private void applyDefaultPolicy(IssueVO issue) {
         issue.setStatus("OPEN");
-        issue.setPriority("MEDIUM");
         issue.setIssueHandling("NON_BLOCKING");
         issue.setAdminRequired(false);
         issue.setReasonCode("UNKNOWN");
