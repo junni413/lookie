@@ -16,9 +16,12 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import lookie.backend.domain.webrtc.event.CallEndedEvent;
 import lookie.backend.domain.webrtc.event.CallRejectedEvent;
 
+import lookie.backend.domain.webrtc.dto.WebRtcSignalType;
+import lookie.backend.domain.webrtc.dto.WebRtcSignalResponse;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
@@ -33,6 +36,7 @@ public class LiveKitService {
     private final CallHistoryMapper callHistoryMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final io.livekit.server.RoomServiceClient roomServiceClient;
+    private final SimpMessagingTemplate messagingTemplate;
 
     private static final String USER_STATUS_KEY = "user:status:";
     private static final String STATUS_BUSY = "BUSY";
@@ -99,7 +103,12 @@ public class LiveKitService {
         callHistoryMapper.update(call);
 
         // 4. 받는 사람(Callee)용 LiveKit 토큰 발급
-        return generateToken(call.getCalleeId().toString(), call.getRoomName());
+        String token = generateToken(call.getCalleeId().toString(), call.getRoomName());
+
+        // 5. [WebSocket] Caller에게 수락 알림 전송 (Polling 대체)
+        sendSignal(call.getId(), WebRtcSignalType.ACCEPTED, call.getRoomName());
+
+        return token;
     }
 
     /**
@@ -126,6 +135,9 @@ public class LiveKitService {
         // 리소스 정리
         clearUserStatus(call.getCalleeId());
         closeLiveKitRoom(call.getRoomName());
+
+        // [WebSocket] Caller에게 거절 알림 전송
+        sendSignal(call.getId(), WebRtcSignalType.REJECTED, null);
     }
 
     /**
@@ -188,6 +200,9 @@ public class LiveKitService {
         // 뒷정리 (공통)
         clearUserStatus(call.getCalleeId());
         closeLiveKitRoom(call.getRoomName());
+
+        // [WebSocket] Callee에게 취소 알림 전송 (벨소리 중단용)
+        sendSignal(call.getId(), WebRtcSignalType.CANCELED, null);
     }
 
     // --- 내부 메서드 ---
@@ -264,5 +279,20 @@ public class LiveKitService {
             log.error("[LiveKit] Room 삭제 실패: {}", e.getMessage());
             // Room이 이미 없거나 오류가 발생해도 비즈니스 로직은 계속 진행
         }
+    }
+
+    /**
+     * WebSocket 시그널 전송 공통 메서드
+     * Destination: /topic/video-calls/{callId}
+     */
+    /**
+     * WebSocket 시그널 전송 공통 메서드
+     * Destination: /topic/video-calls/{callId}
+     */
+    private void sendSignal(Long callId, WebRtcSignalType type, String roomName) {
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName);
+
+        messagingTemplate.convertAndSend("/topic/video-calls/" + callId, payload);
+        log.info("[WebSocket] Signal sent: callId={}, type={}", callId, type);
     }
 }
