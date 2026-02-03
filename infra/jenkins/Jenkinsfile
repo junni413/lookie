@@ -470,7 +470,6 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_DEPLOY == "true" } }
       steps {
         script {
-          // ✅ Build&Push에서 IMAGE_TAG가 안 넘어왔을 때도 안전하게 세팅
           if (!env.IMAGE_TAG?.trim()) {
             env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           }
@@ -488,40 +487,41 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
                 set -euo pipefail
                 : > ${DEPLOY_LOG}
 
-                # ✅ 최초 접속 시 host key prompt 방지
                 mkdir -p ~/.ssh
                 ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
                 ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "
                   set -euo pipefail
-
                   mkdir -p '${DEPLOY_DIR}'
                   cd '${DEPLOY_DIR}'
 
-                  # ✅ migration SQL mount 때문에 repo가 필요 → clone 유지
                   if [ ! -d .git ]; then
                     git clone '${GIT_REPO_SSH}' .
                   fi
 
-                  # ✅ develop 최신화
                   git fetch origin
                   git checkout -B develop origin/develop
 
-                  # ✅ compose에 필요한 값은 CI가 export로 주입
-                  #    (배포 서버 .env에는 IMAGE_TAG를 두지 않는 것이 원칙)
                   export REGISTRY_IMAGE_BACKEND='${REGISTRY_IMAGE_BACKEND}'
                   export REGISTRY_IMAGE_NGINX='${REGISTRY_IMAGE_NGINX}'
                   export REGISTRY_IMAGE_AI='${REGISTRY_IMAGE_AI}'
                   export IMAGE_TAG='${IMAGE_TAG}'
 
-                  # ✅ 이미지 pull을 위한 docker hub 로그인
                   echo '${DH_PASS}' | docker login -u '${DH_USER}' --password-stdin >/dev/null
 
-                  # ✅ 최신 sha 이미지 pull → 컨테이너 재기동
+                  echo '[INFO] Deploy core services (without AI)'
                   docker compose -f '${COMPOSE_PROD_FILE}' pull
                   docker compose -f '${COMPOSE_PROD_FILE}' up -d
 
-                  # ✅ 미사용 이미지 정리(디스크 보호)
+                  # ✅ AI 이미지 존재할 때만 AI 서버 배포
+                  if docker manifest inspect '${REGISTRY_IMAGE_AI}:${IMAGE_TAG}' >/dev/null 2>&1; then
+                    echo '[INFO] AI image found → deploying ai-server'
+                    docker compose -f '${COMPOSE_PROD_FILE}' --profile ai pull
+                    docker compose -f '${COMPOSE_PROD_FILE}' --profile ai up -d
+                  else
+                    echo '[INFO] AI image not found → skipping ai-server'
+                  fi
+
                   docker image prune -f >/dev/null 2>&1 || true
                 " 2>&1 | tee -a ${DEPLOY_LOG}
               '
@@ -531,7 +531,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       }
     }
   }
-
+  
   // ============================================================
   // post: 항상 Mattermost 알림 전송
   // ============================================================
