@@ -41,6 +41,11 @@ export function subscribeCallStatus(
             debug: (str) => {
                 console.log(`🔍 [STOMP] ${str}`);
             },
+
+            onWebSocketClose: (event) => {
+                console.error("❌ [STOMP] WebSocket Closed:", event);
+                console.error("Code:", event.code, "Reason:", event.reason);
+            },
         });
 
         client.onStompError = (frame) => {
@@ -65,9 +70,21 @@ export function subscribeCallStatus(
 
         subscription = client!.subscribe(topic, (message) => {
             try {
-                const body = JSON.parse(message.body) as CallStatusEvent;
-                console.log(`📨 [STOMP] Received:`, body);
-                onStatusChange(body);
+                // Backend sends: { type, callId, roomId, senderId, timestamp }
+                // Frontend expects: { type, callId, roomId?, reason?, timestamp }
+                const backendMessage = JSON.parse(message.body);
+                console.log(`📨 [STOMP] Raw message from backend:`, backendMessage);
+
+                // Transform backend message to frontend format
+                const frontendEvent: CallStatusEvent = {
+                    type: backendMessage.type,
+                    callId: backendMessage.callId,
+                    roomId: backendMessage.roomId || undefined,
+                    timestamp: backendMessage.timestamp,
+                };
+
+                console.log(`📨 [STOMP] Transformed event:`, frontendEvent);
+                onStatusChange(frontendEvent);
             } catch (e) {
                 console.error('❌ [STOMP] Failed to parse message:', e);
             }

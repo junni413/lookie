@@ -32,6 +32,7 @@ export const webrtcService = {
         if (!response.ok) {
             const error = await response.json();
             console.error("❌ [WebRTC] 에러:", error);
+            // errorCode를 throw하여 callStore에서 매핑할 수 있도록 함
             throw new Error(error.errorCode || "WEBRTC_CALL_FAILED");
         }
 

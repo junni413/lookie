@@ -23,8 +23,6 @@ import IssueListPage from "./pages/worker/issue/IssueList";
 import IssueReportPage from "./pages/worker/issue/IssueReport";
 import IssueResultPage from "./pages/worker/issue/IssueResult";
 
-
-
 // ADMIN pages
 import AdminDashboard from "./pages/admin/Dashboard";
 import IssuePage from "./pages/admin/Issue";
@@ -41,6 +39,9 @@ import TaskList from "./pages/worker/task/TaskList";
 
 // ✅ WebRTC
 import VideoCallModal from "./components/webrtc/VideoCallModal";
+
+// ✅ Toast
+import { ToastContainer } from "./components/ui/toast";
 
 // ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -169,6 +170,9 @@ export default function App() {
 
       {/* ✅ WebRTC 모달 (전역) */}
       <VideoCallModal />
+
+      {/* ✅ Toast 알림 (전역) */}
+      <ToastContainer />
     </>
   );
 }
