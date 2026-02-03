@@ -8,34 +8,35 @@ export default function TaskAssignLoading() {
   const navigate = useNavigate();
   const { setTitle } = useOutletContext<MobileLayoutContext>();
 
-  useEffect(() => {
-    setTitle("작업 할당");
-  }, [setTitle]);
+  useEffect(() => setTitle("작업 할당"), [setTitle]);
 
   useEffect(() => {
     const fetchTask = async () => {
       try {
         const response = await taskService.startTask();
+
         if (response.success && response.data) {
-          // backend ApiResponse -> TaskResponse -> payload(TaskVO)
+          // ApiResponse.data = TaskResponse(TaskVO)
           const task = response.data.payload;
 
-          // 대기 중인 작업 통계 업데이트 (상품 수 기준)
+          // 대기 통계 (UI용)
           await taskService.addWaitingTasks(task.itemCount || 1);
 
           navigate("/worker/task/scan-start", {
             replace: true,
             state: { task },
           });
-        } else {
-          const msg = response.errorCode
-            ? (TASK_ERROR_MESSAGES[response.errorCode as TaskErrorCode] || response.message)
-            : (response.message || "작업 할당에 실패했습니다.");
-          throw new Error(msg);
+          return;
         }
+
+        const msg = response.errorCode
+          ? (TASK_ERROR_MESSAGES[response.errorCode as TaskErrorCode] || response.message)
+          : (response.message || "작업 할당에 실패했습니다.");
+
+        throw new Error(msg);
       } catch (error: any) {
         console.error("Task assign error:", error);
-        alert(error.message || "작업을 할당받지 못했습니다. 잠시 후 다시 시도해주세요.");
+        alert(error?.message || "작업을 할당받지 못했습니다. 잠시 후 다시 시도해주세요.");
         navigate("/worker/home", { replace: true });
       }
     };

@@ -22,20 +22,28 @@ export default function OtherIssue() {
     }, [setTitle]);
 
     const handleConnectAdmin = async () => {
-        // 통계 업데이트
+    try {
+        // 1) 이슈만 기록
         if (nav?.product) {
-            await taskService.reportIssue({
-                productName: nav.product.productName,
-                sku: nav.product.barcode,
-                location: nav.product.locationCode,
-                type: "기타"
-            });
+        await taskService.reportIssue({
+            productName: nav.product.productName,
+            sku: nav.product.barcode,
+            location: nav.product.locationCode,
+            type: "기타",
+        });
         } else {
-            await taskService.reportIssue();
+        await taskService.reportIssue();
         }
-        alert("관리자에게 연결합니다.");
-        navigate(-1); // 또는 작업 상세로 복귀
+
+        // 2) WebRTC는 아직 미연동: 임시 처리
+        alert("관리자 연결 기능은 준비 중입니다. (이슈는 접수되었습니다)");
+        navigate("/worker/home");
+    } catch (e) {
+        console.error(e);
+        alert("이슈 접수에 실패했습니다.");
+    }
     };
+
 
     return (
         <div className="flex flex-col h-full space-y-12 px-2">

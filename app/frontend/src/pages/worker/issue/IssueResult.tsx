@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
-import { useToast } from "@/components/ui/use-toast";
 import type { IssueType, AiVerdict } from "./IssueReport";
+import VideoCallModal from "./VideoCallModal";
 
 type NavState = {
   issueType: IssueType;
@@ -70,8 +70,7 @@ export default function IssueResult() {
   const { setTitle } = useOutletContext<MobileLayoutContext>();
   const nav = useLocation().state as NavState | undefined;
   const navigate = useNavigate();
-  const { toast } = useToast();
-
+  const [showVideoCall, setShowVideoCall] = useState(false);
   const [adminConnected, setAdminConnected] = useState(false);
 
   useEffect(() => {
@@ -88,11 +87,8 @@ export default function IssueResult() {
     navigate(-2);
   };
 
-  const connectAdmin = async () => {
-    toast({
-      title: "관리자에게 전달했습니다.",
-      description: "관리자가 확인 후 처리합니다.",
-    });
+  const connectAdmin = () => {
+    setShowVideoCall(true);
     setAdminConnected(true);
   };
 
@@ -122,8 +118,8 @@ export default function IssueResult() {
             onClick={connectAdmin}
             disabled={adminConnected}
             className={`h-12 rounded-2xl font-extrabold transition-all ${adminConnected
-                ? "bg-gray-100 text-gray-400"
-                : "bg-blue-600 text-white"
+              ? "bg-gray-100 text-gray-400"
+              : "bg-blue-600 text-white"
               }`}
           >
             {adminConnected ? "관리자 연결됨" : "관리자 연결하기"}
@@ -136,8 +132,8 @@ export default function IssueResult() {
             onClick={goNext}
             disabled={isNextDisabled}
             className={`h-12 rounded-2xl font-extrabold transition-all ${isNextDisabled
-                ? "bg-gray-200 text-gray-400"
-                : "bg-blue-600 text-white"
+              ? "bg-gray-200 text-gray-400"
+              : "bg-blue-600 text-white"
               }`}
           >
             다음 작업 진행
@@ -155,6 +151,9 @@ export default function IssueResult() {
           </button>
         )}
       </div>
+
+      {/* Video Call Modal */}
+      <VideoCallModal isOpen={showVideoCall} onClose={() => setShowVideoCall(false)} />
     </div>
   );
 }
