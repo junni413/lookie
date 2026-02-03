@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { cn } from "@/utils/cn";
 import { Users, Activity } from "lucide-react";
-import type { ZoneStatus } from "@/mocks/mockData";
+import type { ZoneStatus } from "@/types/db";
 import { getZoneStyle } from "@/utils/zoneUtils";
 
 interface ZoneSummaryCardProps {

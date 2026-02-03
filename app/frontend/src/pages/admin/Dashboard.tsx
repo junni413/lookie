@@ -3,7 +3,6 @@ import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import StatusCard from "./components/dashboard/StatusCard";
 import ZoneGrid from "./components/dashboard/ZoneGrid";
 import IssueList from "./components/issue/IssueList";
-import { adminDashboardMock } from "@/mocks/mockData";
 import { manageService } from "@/services/manageService";
 import { issueService } from "@/services/issueService";
 import type { IssueResponse } from "@/types/db";
@@ -15,29 +14,66 @@ type SortKey = "TIME" | "PRIORITY";
 const priorityMap: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
 export default function Dashboard() {
-  const { summary } = adminDashboardMock;
   const [issues, setIssues] = useState<IssueResponse[]>([]);
   const [zoneData, setZoneData] = useState<ZoneItem[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("TIME");
 
-  useEffect(() => {
-    // Fetch Issues
-    issueService.getIssues().then((data) => {
-      const unresolved = data.filter((i) => i.status === "OPEN");
-      setIssues(unresolved);
-    });
+  // Summary State
+  const [summary, setSummary] = useState({
+    working: 0,
+    waiting: 0,
+    done: 0,
+    progress: 0,
+  });
 
-    // Fetch Zone Stats
-    manageService.getZoneStats().then((data) => {
-      const formattedZones: ZoneItem[] = data.map(z => ({
-        id: z.zone_id,
-        name: z.name,
-        status: z.status,
-        working: z.worker_count,
-        work_rate: z.work_rate
-      }));
-      setZoneData(formattedZones);
-    });
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [fetchedIssuesResult, fetchedStats, fetchedWorkers] = await Promise.all([
+          issueService.getIssues(), // Now returns { data: [], total: number }
+          manageService.getZoneStats(),
+          manageService.getAllWorkers(),
+        ]);
+
+        const fetchedIssues = fetchedIssuesResult.data;
+
+        // Issues
+        const unresolved = fetchedIssues.filter((i) => i.status === "OPEN");
+        const resolved = fetchedIssues.filter((i) => i.status === "RESOLVED");
+        setIssues(unresolved);
+
+        // Zone Stats
+        const formattedZones: ZoneItem[] = fetchedStats.map((z) => ({
+          id: z.zone_id,
+          name: z.name,
+          status: z.status,
+          working: z.worker_count,
+          work_rate: z.work_rate,
+        }));
+        setZoneData(formattedZones);
+
+        // Summary Calculation
+        const workingCount = fetchedWorkers.filter((w) => w.status === "WORKING").length;
+        const waitingCount = unresolved.length;
+        const doneCount = resolved.length;
+
+        // Calculate Average Progress (Work Rate)
+        const totalRate = fetchedWorkers.reduce((sum, w) => sum + (w.work_rate || 0), 0);
+        const avgRate = fetchedWorkers.length > 0 ? Math.floor(totalRate / fetchedWorkers.length) : 0;
+
+        setSummary({
+          working: workingCount,
+          waiting: waitingCount,
+          done: doneCount,
+          progress: avgRate,
+        });
+
+      } catch (error) {
+        console.error("Failed to load dashboard data", error);
+      }
+    };
+
+    fetchData();
   }, []);
 
   const sortedIssues = useMemo(() => {
@@ -51,8 +87,6 @@ export default function Dashboard() {
     }
     return arr;
   }, [issues, sortKey]);
-
-
 
   return (
     // Global Container: strict h-full to fit parent, no overflow on body
@@ -154,7 +188,7 @@ export default function Dashboard() {
           <div className="p-4">
             <button
               className="w-full py-3 rounded-full border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-              onClick={() => window.location.href = '/admin/issue'} // Simple navigation for now, or use useNavigate if available in scope
+              onClick={() => window.location.href = '/admin/issue'} // Simple navigation for now
             >
               전체 이슈 확인하기
             </button>

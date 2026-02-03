@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/utils/cn";
 import { getZoneStyle } from "@/utils/zoneUtils";
-import type { ZoneStatus } from "@/mocks/mockData";
+import type { ZoneStatus } from "@/types/db";
 
 interface ManageStatisticCardProps {
     zoneName: string;

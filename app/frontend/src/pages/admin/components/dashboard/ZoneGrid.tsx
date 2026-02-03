@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import type { ZoneStatus } from "@/mocks/mockData";
+import type { ZoneStatus } from "@/types/db";
 import { cn } from "@/utils/cn";
 import { Users, PieChart } from "lucide-react";
 import { getZoneStyle } from "@/utils/zoneUtils";

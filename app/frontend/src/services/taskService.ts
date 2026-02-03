@@ -10,12 +10,12 @@ export interface Issue {
   title: string;
   location: string;
   createdAt: string;
-  status: IssueStatus;
+  status: IssueStatus; // "OPEN", "RESOLVED"
   imageUrl?: string;
   productName: string;
   sku: string;
-  aiResult?: string;
-  verdict?: string;
+  aiResult?: string; // "MISSING", "WAIT", "ADMIN", "LOCATION_MOVE"
+  verdict?: string;  // "OK", "DAMAGED", "NEED_REVIEW"
 }
 
 /** -----------------------------

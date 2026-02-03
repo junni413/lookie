@@ -111,3 +111,5 @@ export interface LayoutBin {
     bin_number: number;
     capacity?: number;
 }
+
+export type ZoneStatus = "STABLE" | "NORMAL" | "CRITICAL";

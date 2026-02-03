@@ -45,9 +45,62 @@ export const issueService = {
     /**
      * 이슈 목록 조회 (Simulate GET /api/admin/issues)
      */
-    getIssues: async (): Promise<IssueResponse[]> => {
+    /**
+     * 이슈 목록 조회 (Simulate GET /api/admin/issues)
+     */
+    getIssues: async (params?: {
+        page?: number;
+        size?: number;
+        status?: "OPEN" | "RESOLVED";
+        sort?: "TIME" | "PRIORITY";
+    }): Promise<{ data: IssueResponse[]; total: number }> => {
         await delay(500);
-        return getJoinedIssues();
+        let all = getJoinedIssues();
+
+        // 1. Filter by Status
+        if (params?.status) {
+            all = all.filter(i => i.status === params.status);
+        }
+
+        // 2. Sort
+        if (params?.sort) {
+            if (params.sort === "PRIORITY") {
+                const priorityMap = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+                all.sort((a, b) => priorityMap[b.priority] - priorityMap[a.priority]);
+            } else {
+                // TIME (Default)
+                // For RESOLVED, sort by resolved_at descending if available, else created_at
+                // But simplified requirement said "Approved Completed list -> always latest sort"
+                // "Approved Pending list -> Time or Urgency"
+                // Let's just default all to Time (created_at desc) unless specified otherwise 
+                // However, RESOLVED usually sorts by resolved_at? The user said "resolvedAt" is a column. 
+                // Let's assume Time sort means created_at desc for OPEN, and resolved_at desc for RESOLVED if possible.
+                // But for simplicity in this mock service, we'll sort by created_at desc generally, or resolved_at if status is RESOLVED and sort is TIME.
+
+                if (params.status === "RESOLVED") {
+                    all.sort((a, b) => {
+                        const timeA = a.resolved_at ? new Date(a.resolved_at).getTime() : new Date(a.created_at).getTime();
+                        const timeB = b.resolved_at ? new Date(b.resolved_at).getTime() : new Date(b.created_at).getTime();
+                        return timeB - timeA;
+                    });
+                } else {
+                    all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                }
+            }
+        }
+
+        // 3. Pagination
+        const page = params?.page || 1;
+        const size = params?.size || 10;
+        const start = (page - 1) * size;
+        const end = start + size;
+
+        const paginated = all.slice(start, end);
+
+        return {
+            data: paginated,
+            total: all.length
+        };
     },
 
     /**

@@ -21,13 +21,13 @@ function seededRandom(seed: number) {
 }
 
 // Zones
-export type ZoneStatus = "NORMAL" | "BUSY" | "ISSUE";
+export type ZoneStatus = "STABLE" | "NORMAL" | "CRITICAL";
 
 export const zonesMock: { id: number; name: string; status: ZoneStatus }[] = [
-  { id: 1, name: "zone A", status: "NORMAL" },
-  { id: 2, name: "zone B", status: "BUSY" },
-  { id: 3, name: "zone C", status: "ISSUE" },
-  { id: 4, name: "zone D", status: "NORMAL" },
+  { id: 1, name: "zone A", status: "STABLE" },
+  { id: 2, name: "zone B", status: "NORMAL" },
+  { id: 3, name: "zone C", status: "CRITICAL" },
+  { id: 4, name: "zone D", status: "STABLE" },
 ];
 
 /**
