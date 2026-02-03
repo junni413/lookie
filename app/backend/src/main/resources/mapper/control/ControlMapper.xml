@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="lookie.backend.domain.control.mapper.ControlMapper">
+
+    <select id="selectZoneOverviews" resultType="lookie.backend.domain.control.dto.ZoneOverviewDto">
+        SELECT
+            z.zone_id AS zoneId,
+            -- (수정) 중복 방지를 위해 DISTINCT 추가
+            COUNT(DISTINCT wl.worker_id) AS workerCount,
+            0.0 AS progressRate,
+            'STABLE' AS status
+        FROM zones z
+        -- 관리자가 배정한 구역의 작업자만 조인
+        LEFT JOIN users u ON u.assigned_zone_id = z.zone_id AND u.role = 'WORKER'
+        -- 그 작업자가 현재 출근 중(ended_at IS NULL)인지 확인
+        LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        GROUP BY z.zone_id
+        ORDER BY z.zone_id
+    </select>
+
+    <select id="selectWorkersByZoneId" resultType="lookie.backend.domain.control.dto.ZoneWorkerDto">
+        SELECT
+            u.user_id AS workerId,
+            u.name AS name,
+            u.phone_number AS phoneNumber,
+            (
+                SELECT COUNT(bti.batch_task_item_id)
+                FROM batch_tasks bt
+                JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
+                WHERE bt.worker_id = u.user_id
+                  AND bti.status != 'PENDING'
+                  AND DATE(bti.last_scanned_at) = CURDATE()
+            ) AS workCount,
+            0.0 AS processingSpeed,
+            0.0 AS currentTaskProgress,
+            'WORKING' AS status,
+            'AVAILABLE' AS webrtcStatus
+        FROM users u
+        INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        WHERE u.assigned_zone_id = #{zoneId}
+    </select>
+
+</mapper>
