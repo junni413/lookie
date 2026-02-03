@@ -17,10 +17,6 @@ const brokerURL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${w
 
 /**
  * WebSocket(STOMP) 연결 및 통화 상태 구독
- * 
- * @param callId - 구독할 통화 ID
- * @param onStatusChange - 상태 변경 이벤트 핸들러
- * @param onError - 에러 핸들러
  */
 export function subscribeCallStatus(
     callId: number,
@@ -29,53 +25,43 @@ export function subscribeCallStatus(
     onError?: (error: any) => void
 ): () => void {
 
-    // 클라이언트가 없으면 생성
     if (!client) {
         client = new Client({
-            brokerURL: brokerURL,
+            brokerURL,
             reconnectDelay: 5000,
             heartbeatIncoming: 4000,
             heartbeatOutgoing: 4000,
 
-            // 개발 모드 로그
-            debug: (str) => {
-                console.log(`🔍 [STOMP] ${str}`);
-            },
+            debug: (str) => console.log(`🔍 [STOMP] ${str}`),
 
             onWebSocketClose: (event) => {
-                console.error("❌ [STOMP] WebSocket Closed:", event);
-                console.error("Code:", event.code, "Reason:", event.reason);
+                console.error("❌ [STOMP] WebSocket Closed:", event.code, event.reason);
             },
         });
 
         client.onStompError = (frame) => {
-            console.error('❌ [STOMP] Broker reported error:', frame.headers['message']);
-            console.error('Additional details:', frame.body);
+            console.error('❌ [STOMP] Error:', frame.headers['message']);
             onError?.(new Error(frame.headers['message']));
         };
     }
 
-    // ✅ 토큰 헤더 업데이트 (항상 최신 토큰 적용)
-    console.log(`🔑 [STOMP] Setting Auth Header: Bearer ${token.substring(0, 10)}...`);
+    console.log(`🔑 [STOMP] Auth: Bearer ${token.substring(0, 10)}...`);
     client.connectHeaders = {
         Authorization: `Bearer ${token}`,
     };
 
-    client.onConnect = (frame) => {
+    client.onConnect = () => {
         console.log('✅ [STOMP] Connected');
 
-        // 구독: /topic/video-calls/{callId}
         const topic = `/topic/video-calls/${callId}`;
         console.log(`📡 [STOMP] Subscribing to ${topic}`);
 
         subscription = client!.subscribe(topic, (message) => {
             try {
-                // Backend sends: { type, callId, roomId, senderId, timestamp }
-                // Frontend expects: { type, callId, roomId?, reason?, timestamp }
                 const backendMessage = JSON.parse(message.body);
-                console.log(`📨 [STOMP] Raw message from backend:`, backendMessage);
+                console.log(`📨 [STOMP] Message:`, backendMessage);
 
-                // Transform backend message to frontend format
+                // Transform backend DTO to frontend event
                 const frontendEvent: CallStatusEvent = {
                     type: backendMessage.type,
                     callId: backendMessage.callId,
@@ -83,28 +69,20 @@ export function subscribeCallStatus(
                     timestamp: backendMessage.timestamp,
                 };
 
-                console.log(`📨 [STOMP] Transformed event:`, frontendEvent);
                 onStatusChange(frontendEvent);
             } catch (e) {
-                console.error('❌ [STOMP] Failed to parse message:', e);
+                console.error('❌ [STOMP] Parse error:', e);
             }
         });
     };
 
-    // 연결 활성화
     if (!client.active) {
         client.activate();
-    } else {
-        // 이미 연결된 상태라면, 강제로 재연결해야 할 수도 있음 (헤더 변경 시)
-        // 하지만 여기선 같은 유저 세션 내이므로 토큰이 유효하다면 재연결 불필요할 수도 있음.
-        // 만약 토큰 만료 후 갱신된 토큰이라면 재연결 필요.
-        // 안전을 위해 비활성 -> 활성 시도
-        // 현재 로직은 간단히 유지.
     }
 
     // Cleanup function
     return () => {
-        console.log('🔌 [STOMP] Deactivating...');
+        console.log('🔌 [STOMP] Cleanup');
         if (subscription) {
             subscription.unsubscribe();
             subscription = null;
