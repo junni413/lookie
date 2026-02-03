@@ -56,6 +56,8 @@ services:
     image: flyway/flyway:10-alpine
     container_name: migrate
     networks: [lookie]
+    environment:
+      - FLYWAY_OUT_OF_ORDER=true
     depends_on:
       # MySQL이 healthy 상태가 된 후에만 migrate 실행
       mysql:
