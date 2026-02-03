@@ -13,32 +13,23 @@ type RequireRoleProps = {
 export default function RequireRole({
   role,
   children,
-  loginPath = "/", // 임시
+  loginPath = "/",
 }: RequireRoleProps) {
   const location = useLocation();
-  const { token, role: userRole, isAuthed } = useAuthStore();
 
-  // 1. 비로그인 → 로그인 페이지
-  if (!isAuthed() || !token || !userRole) {
-    return (
-      <Navigate
-        to={loginPath}
-        replace
-        state={{ from: location }}
-      />
-    );
+  // ✅ store에서 필요한 값만 selector로 가져오기
+  const token = useAuthStore((s) => s.token);
+  const userRole = useAuthStore((s) => s.role);
+
+  // 1) 비로그인
+  if (!token || !userRole) {
+    return <Navigate to={loginPath} replace state={{ from: location }} />;
   }
 
-  // 2. 역할 불일치 → 해당 역할의 기본 랜딩 페이지
+  // 2) 권한 불일치
   if (userRole !== role) {
-    return (
-      <Navigate
-        to={DEFAULT_ROUTE_BY_ROLE[userRole]}
-        replace
-      />
-    );
+    return <Navigate to={DEFAULT_ROUTE_BY_ROLE[userRole]} replace />;
   }
 
-  // 3.통과
-  return <>{children}</>; 
+  return <>{children}</>;
 }
