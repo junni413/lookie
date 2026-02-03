@@ -14,24 +14,24 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const getJoinedIssues = (): IssueResponse[] => {
     return db_issues.map((issue) => {
         // Join Worker Name
-        const workerUser = db_users.find(u => u.user_id === issue.worker_id);
+        const workerUser = db_users.find(u => u.userId === issue.workerId);
         const workerName = workerUser ? workerUser.name : "알 수 없음";
 
         // Join Zone Name
         // Mock data now uses db_zones and zoneNames map.
-        // issue.zone_location_id might be the location_id, but for simple display we map to Zone Name.
-        // Assume zone_location_id implies zone_id for now or logic to find zone.
-        // In mockData generation, I used zone_id as zone_location_id proxy.
-        const zoneName = zoneNames[issue.zone_location_id || 1] || "Unknown Zone";
+        // issue.zoneLocationId might be the locationId, but for simple display we map to Zone Name.
+        // Assume zoneLocationId implies zoneId for now or logic to find zone.
+        // In mockData generation, I used zoneId as zoneLocationId proxy.
+        const zoneName = zoneNames[issue.zoneLocationId || 1] || "Unknown Zone";
 
         // Join Images
-        const images = db_issue_images.filter((img) => img.issue_id === issue.issue_id);
+        const images = db_issue_images.filter((img) => img.issueId === issue.issueId);
 
         // Join AI Judgment
-        const judgment = db_ai_judgments.find((j) => j.issue_id === issue.issue_id);
+        const judgment = db_ai_judgments.find((j) => j.issueId === issue.issueId);
 
         // Join Enhanced Worker Info
-        const worker = getDerivedWorker(issue.worker_id);
+        const worker = getDerivedWorker(issue.workerId);
 
         if (!worker) {
             // Fallback if worker not found (shouldn't happen with correct mock data)
@@ -83,12 +83,12 @@ export const issueService = {
                 // TIME (Default)
                 if (params.status === "RESOLVED") {
                     all.sort((a, b) => {
-                        const timeA = a.resolved_at ? new Date(a.resolved_at).getTime() : new Date(a.created_at).getTime();
-                        const timeB = b.resolved_at ? new Date(b.resolved_at).getTime() : new Date(b.created_at).getTime();
+                        const timeA = a.resolvedAt ? new Date(a.resolvedAt).getTime() : new Date(a.createdAt).getTime();
+                        const timeB = b.resolvedAt ? new Date(b.resolvedAt).getTime() : new Date(b.createdAt).getTime();
                         return timeB - timeA;
                     });
                 } else {
-                    all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                    all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
                 }
             }
         }
@@ -113,7 +113,7 @@ export const issueService = {
     getIssueDetail: async (id: number): Promise<IssueResponse | null> => {
         await delay(300);
         const all = getJoinedIssues();
-        const issue = all.find((i) => i.issue_id === id);
+        const issue = all.find((i) => i.issueId === id);
         return issue || null;
     },
 
@@ -123,14 +123,14 @@ export const issueService = {
     processIssue: async (id: number, decision: "APPROVED" | "REJECTED"): Promise<void> => {
         await delay(800);
 
-        const target = db_issues.find(i => i.issue_id === id);
+        const target = db_issues.find(i => i.issueId === id);
         if (target) {
             target.status = "RESOLVED";
-            target.resolved_at = new Date().toISOString();
+            target.resolvedAt = new Date().toISOString();
             if (decision === "APPROVED") {
-                target.issue_handling = "NON_BLOCKING"; // Or equivalent logic
+                target.issueHandling = "NON_BLOCKING"; // Or equivalent logic
             } else {
-                target.issue_handling = "BLOCKING"; // Or logic for rejection
+                target.issueHandling = "BLOCKING"; // Or logic for rejection
             }
         }
     },

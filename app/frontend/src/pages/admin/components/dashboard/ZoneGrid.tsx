@@ -9,7 +9,7 @@ export interface ZoneItem {
   name: string;
   status: ZoneStatus;
   working: number; // 작업자 수
-  work_rate: number; // 진행률
+  workRate: number; // 진행률
 }
 
 export default function ZoneGrid({ zones }: { zones: ZoneItem[] }) {
@@ -63,7 +63,7 @@ export default function ZoneGrid({ zones }: { zones: ZoneItem[] }) {
                     <span>진행률</span>
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <span className={cn("text-3xl font-bold tracking-tight", style.itemValue)}>{z.work_rate}</span>
+                    <span className={cn("text-3xl font-bold tracking-tight", style.itemValue)}>{z.workRate}</span>
                     <span className={cn("text-sm font-medium opacity-60", style.itemValue)}>%</span>
                   </div>
                 </div>

@@ -65,7 +65,7 @@ export default function Issue() {
     };
 
     // Handle Selection
-    const selectedIssue = issues.find((i) => i.issue_id === selectedId) || null;
+    const selectedIssue = issues.find((i) => i.issueId === selectedId) || null;
 
     return (
         <div className="flex flex-col h-full overflow-hidden relative">

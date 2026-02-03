@@ -5,17 +5,17 @@
 export type UserRole = 'ADMIN' | 'WORKER';
 
 export interface DB_User {
-    user_id: number;
+    userId: number;
     role: UserRole;
-    password_hash: string;
+    passwordHash: string;
     name: string;
-    phone_number: string;
+    phoneNumber: string;
     email?: string | null;
-    birth_date?: string | null; // DATE -> string (YYYY-MM-DD)
-    is_active: boolean;
-    created_at: string;
-    updated_at: string;
-    assigned_zone_id?: number | null; // 관리자에 의해 배정된 담당 구역
+    birthDate?: string | null; // DATE -> string (YYYY-MM-DD)
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+    assignedZoneId?: number | null; // 관리자에 의해 배정된 담당 구역
 }
 
 // =========================
@@ -24,13 +24,13 @@ export interface DB_User {
 export type BatchStatus = 'IN_PROGRESS' | 'COMPLETED';
 
 export interface DB_Batch {
-    batch_id: number;
-    batch_round: number;
-    started_at?: string | null;
-    completed_at?: string | null;
-    deadline_at: string;
+    batchId: number;
+    batchRound: number;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    deadlineAt: string;
     status: BatchStatus;
-    created_at: string;
+    createdAt: string;
 }
 
 // =========================
@@ -40,46 +40,46 @@ export type BatchTaskStatus = 'UNASSIGNED' | 'IN_PROGRESS' | 'COMPLETED';
 export type TaskActionStatus = 'SCAN_TOTE' | 'SCAN_LOCATION' | 'SCAN_ITEM' | 'ADJUST_QUANTITY' | 'COMPLETE_TASK';
 
 export interface DB_BatchTask {
-    batch_task_id: number;
-    batch_id: number;
-    worker_id?: number | null;
+    batchTaskId: number;
+    batchId: number;
+    workerId?: number | null;
     status: BatchTaskStatus;
-    started_at?: string | null;
-    completed_at?: string | null;
-    tote_id?: number | null;
-    tote_scanned_at?: string | null;
-    tote_released_at?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    toteId?: number | null;
+    toteScannedAt?: string | null;
+    toteReleasedAt?: string | null;
 
     // Added Columns
-    zone_id: number;
-    created_at: string;
-    updated_at: string;
-    action_status: TaskActionStatus;
-    location_scanned_at?: string | null;
-    current_location_id?: number | null;
+    zoneId: number;
+    createdAt: string;
+    updatedAt: string;
+    actionStatus: TaskActionStatus;
+    locationScannedAt?: string | null;
+    currentLocationId?: number | null;
 }
 
 export type BatchTaskItemStatus = 'PENDING' | 'DONE' | 'ISSUE';
 
 export interface DB_BatchTaskItem {
-    batch_task_item_id: number;
-    batch_task_id: number;
-    product_id: number;
-    location_id: number;
-    required_qty: number;
-    picked_qty: number;
+    batchTaskItemId: number;
+    batchTaskId: number;
+    productId: number;
+    locationId: number;
+    requiredQty: number;
+    pickedQty: number;
     status: BatchTaskItemStatus;
-    completed_at?: string | null;
-    last_scanned_at?: string | null;
+    completedAt?: string | null;
+    lastScannedAt?: string | null;
 }
 
 // =========================
 // 4) totes
 // =========================
 export interface DB_Tote {
-    tote_id: number;
-    current_batch_task_id?: number | null;
-    is_active: boolean;
+    toteId: number;
+    currentBatchTaskId?: number | null;
+    isActive: boolean;
     barcode: string;
 }
 
@@ -87,12 +87,12 @@ export interface DB_Tote {
 // 5) products
 // =========================
 export interface DB_Product {
-    product_id: number;
+    productId: number;
     barcode: string;
-    product_name: string;
-    product_image?: string | null;
-    location_id?: number | null;
-    zone_id?: number | null;
+    productName: string;
+    productImage?: string | null;
+    locationId?: number | null;
+    zoneId?: number | null;
 }
 
 // =========================
@@ -101,27 +101,27 @@ export interface DB_Product {
 export type WorkLogEventType = 'START' | 'PAUSE' | 'RESUME' | 'END';
 
 export interface DB_WorkLog {
-    work_log_id: number;
-    worker_id: number;
-    started_at: string;
-    planned_end_at: string;
-    ended_at?: string | null;
+    workLogId: number;
+    workerId: number;
+    startedAt: string;
+    plannedEndAt: string;
+    endedAt?: string | null;
 }
 
 export interface DB_WorkLogEvent {
-    event_id: number;
-    work_log_id: number;
-    event_type: WorkLogEventType;
+    eventId: number;
+    workLogId: number;
+    eventType: WorkLogEventType;
     reason?: string | null;
-    occurred_at: string; // DATETIME
+    occurredAt: string; // DATETIME
 }
 
 // =========================
 // 9) zones
 // =========================
 export interface DB_Zone {
-    zone_id: number;
-    map_id?: number | null;
+    zoneId: number;
+    mapId?: number | null;
 }
 
 // =========================
@@ -131,14 +131,14 @@ export type AssignmentType = 'BASE' | 'TEMP';
 export type AssignmentSource = 'ADMIN' | 'AI';
 
 export interface DB_ZoneAssignment {
-    assignment_id: number;
-    worker_id: number;
-    zone_id: number;
-    assignment_type: AssignmentType;
+    assignmentId: number;
+    workerId: number;
+    zoneId: number;
+    assignmentType: AssignmentType;
     source: AssignmentSource;
-    assigned_by_admin_id?: number | null;
-    started_at: string;
-    ended_at?: string | null;
+    assignedByAdminId?: number | null;
+    startedAt: string;
+    endedAt?: string | null;
     reason?: string | null;
 }
 
@@ -152,23 +152,23 @@ export type IssueReasonCode = 'DAMAGED' | 'MOVE_LOCATION' | 'WAITING_RETURN' | '
 export type IssueHandling = 'BLOCKING' | 'NON_BLOCKING';
 
 export interface DB_Issue {
-    issue_id: number;
-    issue_type: IssueType;
+    issueId: number;
+    issueType: IssueType;
     status: IssueStatus;
     priority: IssuePriority;
-    reason_code: IssueReasonCode;
+    reasonCode: IssueReasonCode;
     // required_action removed in schema, replaced/augmented by issue_handling & admin_required
-    issue_handling: IssueHandling;
-    admin_required: boolean;
+    issueHandling: IssueHandling;
+    adminRequired: boolean;
 
-    worker_id: number;
-    admin_id?: number | null;
-    batch_task_id: number;
-    batch_task_item_id?: number | null;
-    zone_location_id?: number | null;
+    workerId: number;
+    adminId?: number | null;
+    batchTaskId: number;
+    batchTaskItemId?: number | null;
+    zoneLocationId?: number | null;
 
-    created_at: string;
-    resolved_at?: string | null;
+    createdAt: string;
+    resolvedAt?: string | null;
     note?: string | null;
 }
 
@@ -176,10 +176,10 @@ export interface DB_Issue {
 // 12) issue_images
 // =========================
 export interface DB_IssueImage {
-    issue_image_id: number;
-    issue_id: number;
-    image_url: string;
-    created_at: string;
+    issueImageId: number;
+    issueId: number;
+    imageUrl: string;
+    createdAt: string;
 }
 
 // =========================
@@ -188,14 +188,14 @@ export interface DB_IssueImage {
 export type AiDecision = 'PASS' | 'FAIL' | 'NEED_CHECK' | 'UNKNOWN';
 
 export interface DB_AiJudgment {
-    judgment_id: number;
-    issue_id: number;
-    image_url?: string | null;
-    ai_result?: any | null; // JSON
+    judgmentId: number;
+    issueId: number;
+    imageUrl?: string | null;
+    aiResult?: any | null; // JSON
     confidence?: number | null; // DECIMAL
-    ai_decision: AiDecision;
+    aiDecision: AiDecision;
     summary?: string | null;
-    created_at: string;
+    createdAt: string;
 }
 
 // =========================
@@ -204,68 +204,68 @@ export interface DB_AiJudgment {
 export type CallStatus = 'REQUESTED' | 'CONNECTED' | 'MISSED' | 'ENDED';
 
 export interface DB_WebRTCCall {
-    call_id: number;
-    issue_id: number;
-    worker_id: number;
-    admin_id?: number | null;
-    session_key: string;
+    callId: number;
+    issueId: number;
+    workerId: number;
+    adminId?: number | null;
+    sessionKey: string;
     status: CallStatus;
-    started_at: string;
-    ended_at?: string | null;
+    startedAt: string;
+    endedAt?: string | null;
 }
 
 // =========================
 // 15) control_maps
 // =========================
 export interface DB_ControlMap {
-    map_id: number;
-    map_name: string;
-    image_url: string;
-    created_at: string;
+    mapId: number;
+    mapName: string;
+    imageUrl: string;
+    createdAt: string;
 }
 
 // =========================
 // 16) map_zone_polygons
 // =========================
 export interface DB_MapZonePolygon {
-    polygon_id: number;
-    map_id: number;
-    zone_id: number;
-    points_json: any; // JSON
-    created_at: string;
+    polygonId: number;
+    mapId: number;
+    zoneId: number;
+    pointsJson: any; // JSON
+    createdAt: string;
 }
 
 // =========================
 // 17) zone_lines
 // =========================
 export interface DB_ZoneLine {
-    line_id: number;
-    zone_id: number;
-    line_name: string;
-    is_active: boolean;
+    lineId: number;
+    zoneId: number;
+    lineName: string;
+    isActive: boolean;
 }
 
 // =========================
 // 18) zone_locations
 // =========================
 export interface DB_ZoneLocation {
-    location_id: number;
-    map_id: number;
-    zone_id: number;
-    line_id?: number | null;
-    location_code: string;
+    locationId: number;
+    mapId: number;
+    zoneId: number;
+    lineId?: number | null;
+    locationCode: string;
     x: number;
     y: number;
-    is_active: boolean;
-    created_at: string;
+    isActive: boolean;
+    createdAt: string;
 }
 
 // =========================
 // 19) admin_assignments
 // =========================
 export interface DB_AdminAssignment {
-    admin_id: number;
-    zone_id: number;
+    adminId: number;
+    zoneId: number;
 }
 
 // =========================
@@ -275,14 +275,14 @@ export type CallHistoryStatus = 'WAITING' | 'ACTIVE' | 'REJECTED' | 'ENDED' | 'C
 
 export interface DB_CallHistory {
     id: number;
-    room_name: string;
-    caller_id: number;
-    callee_id: number;
-    issue_id?: number | null;
+    roomName: string;
+    callerId: number;
+    calleeId: number;
+    issueId?: number | null;
     status: CallHistoryStatus;
-    start_time?: string | null;
-    end_time?: string | null;
-    created_at: string;
+    startTime?: string | null;
+    endTime?: string | null;
+    createdAt: string;
 }
 
 // =========================
@@ -297,30 +297,30 @@ export interface IssueResponse extends DB_Issue {
     judgment?: DB_AiJudgment;
     worker: DB_Worker;
     // Old fields compatibility if needed, else remove
-    required_action?: 'WORKER_CONTINUE' | 'ADMIN_REQUIRED' | 'WAIT_ADMIN' | 'AUTO_RESOLVED';
+    requiredAction?: 'WORKER_CONTINUE' | 'ADMIN_REQUIRED' | 'WAIT_ADMIN' | 'AUTO_RESOLVED';
 }
 
 // Worker info as used in Dashboard (aggregates + DB_User subset)
 export interface DB_Worker extends DB_User {
     // Derived/Runtime status
     status: 'WORKING' | 'PAUSED' | 'OFF_WORK'; // Logic derived from work_logs
-    current_zone_id: number | null;
-    today_work_count: number;
-    work_rate?: number;
-    line_number?: number;
-    bin_number?: number;
+    currentZoneId: number | null;
+    todayWorkCount: number;
+    workRate?: number;
+    lineNumber?: number;
+    binNumber?: number;
 }
 
 // Layout Types for Map
 export interface LayoutBin {
-    bin_number: number;
+    binNumber: number;
     capacity?: number;
 }
 export interface LayoutLine {
-    line_number: number;
+    lineNumber: number;
     bins: LayoutBin[];
 }
 export interface ZoneLayout {
-    zone_id: number;
+    zoneId: number;
     lines: LayoutLine[];
 }

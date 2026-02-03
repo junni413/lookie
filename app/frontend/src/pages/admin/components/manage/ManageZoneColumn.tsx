@@ -40,10 +40,10 @@ export default function ManageZoneColumn({ zoneId, zoneName, workers, onDrop, hi
             <div className="flex-1 p-3 overflow-y-auto space-y-2 min-h-[300px]">
                 {workers.map(worker => (
                     <ManageWorkerCard
-                        key={worker.user_id}
+                        key={worker.userId}
                         worker={worker}
                         onDragStart={handleDragStart}
-                        isMoved={highlightWorkerIds?.includes(worker.user_id)}
+                        isMoved={highlightWorkerIds?.includes(worker.userId)}
                     />
                 ))}
 

@@ -44,11 +44,11 @@ export default function Dashboard() {
 
         // Zone Stats
         const formattedZones: ZoneItem[] = fetchedStats.map((z) => ({
-          id: z.zone_id,
+          id: z.zoneId,
           name: z.name,
           status: z.status,
-          working: z.worker_count,
-          work_rate: z.work_rate,
+          working: z.workerCount,
+          workRate: z.workRate,
         }));
         setZoneData(formattedZones);
 
@@ -58,7 +58,7 @@ export default function Dashboard() {
         const doneCount = resolved.length;
 
         // Calculate Average Progress (Work Rate)
-        const totalRate = fetchedWorkers.reduce((sum, w) => sum + (w.work_rate || 0), 0);
+        const totalRate = fetchedWorkers.reduce((sum, w) => sum + (w.workRate || 0), 0);
         const avgRate = fetchedWorkers.length > 0 ? Math.floor(totalRate / fetchedWorkers.length) : 0;
 
         setSummary({
@@ -79,7 +79,7 @@ export default function Dashboard() {
   const sortedIssues = useMemo(() => {
     const arr = [...issues];
     if (sortKey === "TIME") {
-      arr.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } else {
       // priority 큰 게 위로 (HIGH > MEDIUM > LOW)
       // Note: If priority is undefined, fallback to 0

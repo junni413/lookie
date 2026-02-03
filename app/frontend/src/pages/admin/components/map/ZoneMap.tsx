@@ -24,12 +24,12 @@ export default function ZoneMap({ layout, workers }: ZoneMapProps) {
             <div className="grid grid-cols-4 gap-2 max-w-full mx-auto">
                 {layout.lines.map((line) => (
                     <div
-                        key={line.line_number}
+                        key={line.lineNumber}
                         className="bg-white/60 rounded-xl border border-slate-200/60 p-2 flex flex-col gap-2 hover:bg-white hover:border-slate-300/60 transition-colors"
                     >
                         {/* Line Header */}
                         <div className="flex items-center justify-between px-1">
-                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100/80 px-2 py-0.5 rounded-md">Line {line.line_number}</span>
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100/80 px-2 py-0.5 rounded-md">Line {line.lineNumber}</span>
                             {/* <span className="text-[9px] text-slate-400">{line.bins.length} bins</span> */}
                         </div>
 
@@ -38,23 +38,23 @@ export default function ZoneMap({ layout, workers }: ZoneMapProps) {
                             {line.bins.map((bin) => {
                                 const binWorkers = workers.filter(
                                     (w) =>
-                                        w.current_zone_id === layout.zone_id &&
-                                        w.line_number === line.line_number &&
-                                        w.bin_number === bin.bin_number
+                                        w.currentZoneId === layout.zoneId &&
+                                        w.lineNumber === line.lineNumber &&
+                                        w.binNumber === bin.binNumber
                                 );
 
                                 const hasWorkers = binWorkers.length > 0;
 
                                 return (
                                     <div
-                                        key={`${line.line_number}-${bin.bin_number}`}
+                                        key={`${line.lineNumber}-${bin.binNumber}`}
                                         className={cn(
                                             "relative aspect-square rounded-lg transition-all flex items-center justify-center gap-0.5",
                                             hasWorkers
                                                 ? "bg-white border md:border-2 border-indigo-100 shadow-sm"
                                                 : "bg-slate-50/50 border border-slate-100/50"
                                         )}
-                                        title={`L${line.line_number}-B${bin.bin_number} (${binWorkers.length}명)`}
+                                        title={`L${line.lineNumber}-B${bin.binNumber} (${binWorkers.length}명)`}
                                     >
                                         <span
                                             className={cn(
@@ -62,17 +62,17 @@ export default function ZoneMap({ layout, workers }: ZoneMapProps) {
                                                 hasWorkers ? "text-indigo-300" : "text-slate-300"
                                             )}
                                         >
-                                            {bin.bin_number}
+                                            {bin.binNumber}
                                         </span>
 
                                         <div className="flex gap-1 flex-wrap items-center justify-center p-1">
                                             {binWorkers.map((worker) => {
-                                                const rate = worker.work_rate || 0;
+                                                const rate = worker.workRate || 0;
                                                 const dotColor = getWorkRateBgColor(rate);
 
                                                 return (
                                                     <div
-                                                        key={worker.user_id}
+                                                        key={worker.userId}
                                                         className={cn(
                                                             "w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white",
                                                             dotColor

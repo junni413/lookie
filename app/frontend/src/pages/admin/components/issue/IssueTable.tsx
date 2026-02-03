@@ -122,36 +122,36 @@ export default function IssueTable({
                         ) : (
                             issues.map((issue) => (
                                 <TableRow
-                                    key={issue.issue_id}
+                                    key={issue.issueId}
                                     className={cn(
                                         "cursor-pointer hover:bg-muted/50 transition-colors",
-                                        selectedId === issue.issue_id && "bg-blue-50 hover:bg-blue-100 border-l-4 border-l-blue-500"
+                                        selectedId === issue.issueId && "bg-blue-50 hover:bg-blue-100 border-l-4 border-l-blue-500"
                                     )}
-                                    onClick={() => onSelect(issue.issue_id)}
+                                    onClick={() => onSelect(issue.issueId)}
                                 >
                                     {/* Created At */}
                                     <TableCell className="text-xs font-medium">
-                                        {new Date(issue.created_at).toLocaleTimeString()}
-                                        <div className="text-[10px] text-gray-400">{timeAgo(issue.created_at)}</div>
+                                        {new Date(issue.createdAt).toLocaleTimeString()}
+                                        <div className="text-[10px] text-gray-400">{timeAgo(issue.createdAt)}</div>
                                     </TableCell>
 
                                     {/* Resolved At */}
                                     {tab === "RESOLVED" && (
                                         <TableCell className="text-xs font-medium">
-                                            {issue.resolved_at ? new Date(issue.resolved_at).toLocaleTimeString() : "-"}
+                                            {issue.resolvedAt ? new Date(issue.resolvedAt).toLocaleTimeString() : "-"}
                                         </TableCell>
                                     )}
 
                                     {/* Issue Type */}
                                     <TableCell>
-                                        <Badge variant={issue.issue_type === "OUT_OF_STOCK" ? "secondary" : "destructive"} className="text-[10px]">
-                                            {issue.issue_type === "OUT_OF_STOCK" ? "재고 부족" : "파손 감지"}
+                                        <Badge variant={issue.issueType === "OUT_OF_STOCK" ? "secondary" : "destructive"} className="text-[10px]">
+                                            {issue.issueType === "OUT_OF_STOCK" ? "재고 부족" : "파손 감지"}
                                         </Badge>
                                     </TableCell>
 
                                     {/* AI Decision */}
                                     <TableCell>
-                                        {getAiDecisionBadge(issue.judgment?.ai_decision, issue.judgment?.confidence || 0)}
+                                        {getAiDecisionBadge(issue.judgment?.aiDecision, issue.judgment?.confidence || 0)}
                                     </TableCell>
 
                                     {/* Urgency */}
@@ -164,7 +164,7 @@ export default function IssueTable({
                                     {/* Admin Decision */}
                                     {tab === "RESOLVED" && (
                                         <TableCell className="text-xs font-bold">
-                                            {issue.required_action === "WORKER_CONTINUE" ? "정상 승인" : "폐기/조치"}
+                                            {issue.requiredAction === "WORKER_CONTINUE" ? "정상 승인" : "폐기/조치"}
                                         </TableCell>
                                     )}
 
@@ -173,10 +173,10 @@ export default function IssueTable({
                                         {tab === "OPEN" ? (
                                             <div>
                                                 <div className="font-bold">{issue.workerName}</div>
-                                                <div className="text-[10px] text-gray-500">010-XXXX-{(issue.worker_id % 10000).toString().padStart(4, '0')}</div>
+                                                <div className="text-[10px] text-gray-500">010-XXXX-{(issue.workerId % 10000).toString().padStart(4, '0')}</div>
                                             </div>
                                         ) : (
-                                            <div className="font-mono text-gray-600">ID: {issue.worker_id}</div>
+                                            <div className="font-mono text-gray-600">ID: {issue.workerId}</div>
                                         )}
                                     </TableCell>
 

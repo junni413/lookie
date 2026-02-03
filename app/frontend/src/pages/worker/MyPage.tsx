@@ -36,8 +36,8 @@ export default function MyPage() {
   const view = useMemo(
     () => ({
       name: user?.name || "작업자",
-      phone: formatPhone(user?.phone_number),
-      birth: user?.birth_date || "-",
+      phone: formatPhone(user?.phoneNumber),
+      birth: user?.birthDate || "-",
       email: user?.email || "-",
     }),
     [user]
@@ -48,8 +48,8 @@ export default function MyPage() {
   return (
     <div className="flex h-full flex-col space-y-6">
       <div className="flex flex-col items-center justify-center py-6">
-        <div className="font-medium text-slate-800">{user.name} / {user.phone_number}</div>
-        <div className="text-xs text-slate-500">{user.user_id}</div>
+        <div className="font-medium text-slate-800">{user.name} / {user.phoneNumber}</div>
+        <div className="text-xs text-slate-500">{user.userId}</div>
         <h2 className="mt-4 text-[22px] font-black tracking-tight text-slate-900">
           {view.name}님
         </h2>

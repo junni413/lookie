@@ -96,15 +96,15 @@ export default function ProfileEdit() {
   const init = useMemo(
     () => ({
       name: user.name ?? "",
-      phone_number: user.phone_number ?? "",
-      birth_date: user.birth_date ?? "",
+      phoneNumber: user.phoneNumber ?? "",
+      birthDate: user.birthDate ?? "",
       email: user.email ?? "",
     }),
     [user]
   );
 
   const [name, setName] = useState(init.name);
-  const [birthDate, setBirthDate] = useState(init.birth_date);
+  const [birthDate, setBirthDate] = useState(init.birthDate);
   const [email, setEmail] = useState(init.email);
 
   // 비밀번호는 선택 입력
@@ -119,12 +119,12 @@ export default function ProfileEdit() {
   // user 갱신되면 폼 동기화
   useEffect(() => {
     setName(init.name);
-    setBirthDate(init.birth_date);
+    setBirthDate(init.birthDate);
     setEmail(init.email);
     setPw("");
     setPw2("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [init.name, init.birth_date, init.email]);
+  }, [init.name, init.birthDate, init.email]);
 
   const emailChanged = email.trim() !== init.email.trim();
 
@@ -369,7 +369,7 @@ export default function ProfileEdit() {
 
         <LabeledInput
           label="전화번호"
-          value={formatPhone(init.phone_number)}
+          value={formatPhone(init.phoneNumber)}
           onChange={() => { }}
           disabled
         />

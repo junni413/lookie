@@ -71,19 +71,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const d = res.data;
 
-      // MAP camelCase -> snake_case to match DB_User
+      // MAP API response to DB_User (Both now camelCase)
       const nextUser: DB_User = {
-        user_id: d.userId ?? d.user_id,
+        userId: d.userId,
         role: d.role ?? (get().role ?? "WORKER"),
-        password_hash: "",
+        passwordHash: "",
         name: d.name,
-        phone_number: d.phoneNumber ?? d.phone_number,
+        phoneNumber: d.phoneNumber,
         email: d.email,
-        birth_date: d.birthDate ?? d.birth_date,
-        is_active: d.isActive ?? d.is_active ?? true,
-        created_at: d.createdAt ?? d.created_at,
-        updated_at: d.updatedAt ?? d.updated_at,
-        assigned_zone_id: d.assignedZoneId ?? d.assigned_zone_id ?? null,
+        birthDate: d.birthDate,
+        isActive: d.isActive ?? true,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+        assignedZoneId: d.assignedZoneId ?? null,
       };
 
       localStorage.setItem(USER_KEY, JSON.stringify(nextUser));

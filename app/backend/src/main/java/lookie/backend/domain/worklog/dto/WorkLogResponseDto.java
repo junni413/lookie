@@ -20,7 +20,7 @@ public class WorkLogResponseDto {
     private Long workLogId;              // 근무 로그 고유 식별자
     private Long workerId;              // 작업자(User) 고유 식별자
     private String workerName;          // 이름 + 번호 뒷자리 (ex- 김싸피1234)
-    private Long zoneId;                // 담당 구역
+    private Long assignedZoneId;                // 담당 구역
 
     // 2. 근태 정보
     private WorkLogEventType currentStatus; // 현재 근무 상세 상태 (START, PAUSE, RESUME, END)

@@ -38,7 +38,7 @@ export default function Contact() {
             try {
                 const data = await adminService.getAdmins(token);
                 const filteredAdmins = data.filter(
-                    (admin) => admin.user_id !== currentUser?.user_id
+                    (admin) => admin.userId !== currentUser?.userId
                 );
                 setAdmins(filteredAdmins);
             } catch (error) {
@@ -57,7 +57,7 @@ export default function Contact() {
             alert("로그인이 필요합니다.");
             return;
         }
-        startCall(currentUser.user_id, admin.user_id, null, admin.name);
+        startCall(currentUser.userId, admin.userId, null, admin.name);
     };
 
     // 구역별 필터링
@@ -65,7 +65,7 @@ export default function Contact() {
         ? admins
         : admins.filter((admin) => {
             const zones = ["A", "B", "C", "D"];
-            const assignedZone = zones[admin.user_id % zones.length];
+            const assignedZone = zones[admin.userId % zones.length];
             return assignedZone === selectedZone;
         });
 
@@ -159,12 +159,12 @@ export default function Contact() {
                             <div className="divide-y divide-slate-100">
                                 {searchedAdmins.map((admin) => {
                                     const zones = ["A", "B", "C", "D"];
-                                    const assignedZone = `Zone ${zones[admin.user_id % zones.length]}`;
-                                    const isOnline = admin.user_id % 2 === 0;
+                                    const assignedZone = `Zone ${zones[admin.userId % zones.length]}`;
+                                    const isOnline = admin.userId % 2 === 0;
 
                                     return (
                                         <AdminListItem
-                                            key={admin.user_id}
+                                            key={admin.userId}
                                             admin={admin}
                                             assignedZone={assignedZone}
                                             isOnline={isOnline}

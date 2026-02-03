@@ -3,11 +3,11 @@ import type { DB_Worker, ZoneLayout } from "@/types/db";
 import { zonesLayoutMock, db_users, db_zones, zoneNames, getDerivedWorker } from "@/mocks/mockData";
 
 export interface ZoneStat {
-    zone_id: number;
+    zoneId: number;
     name: string;
     status: "STABLE" | "NORMAL" | "CRITICAL";
-    worker_count: number;
-    work_rate: number; // percentage (0-100)
+    workerCount: number;
+    workRate: number; // percentage (0-100)
 }
 
 
@@ -27,7 +27,7 @@ export const manageService = {
 
             const workers = db_users
                 .filter(u => u.role === "WORKER")
-                .map(u => getDerivedWorker(u.user_id))
+                .map(u => getDerivedWorker(u.userId))
                 .filter((w): w is DB_Worker => w !== null);
 
             return workers;
@@ -45,20 +45,20 @@ export const manageService = {
 
         // Use static db_zones
         return db_zones.map((zone) => {
-            const zoneWorkers = workers.filter((w) => w.current_zone_id === zone.zone_id);
+            const zoneWorkers = workers.filter((w) => w.currentZoneId === zone.zoneId);
 
             // Calculate average work rate
-            const totalRate = zoneWorkers.reduce((sum, w) => sum + (w.work_rate || 0), 0);
+            const totalRate = zoneWorkers.reduce((sum, w) => sum + (w.workRate || 0), 0);
             const avgRate = zoneWorkers.length > 0 ? Math.floor(totalRate / zoneWorkers.length) : 0;
 
-            const name = zoneNames[zone.zone_id] || "Unknown";
+            const name = zoneNames[zone.zoneId] || "Unknown";
 
             return {
-                zone_id: zone.zone_id,
+                zoneId: zone.zoneId,
                 name: name,
                 status: "STABLE", // Simplified logic
-                worker_count: zoneWorkers.length,
-                work_rate: avgRate,
+                workerCount: zoneWorkers.length,
+                workRate: avgRate,
             };
         });
     },
@@ -68,8 +68,8 @@ export const manageService = {
         await new Promise((resolve) => setTimeout(resolve, 300));
         console.log(`[Mock API] Moved worker ${workerId} to zone ${targetZoneId}`);
         // Update mock data in memory
-        const u = db_users.find(u => u.user_id === workerId);
-        if (u) u.assigned_zone_id = targetZoneId;
+        const u = db_users.find(u => u.userId === workerId);
+        if (u) u.assignedZoneId = targetZoneId;
     },
 
     // Batch update workers (Mock)

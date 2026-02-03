@@ -31,7 +31,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
             alert("로그인이 필요합니다.");
             return;
         }
-        startCall(user.user_id, worker.user_id, null, worker.name);
+        startCall(user.userId, worker.userId, null, worker.name);
     };
 
     const ZONES = [
@@ -43,7 +43,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
 
     const workersToShow = activeFilter === 'all'
         ? allWorkers
-        : allWorkers.filter(w => w.current_zone_id === activeFilter);
+        : allWorkers.filter(w => w.currentZoneId === activeFilter);
 
     const searchedWorkers = workersToShow;
 
@@ -133,7 +133,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                     <div className="divide-y divide-slate-100">
                         {sortedWorkers.map(worker => {
                             return (
-                                <div key={worker.user_id} className="group flex items-center gap-5 pl-7 pr-6 py-4 hover:bg-slate-50 transition-colors">
+                                <div key={worker.userId} className="group flex items-center gap-5 pl-7 pr-6 py-4 hover:bg-slate-50 transition-colors">
 
                                     {/* 정보 영역 */}
                                     <div className="flex-1 min-w-0">
@@ -141,8 +141,8 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                                             {worker.name}
                                         </div>
                                         <div className="text-xs text-slate-500 truncate">
-                                            {worker.current_zone_id ? `Zone ${worker.current_zone_id}` : "대기중"}
-                                            {worker.line_number && ` - L${worker.line_number}`}
+                                            {worker.currentZoneId ? `Zone ${worker.currentZoneId}` : "대기중"}
+                                            {worker.lineNumber && ` - L${worker.lineNumber}`}
                                         </div>
                                     </div>
 
@@ -150,12 +150,12 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                                     <div className="flex items-center gap-7 text-xs">
                                         <div className="text-center">
                                             <div className="text-slate-400 text-[10px] font-medium">건수</div>
-                                            <div className="font-semibold text-slate-700">{worker.today_work_count}</div>
+                                            <div className="font-semibold text-slate-700">{worker.todayWorkCount}</div>
                                         </div>
                                         <div className="text-center">
                                             <div className="text-slate-400 text-[10px] font-medium">작업률</div>
-                                            <div className={cn("font-semibold", getWorkRateColor(worker.work_rate || 0))}>
-                                                {worker.work_rate || 0}%
+                                            <div className={cn("font-semibold", getWorkRateColor(worker.workRate || 0))}>
+                                                {worker.workRate || 0}%
                                             </div>
                                         </div>
                                     </div>

@@ -111,7 +111,7 @@ export default function Map() {
         return <div className="h-full flex items-center justify-center text-red-500">오류 발생: {error}</div>;
     }
 
-    const selectedZoneName = stats.find(s => s.zone_id === selectedZoneId)?.name || "";
+    const selectedZoneName = stats.find(s => s.zoneId === selectedZoneId)?.name || "";
 
     return (
         <div className="flex flex-col h-full relative">
@@ -132,15 +132,15 @@ export default function Map() {
                             isWorkerPanelOpen ? "grid-cols-1 xl:grid-cols-2" : "grid-cols-1 md:grid-cols-2"
                         )}>
                             {stats.map(stat => (
-                                <div key={stat.zone_id} className="h-full">
+                                <div key={stat.zoneId} className="h-full">
                                     <ZoneSummaryCard
                                         zoneName={stat.name}
                                         status={stat.status}
-                                        workerCount={stat.worker_count}
-                                        workRate={stat.work_rate}
-                                        isSelected={selectedZoneId === stat.zone_id}
-                                        onCardClick={() => handleCardClick(stat.zone_id)}
-                                        onNameClick={() => handleListButtonClick(stat.zone_id)}
+                                        workerCount={stat.workerCount}
+                                        workRate={stat.workRate}
+                                        isSelected={selectedZoneId === stat.zoneId}
+                                        onCardClick={() => handleCardClick(stat.zoneId)}
+                                        onNameClick={() => handleListButtonClick(stat.zoneId)}
                                     />
                                 </div>
                             ))}

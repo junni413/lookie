@@ -47,8 +47,8 @@ export default function Manage() {
 
     const handleDrop = (workerId: number, targetZoneId: number) => {
         setWorkers(prev => prev.map(w => {
-            if (w.user_id === workerId) {
-                return { ...w, current_zone_id: targetZoneId };
+            if (w.userId === workerId) {
+                return { ...w, currentZoneId: targetZoneId };
             }
             return w;
         }));
@@ -58,8 +58,8 @@ export default function Manage() {
     const hasWorkerStateChanged = (current: DB_Worker[], original: DB_Worker[]) => {
         if (current.length !== original.length) return true;
         for (let i = 0; i < current.length; i++) {
-            if (current[i].user_id !== original[i].user_id) return true; // Order changed (shouldn't happen if sorted, but safe check)
-            if (current[i].current_zone_id !== original[i].current_zone_id) return true; // Zone changed
+            if (current[i].userId !== original[i].userId) return true; // Order changed (shouldn't happen if sorted, but safe check)
+            if (current[i].currentZoneId !== original[i].currentZoneId) return true; // Zone changed
         }
         return false;
     };
@@ -176,11 +176,11 @@ export default function Manage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
                     {stats.map(stat => (
                         <ManageStatisticCard
-                            key={stat.zone_id}
+                            key={stat.zoneId}
                             zoneName={stat.name}
                             status={stat.status}
-                            workerCount={workers.filter(w => w.current_zone_id === stat.zone_id).length} // Dynamic count
-                            workRate={stat.work_rate}
+                            workerCount={workers.filter(w => w.currentZoneId === stat.zoneId).length} // Dynamic count
+                            workRate={stat.workRate}
                         />
                     ))}
                 </div>
@@ -190,20 +190,20 @@ export default function Manage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 h-full min-w-[1000px] lg:min-w-0">
                         {stats.map(stat => (
                             <ManageZoneColumn
-                                key={stat.zone_id}
-                                zoneId={stat.zone_id}
+                                key={stat.zoneId}
+                                zoneId={stat.zoneId}
                                 zoneName={stat.name}
-                                workers={workers.filter(w => w.current_zone_id === stat.zone_id)}
+                                workers={workers.filter(w => w.currentZoneId === stat.zoneId)}
                                 onDrop={handleDrop}
                             />
                         ))}
 
                         {/* Unassigned / Waiting Area (Optional, if we have workers with null zone) */}
-                        {workers.some(w => !w.current_zone_id) && (
+                        {workers.some(w => !w.currentZoneId) && (
                             <ManageZoneColumn
                                 zoneId={0} // 0 for unassigned
                                 zoneName="대기중"
-                                workers={workers.filter(w => !w.current_zone_id)}
+                                workers={workers.filter(w => !w.currentZoneId)}
                                 onDrop={handleDrop}
                             />
                         )}
