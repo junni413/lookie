@@ -93,4 +93,16 @@ public class TaskController {
         java.util.List<TaskItemVO> items = taskItemService.getAllItems(taskId);
         return ResponseEntity.ok(ApiResponse.success("목록 조회가 완료되었습니다.", items));
     }
+
+    @Operation(summary = "진행 중인 작업 조회", description = "로그인한 작업자의 현재 진행 중인 작업을 조회하여 작업 화면을 복구합니다.")
+    @GetMapping("/me/active")
+    public ResponseEntity<ApiResponse<TaskResponse<TaskVO>>> getActiveTask() {
+        Long userId = SecurityUtil.getCurrentUserId();
+        TaskResponse<TaskVO> response = taskWorkflowFacade.getInProgressTask(userId);
+
+        if (response == null) {
+            return ResponseEntity.ok(ApiResponse.success("진행 중인 작업이 없습니다.", null));
+        }
+        return ResponseEntity.ok(ApiResponse.success("진행 중인 작업을 불러왔습니다.", response));
+    }
 }
