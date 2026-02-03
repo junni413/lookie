@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 
 /**
  * 작업자의 근무 세션 및 상태 변경 이벤트를 관리하는 서비스
- * 근무 시작, 종료, 휴식, 재개 처리
+ * 근무 시작, 종료, 휴식, 재개 처리 및 관제 데이터 조회
  */
 @Slf4j
 @Service
@@ -53,7 +53,7 @@ public class WorkLogService {
         WorkLog workLog = WorkLog.builder()
                 .workerId(workerId)
                 .startedAt(LocalDateTime.now())
-                .plannedEndAt(LocalDateTime.now().plusMinutes(5)) //기본 5분 뒤로 설정 (시연 용)
+                .plannedEndAt(LocalDateTime.now().plusMinutes(5)) // 시연용 5분
                 .build();
 
         // 1-3. 시작(START) 이벤트 기록
@@ -62,7 +62,6 @@ public class WorkLogService {
 
         return WorkLogResponseDto.from(workLog, event);
     }
-
 
     /**
      * 2. 퇴근 처리 (END) 수행
@@ -125,41 +124,77 @@ public class WorkLogService {
     }
 
     /**
-     * 5. 현재 작업자의 활성 근무 상태 조회
-     * 작업자 대시보드 및 관리자 모니터링에서 공통으로 사용
+     * [New] 5. 현재 근무자 전체 목록 조회 (관제 맵용)
+     * - 관리자가 관제 화면에서 '퇴근하지 않은 모든 작업자'를 조회할 때 사용
+     * - 식별 정보, 실시간 위치(Line/Location), 현재 상태 포함 (성과 데이터 제외)
+     */
+    @Transactional(readOnly = true)
+    public List<WorkLogResponseDto> getActiveWorkers() {
+        // workerId = null -> 전체 조회 (Dynamic SQL)
+        return workLogMapper.findActiveWorkLogs(null);
+    }
+
+    /**
+     * [Modified] 6. 현재 근무 상태 단건 조회 (Polling용)
+     * - 작업자 앱: 본인의 상태 확인
+     * - 관리자 웹: 특정 작업자의 실시간 상태 모니터링
+     * - 특징: 근무 기록이 없으면 예외 대신 'END/OFF_WORK' 상태 DTO 반환
      *
-     * @param workerId 조회할 작업자 ID
-     * @return 현재 근무 정보 및 최신 상태 이벤트 DTO
+     * @param loginId 로그인한 사용자 ID
+     * @param targetWorkerId (Optional) 조회 대상 작업자 ID. 관리자가 사용.
+     */
+    /**
+     * [Modified] 6. 현재 근무 상태 단건 조회 (Polling용)
+     * - 수정사항: 근무 중이 아닐 때(Empty) 단순히 빈 객체를 주는 게 아니라,
+     * '최근 근무 이력'을 조회해서 이름과 마지막 퇴근 시간을 채워서 반환함.
      */
     @Transactional(readOnly = true)
-    public WorkLogResponseDto getCurrentStatus(Long workerId) {
-        WorkLog workLog = getActiveWorkLogOrThrow(workerId);
-        WorkLogEvent lastEvent = workLogMapper.findLastEventByWorkLogId(workLog.getWorkLogId());
-        return WorkLogResponseDto.from(workLog, lastEvent);
+    public WorkLogResponseDto getCurrentStatus(Long loginId, Long targetWorkerId) {
+        Long finalWorkerId = (targetWorkerId != null) ? targetWorkerId : loginId;
+
+        // 1. 현재 근무 중인(Active) 로그 조회
+        List<WorkLogResponseDto> activeLogs = workLogMapper.findActiveWorkLogs(finalWorkerId);
+
+        if (!activeLogs.isEmpty()) {
+            return activeLogs.get(0);
+        }
+
+        // 2. 근무 중이 아님 -> 가장 최근의 '지난 근무 이력' 조회 (이름, 구역, 퇴근시간 확보용)
+        // (findWorkHistories는 이미 정렬되어 있으므로 0번째가 가장 최신)
+        List<WorkLogResponseDto> historyLogs = workLogMapper.findWorkHistories(finalWorkerId);
+
+        if (!historyLogs.isEmpty()) {
+            // 퇴근한 기록을 반환 (이름, ZoneId, EndedAt 등이 다 들어있음)
+            return historyLogs.get(0);
+        }
+
+        // 3. 신규 입사자라 근무 기록이 아예 없는 경우 (Edge Case)
+        // 이때는 어쩔 수 없이 이름 없이 ID와 상태만 반환 (또는 UserMapper를 통해 이름만 조회하도록 추가 구현 가능)
+        return WorkLogResponseDto.builder()
+                .workerId(finalWorkerId)
+                .currentStatus(WorkLogEventType.END)
+                .build();
     }
 
     /**
-     * 6. 작업자 본인의 전체 근무 이력 조회
+     * 7. 근무 이력 조회
+     * - 작업자: 본인 이력 조회
+     * - 관리자: 특정 작업자 이력 조회
      */
     @Transactional(readOnly = true)
-    public List<WorkLogResponseDto> getMyWorkHistories(Long workerId) {
-        List<WorkLog> logs = workLogMapper.findAllByWorkerId(workerId);
-
-        return logs.stream().map(log -> {
-            // 퇴근 여부와 상관없이 항상 '실제 마지막 이벤트'를 DB에서 조회하여 매핑
-            // (데이터 일관성 확보)
-            WorkLogEvent lastEvent = workLogMapper.findLastEventByWorkLogId(log.getWorkLogId());
-            return WorkLogResponseDto.from(log, lastEvent);
-        }).collect(Collectors.toList());
+    public List<WorkLogResponseDto> getWorkHistories(Long loginId, Long targetWorkerId) {
+        Long finalWorkerId = (targetWorkerId != null) ? targetWorkerId : loginId;
+        // 이력 조회 전용 최적화 쿼리 사용
+        return workLogMapper.findWorkHistories(finalWorkerId);
     }
 
     /**
-     * 7. 일별 근무 통계 조회 (캘린더용)
+     * 8. 일별 근무 통계 조회 (캘린더용)
      * - 프론트엔드에서 reduce 할 필요 없이 백엔드에서 날짜별로 시간을 합쳐서 반환
      */
     @Transactional(readOnly = true)
     public List<DailyWorkLogStats> getDailyStats(Long workerId) {
-        // 1. 전체 이력 조회
+        // 1. 전체 이력 조회 (기존 로직 유지 - 엔티티 기반 계산)
         List<WorkLog> logs = workLogMapper.findAllByWorkerId(workerId);
 
         // 2. 날짜별(LocalDate)로 그룹핑하여 근무 시간(분) 합산
@@ -192,7 +227,7 @@ public class WorkLogService {
     // ================= Helpers =================
 
     /**
-     *  1. 진행 중인 근무 기록 조회하고 없으면 예외 던짐
+     * 1. 진행 중인 근무 기록 조회하고 없으면 예외 던짐 (트랜잭션 처리용)
      */
     private WorkLog getActiveWorkLogOrThrow(Long workerId) {
         return workLogMapper.findActiveWorkLogByWorkerId(workerId)
@@ -200,7 +235,7 @@ public class WorkLogService {
     }
 
     /**
-     *  2. 마지막 이벤트 상태가 특정 상태가 아닌지 검증
+     * 2. 마지막 이벤트 상태가 특정 상태가 아닌지 검증
      */
     private void validateStatusNot(Long workLogId, WorkLogEventType type, ErrorCode errorCode) {
         WorkLogEvent lastEvent = workLogMapper.findLastEventByWorkLogId(workLogId);
@@ -210,7 +245,7 @@ public class WorkLogService {
     }
 
     /**
-     *  3. 이벤트 생성 후 DB에 영구 저장
+     * 3. 이벤트 생성 후 DB에 영구 저장
      */
     private WorkLogEvent createAndSaveEvent(Long workLogId, WorkLogEventType type, String reason) {
         WorkLogEvent event = WorkLogEvent.builder()
@@ -222,6 +257,4 @@ public class WorkLogService {
         workLogMapper.insertWorkLogEvent(event);
         return event;
     }
-
-
 }
