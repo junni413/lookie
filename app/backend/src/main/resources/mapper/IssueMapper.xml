@@ -81,6 +81,7 @@
     <update id="updateAiJudgment">
         UPDATE ai_judgments
         SET
+            image_url = #{imageUrl},
             ai_result = #{aiResult},
             confidence = #{confidence},
             ai_decision = #{aiDecision},
