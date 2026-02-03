@@ -1,48 +1,51 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useUIStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
-
-type MenuItem = {
-  title: string;
-  desc: string;
-  to: string;
-  emoji: string;
-};
-
-const MENUS: MenuItem[] = [
-  {
-    title: "홈",
-    desc: "메인 화면",
-    to: "/worker/home",
-    emoji: "🏠",
-  },
-  {
-    title: "마이페이지",
-    desc: "내 정보 조회 및 수정",
-    to: "/worker/mypage", // ✅ 사이드바는 '마이페이지'로 이동
-    emoji: "👤",
-  },
-  {
-    title: "근무 이력 조회",
-    desc: "월별 근무 시간 확인",
-    to: "/worker/work-history",
-    emoji: "📅",
-  },
-  {
-    title: "이슈 목록 조회",
-    desc: "처리된 이슈 내역",
-    to: "/worker/issue",
-    emoji: "🧾",
-  },
-];
+import {
+  X,
+  Home,
+  User,
+  History,
+  FileText,
+  LogOut,
+  ChevronRight
+} from "lucide-react";
 
 export default function WorkerDrawer() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isWorkerDrawerOpen, closeWorkerDrawer } = useUIStore();
-  const logout = useAuthStore((s) => s.logout);
+  const { user, logout } = useAuthStore();
 
-  // ESC로 닫기
+  const MENUS = useMemo(() => [
+    {
+      title: "홈",
+      desc: "작업 대시보드 및 요약",
+      to: "/worker/home",
+      icon: Home,
+    },
+    {
+      title: "마이페이지",
+      desc: "내 정보 조회 및 수정",
+      to: "/worker/mypage",
+      icon: User,
+    },
+    {
+      title: "근무 이력 조회",
+      desc: "월별 출퇴근 기록 확인",
+      to: "/worker/work-history",
+      icon: History,
+    },
+    {
+      title: "이슈 목록 조회",
+      desc: "정상 및 특이사항 내역",
+      to: "/worker/issue",
+      icon: FileText,
+    },
+  ], []);
+
+  // ESC key to close
   useEffect(() => {
     if (!isWorkerDrawerOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -54,7 +57,7 @@ export default function WorkerDrawer() {
 
   if (!isWorkerDrawerOpen) return null;
 
-  const go = (to: string) => {
+  const handleNavigate = (to: string) => {
     closeWorkerDrawer();
     navigate(to);
   };
@@ -66,57 +69,86 @@ export default function WorkerDrawer() {
   };
 
   return (
-    <div className="fixed inset-0 z-50">
-      {/* overlay */}
+    <div className="fixed inset-0 z-[1001] flex justify-end">
+      {/* Dimmed Overlay */}
       <div
-        className="absolute inset-0 bg-black/20"
+        className="fixed inset-0 bg-black/30 backdrop-blur-[2px] transition-opacity duration-300"
         onClick={closeWorkerDrawer}
         aria-hidden="true"
       />
 
-      {/* panel */}
-      <aside className="absolute right-0 top-0 h-full w-[320px] max-w-[85vw] bg-white shadow-xl rounded-l-2xl p-5 flex flex-col">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold text-gray-900">메뉴</div>
+      {/* Sidebar Panel */}
+      <aside
+        className={`relative h-full w-[280px] max-w-[85vw] bg-white shadow-2xl rounded-l-[32px] flex flex-col overflow-hidden animate-in slide-in-from-right duration-300`}
+      >
+        {/* Header Section */}
+        <div className="pt-8 px-6 pb-6 flex items-start justify-between">
+          <div className="flex flex-col gap-1">
+            <span className="text-[22px] font-black text-slate-900 tracking-tight leading-none">
+              {user?.name || "작업자"}님
+            </span>
+            <span className="text-[13px] font-semibold text-slate-400">
+              오늘도 안전하게 화이팅!
+            </span>
+          </div>
           <button
-            type="button"
             onClick={closeWorkerDrawer}
-            className="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+            className="p-2 -mr-2 rounded-full text-slate-400 hover:bg-slate-50 transition-colors"
           >
-            닫기
+            <X size={24} strokeWidth={2.5} />
           </button>
         </div>
 
-        <div className="mt-4 space-y-3">
-          {MENUS.map((m) => (
-            <button
-              key={m.to}
-              type="button"
-              onClick={() => go(m.to)}
-              className="w-full rounded-2xl border bg-white p-4 text-left hover:bg-gray-50 transition"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
-                  <span className="text-lg">{m.emoji}</span>
-                </div>
-                <div className="flex-1">
-                  <div className="font-semibold text-gray-900">{m.title}</div>
-                  <div className="text-xs text-gray-500">{m.desc}</div>
-                </div>
-                <div className="text-gray-400">{">"}</div>
-              </div>
-            </button>
-          ))}
+        {/* Menu List */}
+        <div className="flex-1 overflow-y-auto px-2">
+          <div className="space-y-1">
+            {MENUS.map((menu) => {
+              const isActive = location.pathname === menu.to;
+              const Icon = menu.icon;
+
+              return (
+                <button
+                  key={menu.to}
+                  onClick={() => handleNavigate(menu.to)}
+                  className={`w-full group px-4 py-4 rounded-[20px] flex items-center transition-all duration-200 ${isActive
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-100"
+                    : "text-slate-600 hover:bg-slate-50 active:scale-[0.98]"
+                    }`}
+                >
+                  <div className={`p-2.5 rounded-xl flex items-center justify-center transition-colors ${isActive ? "bg-white/10" : "bg-slate-50 group-hover:bg-white"
+                    }`}>
+                    <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                  </div>
+
+                  <div className="flex-1 ml-4 text-left">
+                    <p className={`text-[15px] font-bold ${isActive ? "text-white" : "text-slate-800"}`}>
+                      {menu.title}
+                    </p>
+                    <p className={`text-[11px] mt-0.5 font-medium ${isActive ? "text-white/60" : "text-slate-400"}`}>
+                      {menu.desc}
+                    </p>
+                  </div>
+
+                  <ChevronRight
+                    size={16}
+                    className={`transition-transform duration-200 ${isActive ? "text-white opacity-50" : "text-slate-300 group-hover:translate-x-1"
+                      }`}
+                    strokeWidth={3}
+                  />
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="mt-auto pt-6">
+        {/* Footer Actions */}
+        <div className="p-6 border-t border-slate-50 bg-slate-50/50">
           <button
-            type="button"
             onClick={handleLogout}
-            className="w-full rounded-xl py-3 text-gray-700 hover:bg-gray-100 transition flex items-center justify-center gap-2"
+            className="w-full h-12 flex items-center justify-center gap-2 rounded-2xl text-slate-500 font-bold text-sm tracking-tight hover:text-red-500 hover:bg-red-50 transition-all duration-200"
           >
-            <span>↩</span>
-            <span className="font-semibold">로그아웃</span>
+            <LogOut size={18} strokeWidth={2.5} />
+            로그아웃
           </button>
         </div>
       </aside>

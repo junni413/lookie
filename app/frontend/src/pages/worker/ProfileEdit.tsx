@@ -1,6 +1,10 @@
+// src/pages/user/ProfileEdit.tsx  (경로는 너 프로젝트에 맞춰)
+// ✅ apiFetch로 통일(자동 Authorization + 401이면 refresh 후 재시도)
+
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
+import { apiFetch } from "@/lib/apiFetch";
 
 type Ctx = { setTitle: (t: string) => void };
 
@@ -10,66 +14,6 @@ type ApiResponse<T> = {
   errorCode: string | null;
   data: T | null; // ✅ null 가능
 };
-
-async function postJSON<T>(url: string, body: unknown, token?: string): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const err: any = new Error("API Error");
-    err.response = { status: res.status, data };
-    throw err;
-  }
-  return data as T;
-}
-
-async function patchJSON<T>(url: string, body: unknown, token: string): Promise<T> {
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const err: any = new Error("API Error");
-    err.response = { status: res.status, data };
-    throw err;
-  }
-  return data as T;
-}
-
-async function deleteJSON<T>(url: string, body: unknown, token: string): Promise<T> {
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const err: any = new Error("API Error");
-    err.response = { status: res.status, data };
-    throw err;
-  }
-  return data as T;
-}
 
 function getErrCode(err: any): string | null {
   return (
@@ -114,7 +58,8 @@ function normalizeBirthDate(v: string) {
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(x)) return x; // YYYY-MM-DD
   if (/^\d{4}\.\d{2}\.\d{2}$/.test(x)) return x.replaceAll(".", "-"); // YYYY.MM.DD
-  if (/^\d{8}$/.test(x)) return `${x.slice(0, 4)}-${x.slice(4, 6)}-${x.slice(6, 8)}`; // ✅ YYYYMMDD
+  if (/^\d{8}$/.test(x))
+    return `${x.slice(0, 4)}-${x.slice(4, 6)}-${x.slice(6, 8)}`; // ✅ YYYYMMDD
 
   return x;
 }
@@ -132,6 +77,7 @@ export default function ProfileEdit() {
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const fetchMe = useAuthStore((s) => s.fetchMe);
+  const logout = useAuthStore((s) => s.logout);
 
   useEffect(() => setTitle("내 정보 수정"), [setTitle]);
 
@@ -141,7 +87,7 @@ export default function ProfileEdit() {
       return;
     }
     if (token && !user) {
-      fetchMe().catch(() => { });
+      fetchMe().catch(() => {});
     }
   }, [token, user, fetchMe, navigate]);
 
@@ -183,7 +129,9 @@ export default function ProfileEdit() {
   const emailChanged = email.trim() !== init.email.trim();
 
   // 이메일 인증 상태 (이메일 바뀌면 다시 해야 함)
-  const [emailStep, setEmailStep] = useState<"idle" | "sent" | "verified">("idle");
+  const [emailStep, setEmailStep] = useState<"idle" | "sent" | "verified">(
+    "idle"
+  );
   const [emailCode, setEmailCode] = useState("");
   const [emailExpiresAt, setEmailExpiresAt] = useState<number | null>(null);
   const [emailLeftSec, setEmailLeftSec] = useState(0);
@@ -191,8 +139,10 @@ export default function ProfileEdit() {
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [cooldownLeftSec, setCooldownLeftSec] = useState(0);
 
-  const isEmailExpired = emailExpiresAt !== null ? Date.now() >= emailExpiresAt : false;
-  const isCooldown = cooldownUntil !== null ? Date.now() < cooldownUntil : false;
+  const isEmailExpired =
+    emailExpiresAt !== null ? Date.now() >= emailExpiresAt : false;
+  const isCooldown =
+    cooldownUntil !== null ? Date.now() < cooldownUntil : false;
 
   // 이메일이 바뀌면 인증 리셋
   useEffect(() => {
@@ -252,7 +202,17 @@ export default function ProfileEdit() {
     }
 
     return true;
-  }, [saving, name, birthDate, email, emailChanged, emailStep, wantsPwChange, pw, pw2]);
+  }, [
+    saving,
+    name,
+    birthDate,
+    email,
+    emailChanged,
+    emailStep,
+    wantsPwChange,
+    pw,
+    pw2,
+  ]);
 
   const handleEmailSendCode = async () => {
     if (!emailChanged) {
@@ -269,12 +229,10 @@ export default function ProfileEdit() {
     }
 
     try {
-      // ✅ 마이페이지 이메일 변경 인증번호 요청 API로 수정
-      await postJSON<ApiResponse<null>>(
-        "/api/users/me/email/otp/request",
-        { newEmail: email.trim() },
-        token
-      );
+      await apiFetch<ApiResponse<null>>("/api/users/me/email/otp/request", {
+        method: "POST",
+        body: JSON.stringify({ newEmail: email.trim() }),
+      });
 
       setEmailStep("sent");
       setEmailExpiresAt(Date.now() + 5 * 60 * 1000); // 5분
@@ -308,15 +266,13 @@ export default function ProfileEdit() {
     }
 
     try {
-      // ✅ 마이페이지 이메일 변경 인증번호 검증 API로 수정
-      await postJSON<ApiResponse<null>>(
-        "/api/users/me/email/otp/verify",
-        {
+      await apiFetch<ApiResponse<null>>("/api/users/me/email/otp/verify", {
+        method: "POST",
+        body: JSON.stringify({
           newEmail: email.trim(),
           code: emailCode,
-        },
-        token
-      );
+        }),
+      });
 
       setEmailStep("verified");
     } catch (err: any) {
@@ -351,15 +307,16 @@ export default function ProfileEdit() {
         birthDate: normalizeBirthDate(birthDate),
       };
 
-      // ✅ 이메일이 실제로 변경된 경우에만 포함 (백엔드 403 Forbidden 방지)
-      if (emailChanged) {
-        body.email = email.trim();
-      }
+      // ✅ 이메일이 실제로 변경된 경우에만 포함
+      if (emailChanged) body.email = email.trim();
 
       // 비번 변경을 원할 때만 포함
       if (wantsPwChange) body.password = pw;
 
-      await patchJSON<ApiResponse<null>>("/api/users/me", body, token);
+      await apiFetch<ApiResponse<null>>("/api/users/me", {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
 
       await fetchMe();
       alert("저장되었습니다.");
@@ -377,21 +334,29 @@ export default function ProfileEdit() {
       return;
     }
 
-    if (!confirm("정말로 탈퇴하시겠습니까?\n탈퇴 시 모든 정보가 삭제되며 복구할 수 없습니다.")) {
+    if (
+      !confirm(
+        "정말로 탈퇴하시겠습니까?\n탈퇴 시 모든 정보가 삭제되며 복구할 수 없습니다."
+      )
+    ) {
       return;
     }
 
     try {
       setDeleting(true);
-      await deleteJSON<ApiResponse<null>>("/api/users/me", { password: deletePw }, token);
+
+      await apiFetch<ApiResponse<null>>("/api/users/me", {
+        method: "DELETE",
+        body: JSON.stringify({ password: deletePw }),
+      });
 
       alert("회원 탈퇴가 완료되었습니다.");
-      // 로그아웃 처리 및 이동
-      const logout = useAuthStore.getState().logout;
-      if (logout) logout();
+      logout();
       navigate("/", { replace: true });
     } catch (err: any) {
-      alert(getErrMessage(err) ?? "회원 탈퇴에 실패했습니다. 비밀번호를 확인해주세요.");
+      alert(
+        getErrMessage(err) ?? "회원 탈퇴에 실패했습니다. 비밀번호를 확인해주세요."
+      );
     } finally {
       setDeleting(false);
     }
@@ -402,9 +367,19 @@ export default function ProfileEdit() {
       <div className="rounded-2xl bg-white p-4 shadow-sm border space-y-4">
         <LabeledInput label="이름" value={name} onChange={setName} />
 
-        <LabeledInput label="전화번호" value={formatPhone(init.phoneNumber)} onChange={() => { }} disabled />
+        <LabeledInput
+          label="전화번호"
+          value={formatPhone(init.phoneNumber)}
+          onChange={() => {}}
+          disabled
+        />
 
-        <LabeledInput label="생년월일" value={birthDate} onChange={setBirthDate} placeholder="YYYY-MM-DD" />
+        <LabeledInput
+          label="생년월일"
+          value={birthDate}
+          onChange={setBirthDate}
+          placeholder="YYYY-MM-DD"
+        />
 
         {/* 이메일 + 인증 */}
         <div className="space-y-1">
@@ -420,14 +395,19 @@ export default function ProfileEdit() {
               type="button"
               onClick={handleEmailSendCode}
               disabled={!emailChanged || emailStep === "verified" || isCooldown}
-              className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${emailStep === "verified"
-                ? "bg-blue-50 text-blue-600"
-                : !emailChanged || isCooldown
+              className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
+                emailStep === "verified"
+                  ? "bg-blue-50 text-blue-600"
+                  : !emailChanged || isCooldown
                   ? "bg-gray-100 text-gray-400"
                   : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                }`}
+              }`}
             >
-              {emailStep === "verified" ? "인증완료" : isCooldown ? formatSec(cooldownLeftSec) : "인증하기"}
+              {emailStep === "verified"
+                ? "인증완료"
+                : isCooldown
+                ? formatSec(cooldownLeftSec)
+                : "인증하기"}
             </button>
           </div>
 
@@ -436,7 +416,9 @@ export default function ProfileEdit() {
               <div className="flex gap-2">
                 <input
                   value={emailCode}
-                  onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onChange={(e) =>
+                    setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
                   placeholder="인증번호 6자리"
                   className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-blue-200"
                 />
@@ -444,8 +426,11 @@ export default function ProfileEdit() {
                   type="button"
                   onClick={handleEmailConfirmCode}
                   disabled={isEmailExpired}
-                  className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${isEmailExpired ? "bg-gray-100 text-gray-400" : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                    }`}
+                  className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
+                    isEmailExpired
+                      ? "bg-gray-100 text-gray-400"
+                      : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                  }`}
                 >
                   확인
                 </button>
@@ -455,13 +440,17 @@ export default function ProfileEdit() {
               </div>
 
               {isEmailExpired && (
-                <div className="text-xs text-gray-400">인증번호가 만료되었습니다. 인증하기로 재전송해주세요.</div>
+                <div className="text-xs text-gray-400">
+                  인증번호가 만료되었습니다. 인증하기로 재전송해주세요.
+                </div>
               )}
             </div>
           )}
 
           {emailChanged && emailStep !== "verified" && (
-            <div className="text-xs text-gray-400">이메일을 변경하면 인증 후 저장할 수 있어요.</div>
+            <div className="text-xs text-gray-400">
+              이메일을 변경하면 인증 후 저장할 수 있어요.
+            </div>
           )}
         </div>
 
@@ -469,13 +458,29 @@ export default function ProfileEdit() {
         <div className="pt-2 border-t" />
 
         <div className="text-sm font-semibold text-gray-800">비밀번호 변경</div>
-        <div className="text-xs text-gray-400">변경하지 않으려면 비워두세요. (7~15자, 영문+숫자 필수)</div>
+        <div className="text-xs text-gray-400">
+          변경하지 않으려면 비워두세요. (7~15자, 영문+숫자 필수)
+        </div>
 
-        <LabeledInput label="새 비밀번호" value={pw} onChange={setPw} type="password" placeholder="********" />
-        <LabeledInput label="새 비밀번호 확인" value={pw2} onChange={setPw2} type="password" placeholder="********" />
+        <LabeledInput
+          label="새 비밀번호"
+          value={pw}
+          onChange={setPw}
+          type="password"
+          placeholder="********"
+        />
+        <LabeledInput
+          label="새 비밀번호 확인"
+          value={pw2}
+          onChange={setPw2}
+          type="password"
+          placeholder="********"
+        />
 
         {wantsPwChange && !isValidPassword(pw) && pw.length > 0 && (
-          <div className="text-xs text-red-500">비밀번호는 7~15자의 영문+숫자 조합이어야 합니다.</div>
+          <div className="text-xs text-red-500">
+            비밀번호는 7~15자의 영문+숫자 조합이어야 합니다.
+          </div>
         )}
 
         {wantsPwChange && pw2.length > 0 && pw !== pw2 && (
@@ -487,8 +492,9 @@ export default function ProfileEdit() {
             type="button"
             onClick={handleSave}
             disabled={!canSave}
-            className={`flex-1 h-11 rounded-full font-semibold shadow-sm active:scale-[0.99] transition ${canSave ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"
-              }`}
+            className={`flex-1 h-11 rounded-full font-semibold shadow-sm active:scale-[0.99] transition ${
+              canSave ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"
+            }`}
           >
             {saving ? "저장 중..." : "저장"}
           </button>
@@ -583,8 +589,9 @@ function LabeledInput({
         type={type ?? "text"}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className={`h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 ${disabled ? "bg-gray-50 text-gray-500" : ""
-          }`}
+        className={`h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 ${
+          disabled ? "bg-gray-50 text-gray-500" : ""
+        }`}
       />
     </div>
   );
