@@ -23,10 +23,14 @@ public class IssueDetailResponse {
     private Long issueId;
     private String type; // issueType → type으로 매핑
     private String status; // OPEN / RESOLVED
-    private String priority; // LOW / MEDIUM / HIGH
+    private String priority; // LOW / MEDIUM / HIGH (사용 중단 예정)
     private String issueHandling; // BLOCKING / NON_BLOCKING
     private Boolean adminRequired; // 관리자 확인 필요 여부
     private String reasonCode; // 이슈 사유 코드
+
+    // 신규 정책 필드 (분기표 기준)
+    private Integer urgency; // 관제 큐 우선순위 (0-5)
+    private String adminDecision; // 관리자 확정 결과
 
     // AI 판정 결과 (ai_judgments 테이블)
     private String aiResult; // aiDecision → aiResult로 매핑
@@ -34,27 +38,35 @@ public class IssueDetailResponse {
     private String summary; // AI 판정 요약
 
     // 계산 필드 (DB 저장 X)
+    private String workerNextAction; // 작업자 다음 행동
+    private String issueNextAction; // 이슈 다음 행동 (기존 nextAction)
+    private String adminNextAction; // 관리자 다음 행동
     private List<String> availableActions; // UI 힌트용 가능한 액션 목록
-    private String nextAction; // 다음 권고 행동
 
     /**
      * IssueVO, AiJudgmentVO, 계산 필드로부터 응답 DTO 생성
      */
     public static IssueDetailResponse from(IssueVO issue, AiJudgmentVO judgment,
-            String nextAction, List<String> availableActions) {
+            String workerNextAction, String issueNextAction, String adminNextAction,
+            List<String> availableActions) {
         return IssueDetailResponse.builder()
                 .issueId(issue.getIssueId())
                 .type(issue.getIssueType())
                 .status(issue.getStatus())
-                .priority(issue.getPriority())
+                .status(issue.getStatus())
+                // .priority(issue.getPriority()) // 삭제됨
                 .issueHandling(issue.getIssueHandling())
                 .adminRequired(issue.getAdminRequired())
                 .reasonCode(issue.getReasonCode())
+                .urgency(issue.getUrgency())
+                .adminDecision(issue.getAdminDecision())
                 .aiResult(judgment != null ? judgment.getAiDecision() : null)
                 .confidence(judgment != null ? judgment.getConfidence() : null)
                 .summary(judgment != null ? judgment.getSummary() : null)
+                .workerNextAction(workerNextAction)
+                .issueNextAction(issueNextAction)
+                .adminNextAction(adminNextAction)
                 .availableActions(availableActions)
-                .nextAction(nextAction)
                 .build();
     }
 }

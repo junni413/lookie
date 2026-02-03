@@ -64,6 +64,9 @@ public enum ErrorCode {
 	ISSUE_ITEM_NOT_FOUND("ISSUE_002", HttpStatus.NOT_FOUND, "작업 아이템을 찾을 수 없습니다"),
 	ISSUE_TASK_NOT_ASSIGNED("ISSUE_003", HttpStatus.FORBIDDEN, "해당 작업이 현재 작업자에게 할당되지 않았습니다"),
 	ISSUE_NOT_FOUND("ISSUE_004", HttpStatus.NOT_FOUND, "이슈를 찾을 수 없습니다"),
+	ISSUE_ALREADY_RESOLVED("ISSUE_005", HttpStatus.CONFLICT, "이미 해결된 이슈입니다"),
+	INVALID_ADMIN_DECISION("ISSUE_006", HttpStatus.BAD_REQUEST, "유효하지 않은 관리자 확정 결과입니다"),
+	INVALID_ISSUE_TYPE("ISSUE_007", HttpStatus.BAD_REQUEST, "유효하지 않은 이슈 타입입니다"),
 
 	// ==== PRODUCT ====
 	PRODUCT_NOT_FOUND("PROD_001", HttpStatus.NOT_FOUND, "상품 정보를 찾을 수 없습니다"),

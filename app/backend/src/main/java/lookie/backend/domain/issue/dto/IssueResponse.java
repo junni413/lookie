@@ -12,7 +12,7 @@ public class IssueResponse {
     private String status;
     private Long batchTaskId;
     private Long batchTaskItemId;
-    private String priority;
+    private Integer urgency; // 관제 큐 우선순위
     private String issueHandling;
 
     public static IssueResponse from(IssueVO issue) {
@@ -22,7 +22,7 @@ public class IssueResponse {
                 .status(issue.getStatus())
                 .batchTaskId(issue.getBatchTaskId())
                 .batchTaskItemId(issue.getBatchTaskItemId())
-                .priority(issue.getPriority())
+                .urgency(issue.getUrgency())
                 .issueHandling(issue.getIssueHandling())
                 .build();
     }
