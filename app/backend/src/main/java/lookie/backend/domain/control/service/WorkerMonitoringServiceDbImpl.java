@@ -2,6 +2,7 @@ package lookie.backend.domain.control.service;
 
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lookie.backend.domain.control.dto.AdminZoneAssignmentRequest;
 import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
@@ -126,5 +127,41 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
         }
 
         return dto;
+    }
+
+    /**
+     * 관리자 강제 구역 배정 구현
+     * <p>
+     * 1. 작업자 및 구역 존재 여부 검증
+     * 2. 기존 활성 배정 종료 (active assignment closed)
+     * 3. 새로운 배정 이력 로그 생성 (assignment history inserted)
+     * 4. Users 테이블의 assigned_zone_id 업데이트 (master table updated)
+     * <p>
+     * 
+     * @Transactional 어노테이션을 통해 원자성 보장
+     */
+    @Override
+    @Transactional
+    public void assignWorkerToZone(AdminZoneAssignmentRequest request) {
+        Long workerId = request.getWorkerId();
+        Long zoneId = request.getZoneId();
+
+        // 1. Validation (작업자 및 구역 존재 확인)
+        if (!controlMapper.existsWorker(workerId)) {
+            throw new RuntimeException("존재하지 않는 작업자입니다.");
+        }
+        if (!controlMapper.existsZone(zoneId)) {
+            throw new RuntimeException("존재하지 않는 구역입니다.");
+        }
+
+        // 2. Close Active Assignment (기존 배정 종료)
+        controlMapper.closeActiveAssignment(workerId);
+
+        // 3. Insert Assignment History (새로운 배정 이력 생성)
+        // assignment_type='BASE', source='ADMIN'
+        controlMapper.insertAssignmentHistory(workerId, zoneId, request.getReason());
+
+        // 4. Update User Master Table (사용자 정보 업데이트)
+        controlMapper.updateUserAssignedZone(workerId, zoneId);
     }
 }

@@ -47,4 +47,30 @@ public interface ControlMapper {
      * @param workerId 작업자 ID
      */
     WorkerHoverDto selectWorkerHoverInfo(@Param("workerId") Long workerId);
+
+    /**
+     * 작업자 존재 여부 확인
+     */
+    boolean existsWorker(@Param("workerId") Long workerId);
+
+    /**
+     * 구역 존재 여부 확인
+     */
+    boolean existsZone(@Param("zoneId") Long zoneId);
+
+    /**
+     * 기존 구역 배정 종료 처리 (ended_at 갱신)
+     */
+    void closeActiveAssignment(@Param("workerId") Long workerId);
+
+    /**
+     * 새로운 구역 배정 이력 생성
+     */
+    void insertAssignmentHistory(@Param("workerId") Long workerId, @Param("zoneId") Long zoneId,
+            @Param("reason") String reason);
+
+    /**
+     * 사용자 테이블(Users)의 배정 구역(assigned_zone_id) 업데이트
+     */
+    void updateUserAssignedZone(@Param("workerId") Long workerId, @Param("zoneId") Long zoneId);
 }

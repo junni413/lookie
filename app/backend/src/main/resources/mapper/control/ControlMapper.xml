@@ -108,4 +108,39 @@
         WHERE u.user_id = #{workerId}
     </select>
 
+    <!-- 작업자 존재 여부 확인 -->
+    <select id="existsWorker" resultType="boolean">
+        SELECT COUNT(*) > 0
+        FROM users
+        WHERE user_id = #{workerId}
+    </select>
+
+    <!-- 구역 존재 여부 확인 -->
+    <select id="existsZone" resultType="boolean">
+        SELECT COUNT(*) > 0
+        FROM zones
+        WHERE zone_id = #{zoneId}
+    </select>
+
+    <!-- 기존 배정 종료 (현재 활성 배정 건에 대해 ended_at 업데이트) -->
+    <update id="closeActiveAssignment">
+        UPDATE zone_assignments
+        SET ended_at = NOW()
+        WHERE worker_id = #{workerId}
+          AND ended_at IS NULL
+    </update>
+
+    <!-- 새로운 배정 이력 생성 -->
+    <insert id="insertAssignmentHistory">
+        INSERT INTO zone_assignments (worker_id, zone_id, assignment_type, source, started_at, reason)
+        VALUES (#{workerId}, #{zoneId}, 'BASE', 'ADMIN', NOW(), #{reason})
+    </insert>
+
+    <!-- 사용자 테이블 배정 구역 업데이트 -->
+    <update id="updateUserAssignedZone">
+        UPDATE users
+        SET assigned_zone_id = #{zoneId}
+        WHERE user_id = #{workerId}
+    </update>
+
 </mapper>

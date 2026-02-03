@@ -4,6 +4,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
+import lookie.backend.domain.control.dto.AdminZoneAssignmentRequest;
 import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
@@ -13,6 +15,8 @@ import lookie.backend.global.response.ApiResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -78,5 +82,19 @@ public class ControlController {
     public ApiResponse<WorkerHoverDto> getWorkerHoverInfo(@PathVariable Long workerId) {
         WorkerHoverDto result = workerMonitoringService.getWorkerHoverInfo(workerId);
         return ApiResponse.success(result);
+
+    }
+
+    /**
+     * 5. 관리자 강제 구역 배정 API
+     * 특정 작업자를 지정된 구역으로 강제 이동(배정)시킵니다.
+     * 권한: ADMIN
+     */
+    @Operation(summary = "관리자 강제 구역 배정", description = "작업자를 특정 구역으로 강제 배정합니다.")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    @PostMapping("/assignments")
+    public ApiResponse<Void> assignWorkerToZone(@RequestBody @Valid AdminZoneAssignmentRequest request) {
+        workerMonitoringService.assignWorkerToZone(request);
+        return ApiResponse.success(null);
     }
 }

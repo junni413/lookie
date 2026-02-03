@@ -2,6 +2,7 @@ package lookie.backend.domain.control.service;
 
 import java.util.List;
 
+import lookie.backend.domain.control.dto.AdminZoneAssignmentRequest;
 import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
@@ -44,4 +45,11 @@ public interface WorkerMonitoringService {
      * @return 작업자 호버 정보 DTO
      */
     WorkerHoverDto getWorkerHoverInfo(Long workerId);
+
+    /**
+     * 관리자 강제 구역 배정
+     *
+     * @param request 배정 요청 정보 (작업자 ID, 구역 ID, 사유)
+     */
+    void assignWorkerToZone(AdminZoneAssignmentRequest request);
 }
