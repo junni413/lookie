@@ -252,7 +252,7 @@ public class UserService {
     /**
      * 전화번호 중복 체크 전용 (API용)
      */
-    public boolean checkPhoneDuplicate(String phone) {
+    public boolean checkPhoneNumberDuplicate(String phone) {
         return userMapper.existByPhoneNumber(phone);
     }
 
