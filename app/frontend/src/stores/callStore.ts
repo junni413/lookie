@@ -7,7 +7,6 @@ import { useAuthStore } from "@/stores/authStore";
 interface CallStore extends CallState {
     // 타이머 ID (브라우저 환경)
     timeoutId: number | null;
-    pollingId: number | null; // 폴링 ID 추가
 
     // Actions
     startCall: (
@@ -20,7 +19,7 @@ interface CallStore extends CallState {
     acceptCall: () => Promise<void>;
     rejectCall: () => Promise<void>;
     endCall: () => Promise<void>;
-    reset: () => void; // 폴링 해제 로직 추가 필요
+    reset: () => void;
 
     // 에러 핸들러
     handleError: (error: unknown) => void;
@@ -39,7 +38,6 @@ const initialState: CallState = {
 export const useCallStore = create<CallStore>((set, get) => ({
     ...initialState,
     timeoutId: null,
-    pollingId: null,
 
     /**
      * 통화 시작 (발신)
@@ -61,9 +59,8 @@ export const useCallStore = create<CallStore>((set, get) => ({
                 get().cancelCall("TIMEOUT");
             }, 30000);
 
-            // STOMP WebSocket 구독 시작 (폴링 대체)
-            // 현재 로그인한 사용자의 토큰 가져오기
-            const token = useAuthStore.getState().token; // token field name confirmed from authStore.ts
+            // STOMP WebSocket 구독 시작
+            const token = useAuthStore.getState().token;
             if (!token) {
                 console.error("❌ [WebSocket] 토큰이 없습니다. 구독 불가.");
                 return;
@@ -85,8 +82,6 @@ export const useCallStore = create<CallStore>((set, get) => ({
                             set({
                                 status: "ACTIVE",
                                 timeoutId: null,
-                                // 토큰은 이미 response에 있거나 이벤트를 통해 받을 수 있음
-                                // 여기서는 makeCall 응답으로 받은 토큰 사용 (이미 저장됨)
                             });
                             break;
 
@@ -124,7 +119,6 @@ export const useCallStore = create<CallStore>((set, get) => ({
                 remoteUserName: calleeName || "작업자",
                 issueId,
                 timeoutId: timerId,
-                pollingId: null,
             });
         } catch (error) {
             get().handleError(error);
@@ -135,18 +129,17 @@ export const useCallStore = create<CallStore>((set, get) => ({
      * 통화 취소
      */
     cancelCall: async (reason) => {
-        const { callId, timeoutId, pollingId } = get();
+        const { callId, timeoutId } = get();
         if (!callId) return;
 
         if (timeoutId) clearTimeout(timeoutId);
-        if (pollingId) clearInterval(pollingId);
 
         try {
             await webrtcService.cancelCall(callId, { reason });
-            set({ ...initialState, timeoutId: null, pollingId: null });
+            set({ ...initialState, timeoutId: null });
         } catch (error) {
             console.error("통화 취소 실패:", error);
-            set({ ...initialState, timeoutId: null, pollingId: null });
+            set({ ...initialState, timeoutId: null });
         }
     },
 
@@ -154,11 +147,10 @@ export const useCallStore = create<CallStore>((set, get) => ({
      * 통화 수락
      */
     acceptCall: async () => {
-        const { callId, timeoutId, pollingId } = get();
+        const { callId, timeoutId } = get();
         if (!callId) return;
 
         if (timeoutId) clearTimeout(timeoutId);
-        if (pollingId) clearInterval(pollingId);
 
         try {
             const token = await webrtcService.acceptCall(callId);
@@ -166,7 +158,6 @@ export const useCallStore = create<CallStore>((set, get) => ({
                 status: "ACTIVE",
                 token,
                 timeoutId: null,
-                pollingId: null,
             });
         } catch (error) {
             get().handleError(error);
@@ -177,18 +168,17 @@ export const useCallStore = create<CallStore>((set, get) => ({
      * 통화 거절
      */
     rejectCall: async () => {
-        const { callId, timeoutId, pollingId } = get();
+        const { callId, timeoutId } = get();
         if (!callId) return;
 
         if (timeoutId) clearTimeout(timeoutId);
-        if (pollingId) clearInterval(pollingId);
 
         try {
             await webrtcService.rejectCall(callId);
-            set({ ...initialState, timeoutId: null, pollingId: null });
+            set({ ...initialState, timeoutId: null });
         } catch (error) {
             console.error("통화 거절 실패:", error);
-            set({ ...initialState, timeoutId: null, pollingId: null });
+            set({ ...initialState, timeoutId: null });
         }
     },
 
@@ -196,18 +186,17 @@ export const useCallStore = create<CallStore>((set, get) => ({
      * 통화 종료
      */
     endCall: async () => {
-        const { callId, timeoutId, pollingId } = get();
+        const { callId, timeoutId } = get();
         if (!callId) return;
 
         if (timeoutId) clearTimeout(timeoutId);
-        if (pollingId) clearInterval(pollingId);
 
         try {
             await webrtcService.endCall(callId);
-            set({ ...initialState, timeoutId: null, pollingId: null });
+            set({ ...initialState, timeoutId: null });
         } catch (error) {
             console.error("통화 종료 실패:", error);
-            set({ ...initialState, timeoutId: null, pollingId: null });
+            set({ ...initialState, timeoutId: null });
         }
     },
 
@@ -215,11 +204,10 @@ export const useCallStore = create<CallStore>((set, get) => ({
      * 상태 초기화
      */
     reset: () => {
-        const { timeoutId, pollingId } = get();
+        const { timeoutId } = get();
         if (timeoutId) clearTimeout(timeoutId);
-        if (pollingId) clearInterval(pollingId);
 
-        set({ ...initialState, timeoutId: null, pollingId: null });
+        set({ ...initialState, timeoutId: null });
 
         // WebSocket Cleanup
         const wsCleanup = (get() as any).wsCleanup;
