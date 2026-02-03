@@ -587,4 +587,86 @@ public class IssueService {
         log.info("[IssueService] WebRTC MISSED processed. issueId={}, urgency={}, adminRequired=true",
                 issueId, issue.getUrgency());
     }
+
+    // ================================================================
+    // 관리자 확정 (분기표 D14, S7)
+    // ================================================================
+
+    /**
+     * 관리자 확정 처리
+     * - 분기표 D14, S7 노드
+     * - status → RESOLVED
+     * - adminDecision 저장
+     * - resolvedAt 설정
+     * - Inventory Event 기록 (DAMAGED만, 현재는 주석 처리)
+     * 
+     * @param issueId       Issue ID
+     * @param adminDecision 관리자 확정 결과 (NORMAL/DAMAGED/CALLED_OTHER_PROCESS/FIXED)
+     */
+    @Transactional
+    public void confirmIssue(Long issueId, String adminDecision) {
+        log.info("[IssueService] confirmIssue started. issueId={}, adminDecision={}",
+                issueId, adminDecision);
+
+        // 1. Issue 조회
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            log.warn("[IssueService] Issue not found. issueId={}", issueId);
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 2. 이미 RESOLVED면 중복 확정 방지
+        if ("RESOLVED".equals(issue.getStatus())) {
+            log.warn("[IssueService] Issue already resolved. issueId={}", issueId);
+            throw new ApiException(ErrorCode.ISSUE_ALREADY_RESOLVED);
+        }
+
+        // 3. adminDecision 검증
+        validateAdminDecision(issue.getIssueType(), adminDecision);
+
+        // 4. 확정 처리
+        issue.setStatus("RESOLVED");
+        issue.setAdminDecision(adminDecision);
+        issue.setResolvedAt(java.time.LocalDateTime.now());
+
+        // 5. Issue 업데이트
+        issueMapper.updateIssueStatus(issue);
+        log.info("[IssueService] Admin confirmed. issueId={}, adminDecision={}",
+                issueId, adminDecision);
+
+        // 6. Inventory Event 기록 (DAMAGED 타입 + DAMAGED 확정만)
+        if ("DAMAGED".equals(issue.getIssueType()) && "DAMAGED".equals(adminDecision)) {
+            // TODO: Inventory Event 시스템 구현 후 활성화
+            // eventService.recordInventoryEvent(
+            // issue.getProductId(),
+            // "PICK_DAMAGED_FINAL",
+            // -1,
+            // issueId
+            // );
+            log.info(
+                    "[IssueService] Inventory event required (currently commented). issueId={}, type=PICK_DAMAGED_FINAL, qty=-1",
+                    issueId);
+        }
+    }
+
+    /**
+     * adminDecision 유효성 검증
+     */
+    private void validateAdminDecision(String issueType, String adminDecision) {
+        if ("DAMAGED".equals(issueType)) {
+            // DAMAGED 타입: NORMAL, DAMAGED, CALLED_OTHER_PROCESS만 허용
+            if (!"NORMAL".equals(adminDecision)
+                    && !"DAMAGED".equals(adminDecision)
+                    && !"CALLED_OTHER_PROCESS".equals(adminDecision)) {
+                throw new ApiException(ErrorCode.INVALID_ADMIN_DECISION);
+            }
+        } else if ("OUT_OF_STOCK".equals(issueType)) {
+            // OUT_OF_STOCK 타입: FIXED만 허용
+            if (!"FIXED".equals(adminDecision)) {
+                throw new ApiException(ErrorCode.INVALID_ADMIN_DECISION);
+            }
+        } else {
+            throw new ApiException(ErrorCode.INVALID_ISSUE_TYPE);
+        }
+    }
 }

@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
+import lookie.backend.domain.issue.dto.AdminConfirmRequest;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
 import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueResponse;
@@ -79,5 +80,26 @@ public class IssueController {
         return ResponseEntity.ok(ApiResponse.success(
                 "AI 판정 결과가 반영되었습니다.",
                 response));
+    }
+
+    /**
+     * 관리자 확정 (ADMIN_CONFIRM)
+     * - 분기표 D14: DAMAGED 확정 (NORMAL/DAMAGED/CALLED_OTHER_PROCESS)
+     * - 분기표 S7: OUT_OF_STOCK 확정 (FIXED)
+     */
+    @Operation(summary = "관리자 확정", description = "관리자가 이슈를 최종 확정 처리합니다. (WebRTC 통화 후 또는 사후 확정)")
+    @PostMapping("/{issueId}/admin/confirm")
+    public ResponseEntity<ApiResponse<Void>> confirmIssue(
+            @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
+            @RequestBody AdminConfirmRequest request) {
+        // TODO: 관리자 권한 체크 필요 (현재는 누구나 호출 가능)
+        log.info("[IssueController] Admin confirm request. issueId={}, decision={}",
+                issueId, request.getAdminDecision());
+
+        issueService.confirmIssue(issueId, request.getAdminDecision());
+
+        return ResponseEntity.ok(ApiResponse.success(
+                "이슈가 확정 처리되었습니다.",
+                null));
     }
 }

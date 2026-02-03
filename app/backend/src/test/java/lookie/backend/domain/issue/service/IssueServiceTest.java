@@ -703,4 +703,90 @@ class IssueServiceTest {
         // then
         assertEquals("ADMIN_CONFIRM_LATER", response.getAdminNextAction());
     }
+
+    // ================================================================
+    // 관리자 확정 테스트
+    // ================================================================
+
+    @Test
+    @DisplayName("관리자 확정 성공 - DAMAGED + NORMAL")
+    void confirmIssue_Damaged_Normal() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        issueService.confirmIssue(issueId, "NORMAL");
+
+        // then
+        assertEquals("RESOLVED", issue.getStatus());
+        assertEquals("NORMAL", issue.getAdminDecision());
+        assertNotNull(issue.getResolvedAt());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("관리자 확정 성공 - OUT_OF_STOCK + FIXED")
+    void confirmIssue_OutOfStock_Fixed() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("OUT_OF_STOCK");
+        issue.setStatus("OPEN");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when
+        issueService.confirmIssue(issueId, "FIXED");
+
+        // then
+        assertEquals("RESOLVED", issue.getStatus());
+        assertEquals("FIXED", issue.getAdminDecision());
+        verify(issueMapper).updateIssueStatus(issue);
+    }
+
+    @Test
+    @DisplayName("관리자 확정 실패 - 이미 RESOLVED")
+    void confirmIssue_AlreadyResolved() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setStatus("RESOLVED");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when, then
+        ApiException exception = assertThrows(ApiException.class, () -> {
+            issueService.confirmIssue(issueId, "NORMAL");
+        });
+
+        assertEquals(ErrorCode.ISSUE_ALREADY_RESOLVED, exception.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("관리자 확정 실패 - 유효하지 않은 Decision (DAMAGED에 FIXED)")
+    void confirmIssue_InvalidDecision() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+
+        // when, then
+        ApiException exception = assertThrows(ApiException.class, () -> {
+            issueService.confirmIssue(issueId, "FIXED");
+        });
+
+        assertEquals(ErrorCode.INVALID_ADMIN_DECISION, exception.getErrorCode());
+    }
 }
