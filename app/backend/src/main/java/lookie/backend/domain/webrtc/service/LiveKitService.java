@@ -20,8 +20,9 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import lookie.backend.domain.webrtc.event.CallEndedEvent;
 import lookie.backend.domain.webrtc.event.CallRejectedEvent;
 
+import lookie.backend.domain.webrtc.dto.WebRtcSignalType;
+import lookie.backend.domain.webrtc.dto.WebRtcSignalResponse;
 import java.time.LocalDateTime;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -105,7 +106,7 @@ public class LiveKitService {
         String token = generateToken(call.getCalleeId().toString(), call.getRoomName());
 
         // 5. [WebSocket] Caller에게 수락 알림 전송 (Polling 대체)
-        sendSignal(call.getId(), "ACCEPTED", call.getRoomName());
+        sendSignal(call.getId(), WebRtcSignalType.ACCEPTED, call.getRoomName());
 
         return token;
     }
@@ -136,7 +137,7 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [WebSocket] Caller에게 거절 알림 전송
-        sendSignal(call.getId(), "REJECTED", null);
+        sendSignal(call.getId(), WebRtcSignalType.REJECTED, null);
     }
 
     /**
@@ -201,7 +202,7 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [WebSocket] Callee에게 취소 알림 전송 (벨소리 중단용)
-        sendSignal(call.getId(), "CANCELED", null);
+        sendSignal(call.getId(), WebRtcSignalType.CANCELED, null);
     }
 
     // --- 내부 메서드 ---
@@ -284,22 +285,12 @@ public class LiveKitService {
      * WebSocket 시그널 전송 공통 메서드
      * Destination: /topic/video-calls/{callId}
      */
-    private void sendSignal(Long callId, String type, String roomName) {
-        Map<String, Object> payload = Map.of(
-                "type", type,
-                "callId", callId,
-                "timestamp", System.currentTimeMillis());
-
-        // roomName이 있는 경우에만 추가 (ACCEPTED일 때 필요)
-        if (roomName != null) {
-            // Map.of는 불변이므로 새로 생성해야 하지만, 간단하게 구현하기 위해 가변 맵 사용 권장
-            // 여기서는 payload를 새로 구성
-            payload = Map.of(
-                    "type", type,
-                    "callId", callId,
-                    "roomId", roomName, // Frontend에서 roomId라고 쓰므로 매핑
-                    "timestamp", System.currentTimeMillis());
-        }
+    /**
+     * WebSocket 시그널 전송 공통 메서드
+     * Destination: /topic/video-calls/{callId}
+     */
+    private void sendSignal(Long callId, WebRtcSignalType type, String roomName) {
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName);
 
         messagingTemplate.convertAndSend("/topic/video-calls/" + callId, payload);
         log.info("[WebSocket] Signal sent: callId={}, type={}", callId, type);
