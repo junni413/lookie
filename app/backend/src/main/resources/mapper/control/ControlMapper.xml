@@ -2,15 +2,21 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="lookie.backend.domain.control.mapper.ControlMapper">
 
+    <!-- 
+        1. 구역별 현황 조회 
+        - Zones 테이블을 기준으로 Left Join하여 작업자 수를 카운트
+        - Users: 해당 구역에 배정된(assigned_zone_id) 작업자
+        - WorkLogs: 현재 출근 중(ended_at IS NULL)인 작업자
+    -->
     <select id="selectZoneOverviews" resultType="lookie.backend.domain.control.dto.ZoneOverviewDto">
         SELECT
             z.zone_id AS zoneId,
-            -- (수정) 중복 방지를 위해 DISTINCT 추가
+            -- (수정) 중복 방지를 위해 DISTINCT 추가 (한 작업자가 여러 로그를 가질 가능성 배제)
             COUNT(DISTINCT wl.worker_id) AS workerCount,
-            0.0 AS progressRate,
-            'STABLE' AS status
+            0.0 AS progressRate, -- 현재는 진행률 0.0 고정
+            'STABLE' AS status   -- 기본 상태 STABLE
         FROM zones z
-        -- 관리자가 배정한 구역의 작업자만 조인
+        -- 관리자가 배정한 구역의 작업자만 조인 (Role=WORKER)
         LEFT JOIN users u ON u.assigned_zone_id = z.zone_id AND u.role = 'WORKER'
         -- 그 작업자가 현재 출근 중(ended_at IS NULL)인지 확인
         LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
@@ -18,12 +24,19 @@
         ORDER BY z.zone_id
     </select>
 
+    <!-- 
+        구역별 작업자 상세 조회 
+        - Users 테이블 기준, 해당 구역에 배정된 작업자 필터링
+        - WorkLogs: 현재 활동 중인 작업자만 조회 (Inner Join)
+        - workCount: 금일(CURDATE) 처리한 작업 건수(batch_task_items) 서브쿼리로 계산
+    -->
     <select id="selectWorkersByZoneId" resultType="lookie.backend.domain.control.dto.ZoneWorkerDto">
         SELECT
             u.user_id AS workerId,
             u.name AS name,
             u.phone_number AS phoneNumber,
             (
+                -- 금일 처리한 작업 아이템 수 카운트 (속도 계산용 기초 데이터)
                 SELECT COUNT(bti.batch_task_item_id)
                 FROM batch_tasks bt
                 JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
@@ -31,13 +44,36 @@
                   AND bti.status != 'PENDING'
                   AND DATE(bti.last_scanned_at) = CURDATE()
             ) AS workCount,
-            0.0 AS processingSpeed,
-            0.0 AS currentTaskProgress,
-            'WORKING' AS status,
-            'AVAILABLE' AS webrtcStatus
+            0.0 AS processingSpeed,     -- 시간당 처리 속도 (미구현)
+            0.0 AS currentTaskProgress, -- 현재 배치 진행률 (미구현)
+            'WORKING' AS status,        -- 작업 상태 (미구현)
+            'AVAILABLE' AS webrtcStatus -- WebRTC 상태 (미구현)
         FROM users u
+        -- 현재 출근 중인 사용자만 조회 (로그가 없으면 조회되지 않음)
         INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
         WHERE u.assigned_zone_id = #{zoneId}
+    </select>
+
+    <!-- 3. 전체 활성 작업자 수 (중복 제거) -->
+    <select id="countTotalActiveWorkers" resultType="int">
+        SELECT COUNT(DISTINCT worker_id)
+        FROM work_logs
+        WHERE ended_at IS NULL
+    </select>
+
+    <!-- 4. 현재 미처리 이슈 수 (Status=OPEN) -->
+    <select id="countPendingIssues" resultType="int">
+        SELECT COUNT(*)
+        FROM issues
+        WHERE status = 'OPEN'
+    </select>
+
+    <!-- 5. 금일 해결된 이슈 수 (Status=RESOLVED AND ResolveDate=Today) -->
+    <select id="countTodayCompletedIssues" resultType="int">
+        SELECT COUNT(*)
+        FROM issues
+        WHERE status = 'RESOLVED'
+          AND DATE(resolved_at) = CURDATE()
     </select>
 
 </mapper>
