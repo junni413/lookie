@@ -187,6 +187,29 @@ public class TaskWorkflowFacade {
                 task.getZoneId()));
     }
 
+    /**
+     * [조회] 작업자의 현재 진행 중인 작업 조회 (화면 복구용)
+     * - 로그인 직후나 새로고침 시 호출되어, 작업자가 하던 단계로 되돌아갈 수 있게 합니다.
+     */
+    @Transactional(readOnly = true)
+    public TaskResponse<TaskVO> getInProgressTask(Long workerId) {
+        TaskVO task = taskMapper.findInProgressByWorkerId(workerId);
+        if (task == null) {
+            return null; // 진행 중인 작업 없음
+        }
+
+        // 상세 정보 조회를 위해 재조회 (findInProgressByWorkerId는 일부 컬럼만 조회함)
+        TaskVO fullTask = taskMapper.findById(task.getBatchTaskId());
+
+        // 다음 진행할 아이템 조회 (없을 수도 있음)
+        TaskItemVO nextItem = taskItemService.getNextItem(fullTask.getBatchTaskId());
+
+        // 현재 DB 상태에 맞는 NextAction 유추
+        NextAction nextAction = resolveNextAction(fullTask.getActionStatus());
+
+        return TaskResponse.of(fullTask, nextAction, nextItem);
+    }
+
     private TaskVO getTaskOrThrow(Long taskId) {
         TaskVO task = taskMapper.findById(taskId);
         if (task == null) {
@@ -228,5 +251,24 @@ public class TaskWorkflowFacade {
             return NextAction.SCAN_LOCATION;
         }
         return NextAction.ADJUST_QUANTITY;
+    }
+
+    private NextAction resolveNextAction(TaskActionStatus status) {
+        if (status == null)
+            return NextAction.NONE;
+        switch (status) {
+            case SCAN_TOTE:
+                return NextAction.SCAN_TOTE;
+            case SCAN_LOCATION:
+                return NextAction.SCAN_LOCATION;
+            case SCAN_ITEM:
+                return NextAction.SCAN_ITEM;
+            case ADJUST_QUANTITY:
+                return NextAction.ADJUST_QUANTITY;
+            case COMPLETE_TASK:
+                return NextAction.COMPLETE_TASK;
+            default:
+                return NextAction.NONE;
+        }
     }
 }
