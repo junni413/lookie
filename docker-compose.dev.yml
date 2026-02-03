@@ -130,6 +130,8 @@ services:
       dockerfile: infra/nginx/Dockerfile.dev   # Nginx Dockerfile 위치
     ports:
       - "80:80"                            # 외부 공개 포트
+    volumes:
+      - ./data/images:/data/images         # 정적 이미지 폴더 위치
     networks:
       - lookie
     depends_on:
