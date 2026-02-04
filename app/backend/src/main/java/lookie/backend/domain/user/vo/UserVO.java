@@ -26,6 +26,7 @@ public class UserVO {
     private LocalDate birthDate;
     private Boolean isActive;
     private Long assignedZoneId; // 배정된 구역 ID (WebRTC 자동 선택용)
+    private String status; // 실시간 가용성 상태 (ONLINE/BUSY/PAUSED/AWAY) - Redis에서 주입
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
