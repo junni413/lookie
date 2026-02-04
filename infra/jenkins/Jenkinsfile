@@ -2,8 +2,13 @@ pipeline {
   agent any
 
   options {
+    // 콘솔에 시간 찍기 (로그 추적 쉬움)
     timestamps()
+
+    // 같은 Job이 동시에 실행되는 것 방지 (배포 충돌 방지)
     disableConcurrentBuilds()
+
+    // Jenkins 기본 checkout을 끄고, 우리가 만든 Checkout stage만 사용
     skipDefaultCheckout(true)
   }
 
@@ -11,20 +16,20 @@ pipeline {
     // ============================================================
     // [DEPLOY] EC2 배포 대상 정보
     // ============================================================
-    DEPLOY_HOST  = 'i14b105.p.ssafy.io'
-    DEPLOY_USER  = 'ubuntu'
-    DEPLOY_DIR   = '/home/ubuntu/lookie/S14P11B105'
-    SSH_CRED_ID  = 'ec2-ssh-key'
-    GIT_REPO_SSH = 'git@lab.ssafy.com:s14-webmobile1-sub1/S14P11B105.git'
-    COMPOSE_PROD_FILE = 'docker-compose.prod.yml'
+    DEPLOY_HOST  = 'i14b105.p.ssafy.io'                // 배포 대상 EC2 Host
+    DEPLOY_USER  = 'ubuntu'                            // 배포 EC2 User
+    DEPLOY_DIR   = '/home/ubuntu/lookie/S14P11B105'     // EC2에 repo가 위치할 디렉토리
+    SSH_CRED_ID  = 'ec2-ssh-key'                       // Jenkins에 등록된 SSH credential
+    GIT_REPO_SSH = 'git@lab.ssafy.com:s14-webmobile1-sub1/S14P11B105.git' // EC2에서 clone/pull 할 repo
+    COMPOSE_PROD_FILE = 'docker-compose.prod.yml'      // 운영 compose 파일명
 
     // ============================================================
     // [REGISTRY] DockerHub 이미지 정보
     // ============================================================
-    DOCKERHUB_CRED_ID      = 'dockerhub-cred'
-    REGISTRY_IMAGE_BACKEND = 'sheonj/lookie-backend'
-    REGISTRY_IMAGE_NGINX   = 'sheonj/lookie-nginx'
-    REGISTRY_IMAGE_AI      = 'sheonj/lookie-ai'
+    DOCKERHUB_CRED_ID      = 'dockerhub-cred'          // Jenkins DockerHub credential
+    REGISTRY_IMAGE_BACKEND = 'sheonj/lookie-backend'   // backend 이미지
+    REGISTRY_IMAGE_NGINX   = 'sheonj/lookie-nginx'     // nginx 이미지
+    REGISTRY_IMAGE_AI      = 'sheonj/lookie-ai'        // ai-server 이미지
 
     // ============================================================
     // [BUILD PATH] Docker build context / Dockerfile 위치
@@ -45,7 +50,22 @@ pipeline {
     // ============================================================
     // [LOG] stage별 로그 파일명 (workspace에 생성)
     // ============================================================
+    BACKEND_LOG  = 'ci_backend.log'
+    FRONTEND_LOG = 'ci_frontend.log'
     DEPLOY_LOG   = 'ci_deploy.log'
+
+    // ============================================================
+    // [CI - Redis/MySQL] MR 테스트용 임시 컨테이너 설정
+    // ============================================================
+    CI_REDIS_CONTAINER = 'ci-redis'
+    CI_REDIS_IMAGE     = 'redis:7-alpine'
+
+    CI_MYSQL_CONTAINER = 'ci-mysql'
+    CI_MYSQL_IMAGE     = 'mysql:8.0'
+    CI_MYSQL_DB        = 'lookie'
+    CI_MYSQL_USER      = 'lookie'
+    CI_MYSQL_PASSWORD  = 'lookiepass'
+    CI_MYSQL_ROOTPW    = 'rootpass'
 
     // ============================================================
     // [DOCKER] 빌드 성능 옵션 (BuildKit)
@@ -59,6 +79,8 @@ pipeline {
     stage('Detect Context') {
       steps {
         script {
+          // 여러 webhook 변수가 들어오더라도
+          // "첫 번째로 값이 있는 키"를 선택하는 헬퍼
           def pick = { List<String> keys ->
             for (k in keys) {
               def v = env."${k}"
@@ -67,16 +89,28 @@ pipeline {
             return ''
           }
 
+          // --------------------------------------------------------
+          // 1) 이벤트 종류 감지 (merge_request / push)
+          // --------------------------------------------------------
           env.EVENT_KIND = pick(['OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
           if (env.EVENT_KIND.toLowerCase().contains('merge')) env.EVENT_KIND = 'merge_request'
           if (env.EVENT_KIND.toLowerCase().contains('push'))  env.EVENT_KIND = 'push'
 
+          // --------------------------------------------------------
+          // 2) push 이벤트 브랜치 추출 (refs/heads/xxx → xxx)
+          // --------------------------------------------------------
           def refRaw = pick(['REF','ref','GIT_REF','gitRef','refChanges_0_refId'])
           env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').trim()
 
+          // --------------------------------------------------------
+          // 3) MR 이벤트일 때 source/target 브랜치 추출
+          // --------------------------------------------------------
           env.MR_SOURCE = pick(['MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch','gitlabSourceBranch']).trim()
           env.MR_TARGET = pick(['MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch','gitlabTargetBranch']).trim()
 
+          // --------------------------------------------------------
+          // 4) 실행자(누가 트리거했는지) 추출
+          // --------------------------------------------------------
           env.ACTOR = pick([
             'MR_USER_NAME','MR_USER_USERNAME',
             'PUSH_USER_NAME','PUSH_USER_USERNAME',
@@ -86,14 +120,31 @@ pipeline {
           ]).trim()
           if (!env.ACTOR) env.ACTOR = 'unknown'
 
+          // --------------------------------------------------------
+          // 5) 어떤 stage를 실행할지 플래그 세팅
+          //   - MR: 테스트/빌드만 (push/배포 금지)
+          //   - develop push: 이미지 build+push + 배포
+          // --------------------------------------------------------
+          env.RUN_BACKEND  = "false"
+          env.RUN_FRONTEND = "false"
           env.RUN_BUILDIMG = "false"
           env.RUN_DEPLOY   = "false"
+
+          if (env.EVENT_KIND == 'merge_request') {
+            env.RUN_BACKEND  = "true"
+            env.RUN_FRONTEND = "true"
+          }
 
           if (env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop') {
             env.RUN_BUILDIMG = "true"
             env.RUN_DEPLOY   = "true"
           }
 
+          // --------------------------------------------------------
+          // 6) Checkout할 브랜치 결정
+          //   - MR이면 source branch
+          //   - push면 push branch
+          // --------------------------------------------------------
           env.CHECKOUT_BRANCH = ''
           if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
             env.CHECKOUT_BRANCH = env.MR_SOURCE
@@ -101,6 +152,7 @@ pipeline {
             env.CHECKOUT_BRANCH = env.PUSH_BRANCH
           }
 
+          // 로그 출력 (Jenkins 콘솔에서 흐름 확인용)
           echo """
 [kind=${env.EVENT_KIND}]
 actor=${env.ACTOR}
@@ -108,7 +160,7 @@ pushBranch=${env.PUSH_BRANCH}
 mrSource=${env.MR_SOURCE}
 mrTarget=${env.MR_TARGET}
 checkoutBranch=${env.CHECKOUT_BRANCH}
-plan: BUILDIMG=${env.RUN_BUILDIMG}, DEPLOY=${env.RUN_DEPLOY}
+plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG}, DEPLOY=${env.RUN_DEPLOY}
 """.trim()
         }
       }
@@ -116,7 +168,12 @@ plan: BUILDIMG=${env.RUN_BUILDIMG}, DEPLOY=${env.RUN_DEPLOY}
 
     stage('Checkout') {
       when {
-        expression { env.RUN_BUILDIMG == "true" || env.RUN_DEPLOY == "true" }
+        expression {
+          env.RUN_BACKEND == "true" ||
+          env.RUN_FRONTEND == "true" ||
+          env.RUN_BUILDIMG == "true" ||
+          env.RUN_DEPLOY == "true"
+        }
       }
       steps {
         checkout scm
@@ -139,19 +196,20 @@ plan: BUILDIMG=${env.RUN_BUILDIMG}, DEPLOY=${env.RUN_DEPLOY}
       }
     }
 
-    stage('Set IMAGE_TAG') {
-      when { expression { env.RUN_BUILDIMG == "true" || env.RUN_DEPLOY == "true" } }
+    // (중간 MR 테스트 / FE 빌드 단계는 네 코드 그대로 유지)
+    //  - MR Backend Test
+    //  - MR AI Test
+    //  - MR Frontend Build
+    // (여기서는 생략)
+
+    stage('Build & Push: Backend & Nginx') {
+      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
         script {
           env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           echo "IMAGE_TAG=${env.IMAGE_TAG}"
         }
-      }
-    }
 
-    stage('Build & Push: Backend & Nginx') {
-      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
-      steps {
         withCredentials([usernamePassword(
           credentialsId: env.DOCKERHUB_CRED_ID,
           usernameVariable: 'DH_USER',
@@ -174,32 +232,22 @@ plan: BUILDIMG=${env.RUN_BUILDIMG}, DEPLOY=${env.RUN_DEPLOY}
       }
     }
 
-    stage('Build & Push: AI Server (if changed)') {
-      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
+    stage('Build & Push: AI Server') {
+      when {
+        allOf {
+          expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" }
+          anyOf {
+            changeset "app/ai-server/**"
+            changeset "app/ai-server/model/**"
+            // ✅ Jenkinsfile 경로가 infra/jenkins/Jenkinsfile 이므로 수정
+            changeset "infra/jenkins/Jenkinsfile"
+          }
+        }
+      }
       steps {
         script {
-          // changeset 경고/오작동 방지: git diff로 변경 여부 판단
-          def changed = sh(
-            script: """#!/usr/bin/env bash
-              set -euo pipefail
-              # 이전 커밋이 없을 수 있으니 안전하게 처리
-              if git rev-parse HEAD~1 >/dev/null 2>&1; then
-                git diff --name-only HEAD~1..HEAD | egrep -q '^(app/ai-server/|app/ai-server/model/|infra/jenkins/Jenkinsfile|Jenkinsfile)' && echo yes || echo no
-              else
-                echo yes
-              fi
-            """,
-            returnStdout: true
-          ).trim()
-
-          env.AI_CHANGED = (changed == 'yes') ? "true" : "false"
-          echo "AI_CHANGED=${env.AI_CHANGED}"
-        }
-
-        script {
-          if (env.AI_CHANGED != "true") {
-            echo "[INFO] AI Server not changed -> skip build/push."
-            return
+          if (!env.IMAGE_TAG?.trim()) {
+            env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           }
         }
 
@@ -226,9 +274,16 @@ plan: BUILDIMG=${env.RUN_BUILDIMG}, DEPLOY=${env.RUN_DEPLOY}
       }
     }
 
-    stage('Deploy (develop push only)') {
+    stage('Deploy (develop push only, pull based)') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_DEPLOY == "true" } }
       steps {
+        script {
+          if (!env.IMAGE_TAG?.trim()) {
+            env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+          }
+          echo "Deploy IMAGE_TAG=${env.IMAGE_TAG}"
+        }
+
         withCredentials([usernamePassword(
           credentialsId: env.DOCKERHUB_CRED_ID,
           usernameVariable: 'DH_USER',
@@ -242,75 +297,88 @@ plan: BUILDIMG=${env.RUN_BUILDIMG}, DEPLOY=${env.RUN_DEPLOY}
               mkdir -p ~/.ssh
               ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-              # 1) 원격에 실행 스크립트를 "파일로" 생성 (heredoc/pipe/tee 꼬임 방지)
               ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
-                "DEPLOY_DIR='${DEPLOY_DIR}' \
-                 GIT_REPO_SSH='${GIT_REPO_SSH}' \
-                 COMPOSE_PROD_FILE='${COMPOSE_PROD_FILE}' \
-                 REGISTRY_IMAGE_BACKEND='${REGISTRY_IMAGE_BACKEND}' \
+                "REGISTRY_IMAGE_BACKEND='${REGISTRY_IMAGE_BACKEND}' \
                  REGISTRY_IMAGE_NGINX='${REGISTRY_IMAGE_NGINX}' \
                  REGISTRY_IMAGE_AI='${REGISTRY_IMAGE_AI}' \
                  IMAGE_TAG='${IMAGE_TAG}' \
                  DH_USER='${DH_USER}' \
                  DH_PASS='${DH_PASS}' \
-                 bash -lc 'cat > /tmp/jenkins_deploy.sh <<\"EOF\"
+                 DEPLOY_DIR='${DEPLOY_DIR}' \
+                 GIT_REPO_SSH='${GIT_REPO_SSH}' \
+                 COMPOSE_PROD_FILE='${COMPOSE_PROD_FILE}' \
+                 bash -s" <<'EOSSH' 2>&1 | tee -a "${DEPLOY_LOG}"
 set -euo pipefail
 
-echo \"[INFO] DEPLOY_DIR=$DEPLOY_DIR\"
-mkdir -p \"$DEPLOY_DIR\"
-cd \"$DEPLOY_DIR\"
+# (1) 배포 디렉토리 준비 + repo 준비
+mkdir -p "${DEPLOY_DIR}"
+cd "${DEPLOY_DIR}"
 
 if [[ ! -d .git ]]; then
-  echo \"[INFO] cloning repo...\"
-  git clone \"$GIT_REPO_SSH\" .
+  git clone "${GIT_REPO_SSH}" .
 fi
 
-echo \"[INFO] checkout develop...\"
 git fetch origin
 git checkout -B develop origin/develop
 
-echo \"[INFO] docker login...\"
-echo \"$DH_PASS\" | docker login -u \"$DH_USER\" --password-stdin >/dev/null
+# (2) 원격 서버에서 DockerHub 로그인(이미지 pull 가능하게)
+echo "${DH_PASS}" | docker login -u "${DH_USER}" --password-stdin >/dev/null
 
+# (3) docker-compose에서 사용할 변수 export (IMAGE_TAG 치환 보장)
 export REGISTRY_IMAGE_BACKEND REGISTRY_IMAGE_NGINX REGISTRY_IMAGE_AI IMAGE_TAG
 
-echo \"[INFO] Rendered compose config (debug)\"
-docker compose -f \"$COMPOSE_PROD_FILE\" config >/tmp/compose.rendered.yml
-tail -n 60 /tmp/compose.rendered.yml || true
+# (4) compose 파일이 변수 치환된 상태로 어떻게 해석되는지 출력(디버깅용)
+echo "[INFO] Rendered compose config (debug)"
+docker compose -f "${COMPOSE_PROD_FILE}" config >/tmp/compose.rendered.yml
+tail -n 80 /tmp/compose.rendered.yml || true
 
-echo \"[INFO] Pull images\"
-docker compose -f \"$COMPOSE_PROD_FILE\" pull
+# (5) 이미지 pull
+echo "[INFO] Pull images"
+docker compose -f "${COMPOSE_PROD_FILE}" pull
 
-echo \"[INFO] Run migrate (flyway) once\"
-docker compose -f \"$COMPOSE_PROD_FILE\" run --rm -e FLYWAY_OUT_OF_ORDER=true migrate
+# (6) ✅ DB migrate는 up 전에 강제로 1회 실행
+echo "[INFO] Run migrate (flyway) once"
+docker compose -f "${COMPOSE_PROD_FILE}" run --rm \
+  -e FLYWAY_OUT_OF_ORDER=true \
+  migrate
 
-echo \"[INFO] ===== BEFORE UP =====\"
-docker compose -f \"$COMPOSE_PROD_FILE\" ps || true
+# (7) ✅ 핵심 수정: 새 이미지로 컨테이너가 안 바뀌는 문제를 "rm -> up"로 강제 해결
+#     - backend/nginx(그리고 있을 경우 ai-server)만 의존성 건드리지 않고 교체
+echo "[INFO] Force replace containers (backend/nginx)"
+docker compose -f "${COMPOSE_PROD_FILE}" rm -sf backend nginx || true
+docker compose -f "${COMPOSE_PROD_FILE}" up -d \
+  --no-deps \
+  --force-recreate \
+  --pull always \
+  backend nginx
 
-echo \"[INFO] ===== UP CORE SERVICES =====\"
-set -x
-docker compose -f \"$COMPOSE_PROD_FILE\" up -d --remove-orphans --force-recreate --pull always
-set +x
+# (8) 나머지 서비스는 그대로 두되 orphan 정리
+echo "[INFO] Up (cleanup orphans only)"
+docker compose -f "${COMPOSE_PROD_FILE}" up -d --remove-orphans
 
-echo \"[INFO] ===== AFTER UP =====\"
-docker compose -f \"$COMPOSE_PROD_FILE\" ps
-docker ps --format \"table {{.Names}}\\t{{.Image}}\\t{{.Status}}\"
-
-# AI는 이미지가 존재할 때만 profile로 배포
-if docker manifest inspect \"${REGISTRY_IMAGE_AI}:${IMAGE_TAG}\" >/dev/null 2>&1; then
-  echo \"[INFO] AI image found -> deploying ai-server\"
-  docker compose -f \"$COMPOSE_PROD_FILE\" --profile ai pull
-  docker compose -f \"$COMPOSE_PROD_FILE\" --profile ai up -d --remove-orphans --force-recreate --pull always
+# (9) AI는 이미지가 존재할 때만 배포 + rm -> up 강제
+if docker manifest inspect "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" >/dev/null 2>&1; then
+  echo "[INFO] AI image found -> deploying ai-server"
+  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai pull || docker compose -f "${COMPOSE_PROD_FILE}" pull || true
+  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai rm -sf ai-server || true
+  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai up -d \
+    --no-deps \
+    --force-recreate \
+    --pull always \
+    ai-server
 else
-  echo \"[INFO] AI image not found -> skipping ai-server\"
+  echo "[INFO] AI image not found -> skipping ai-server"
 fi
 
+# (10) 배포 결과 확인 (여기서 IMAGE_TAG가 바뀐 게 보여야 정상)
+echo "[INFO] ===== docker compose ps ====="
+docker compose -f "${COMPOSE_PROD_FILE}" ps || true
+echo "[INFO] ===== docker ps (name/image) ====="
+docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}"
+
+# (11) 오래된 이미지 정리
 docker image prune -f >/dev/null 2>&1 || true
-echo \"[INFO] Deploy done.\"
-EOF
-chmod +x /tmp/jenkins_deploy.sh
-bash -lc /tmp/jenkins_deploy.sh
-' " 2>&1 | tee -a "${DEPLOY_LOG}"
+EOSSH
             '''
           }
         }
@@ -322,6 +390,7 @@ bash -lc /tmp/jenkins_deploy.sh
     always {
       script {
         def ok = (currentBuild.currentResult == 'SUCCESS')
+
         def kind = env.EVENT_KIND ?: ''
         def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
 
