@@ -24,10 +24,17 @@ public class AiResultResponse {
     private LocalDateTime resolvedAt; // 자동 해결 시각 (PASS 케이스)
     private IssueNextAction nextAction; // 다음 권고 행동
 
+    // AI 상세 정보 추가 (WebSocket 실시간 통보용)
+    private String aiResult; // 판정 결과 코드 (PASS, FAIL, NEED_CHECK, RETAKE)
+    private String summary; // AI 판정 요약
+    private Float confidence; // AI 신뢰도 (0.0 ~ 1.0)
+    private String aiDetail; // AI 상세 결과 JSON
+
     /**
      * IssueVO와 nextAction으로부터 응답 생성
      */
-    public static AiResultResponse from(IssueVO issue, IssueNextAction nextAction) {
+    public static AiResultResponse from(IssueVO issue, IssueNextAction nextAction, String aiResult, String summary,
+            Float confidence, String aiDetail) {
         return new AiResultResponse(
                 issue.getIssueId(),
                 issue.getStatus(),
@@ -36,6 +43,10 @@ public class AiResultResponse {
                 issue.getAdminRequired(),
                 issue.getReasonCode(),
                 issue.getResolvedAt(),
-                nextAction);
+                nextAction,
+                aiResult,
+                summary,
+                confidence,
+                aiDetail);
     }
 }

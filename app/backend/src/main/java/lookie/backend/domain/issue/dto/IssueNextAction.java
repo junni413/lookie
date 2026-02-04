@@ -38,6 +38,12 @@ public enum IssueNextAction {
     WAIT_RETAKE,
 
     /**
+     * 보고용 이미지 등록 대기 (AI 결과 X)
+     * - OUT_OF_STOCK 신고 + 관리자 부재 시
+     */
+    WAIT_REPORT_IMAGE,
+
+    /**
      * 자동 해결됨 (관리자 확정 완료)
      * - 결과 표시만
      * - 작업 계속 진행

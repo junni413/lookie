@@ -33,7 +33,8 @@ public class IssueDetailResponse {
     private String adminDecision; // 관리자 확정 결과
 
     // AI 판정 결과 (ai_judgments 테이블)
-    private String aiResult; // aiDecision → aiResult로 매핑
+    private String aiResult; // 판정 결과 코드 (PASS, FAIL, NEED_CHECK, RETAKE)
+    private String aiDetail; // AI 상세 결과 JSON (좌표 정보 포함)
     private Float confidence; // AI 신뢰도 (0.0 ~ 1.0)
     private String summary; // AI 판정 요약
     private String imageUrl; // 이슈 증빙 이미지 URL
@@ -62,6 +63,7 @@ public class IssueDetailResponse {
                 .urgency(issue.getUrgency())
                 .adminDecision(issue.getAdminDecision())
                 .aiResult(judgment != null ? judgment.getAiDecision() : null)
+                .aiDetail(judgment != null ? judgment.getAiResult() : null)
                 .confidence(judgment != null ? judgment.getConfidence() : null)
                 .summary(judgment != null ? judgment.getSummary() : null)
                 .imageUrl(judgment != null ? judgment.getImageUrl() : null)

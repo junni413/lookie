@@ -62,11 +62,13 @@ class VisionService:
     # =========================================================
     
     def _load_image(self, image_bytes: bytes) -> Image.Image:
-        """이미지 바이트를 PIL 이미지로 변환 및 검증"""
+        """이미지 바이트를 PIL 이미지로 변환 및 검증 (회전 보정 포함)"""
         try:
+            from PIL import ImageOps
             img = Image.open(io.BytesIO(image_bytes))
-            img.verify() # 파일 깨짐 확인
-            return Image.open(io.BytesIO(image_bytes)) # verify 후 다시 열어야 함
+            # EXIF 정보를 바탕으로 이미지 회전 보정 (핸드폰 사진 대응)
+            img = ImageOps.exif_transpose(img)
+            return img
         except Exception as e:
             raise ValueError(f"IMAGE_LOAD_ERROR: {str(e)}")
 

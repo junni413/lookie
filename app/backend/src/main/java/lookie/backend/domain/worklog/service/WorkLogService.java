@@ -82,8 +82,9 @@ public class WorkLogService {
         workLogMapper.insertWorkLog(workLog);
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.START, "출근");
 
-        // 1-6. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화)
-        eventPublisher.publishEvent(new WorkStatusChangedEvent(userId, WorkLogEventType.START, null));
+        // 1-6. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화 + Zone 캐시 무효화)
+        eventPublisher.publishEvent(
+                new WorkStatusChangedEvent(userId, WorkLogEventType.START, null, user.getAssignedZoneId()));
 
         return WorkLogResponseDto.from(workLog, event);
     }
@@ -118,8 +119,10 @@ public class WorkLogService {
         // 2-3. 종료(END) 이벤트 기록
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.END, "퇴근");
 
-        // 2-4. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화)
-        eventPublisher.publishEvent(new WorkStatusChangedEvent(userId, WorkLogEventType.END, null));
+        // 2-4. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화 + Zone 캐시 무효화)
+        // 퇴근 전 구역 정보 저장 (unassignZoneFromWorker 호출 전에 이미 user 조회함)
+        eventPublisher
+                .publishEvent(new WorkStatusChangedEvent(userId, WorkLogEventType.END, null, user.getAssignedZoneId()));
 
         return WorkLogResponseDto.from(workLog, event);
     }
@@ -139,8 +142,13 @@ public class WorkLogService {
 
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.PAUSE, request.getReason());
 
-        // 3-2. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화)
-        eventPublisher.publishEvent(new WorkStatusChangedEvent(userId, WorkLogEventType.PAUSE, request.getReason()));
+        // 3-2. 사용자 구역 정보 조회 (캐시 무효화용)
+        UserVO user = userMapper.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+
+        // 3-3. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화 + Zone 캐시 무효화)
+        eventPublisher.publishEvent(new WorkStatusChangedEvent(userId, WorkLogEventType.PAUSE, request.getReason(),
+                user.getAssignedZoneId()));
 
         return WorkLogResponseDto.from(workLog, event);
     }
@@ -165,8 +173,13 @@ public class WorkLogService {
 
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.RESUME, "작업 재개");
 
-        // 4-2. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화)
-        eventPublisher.publishEvent(new WorkStatusChangedEvent(userId, WorkLogEventType.RESUME, null));
+        // 4-2. 사용자 구역 정보 조회 (캐시 무효화용)
+        UserVO user = userMapper.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+
+        // 4-3. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화 + Zone 캐시 무효화)
+        eventPublisher.publishEvent(
+                new WorkStatusChangedEvent(userId, WorkLogEventType.RESUME, null, user.getAssignedZoneId()));
 
         return WorkLogResponseDto.from(workLog, event);
     }

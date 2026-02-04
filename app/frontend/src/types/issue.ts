@@ -36,8 +36,8 @@ export type IssueDetailData = {
   imageUrl?: string;
   imageUrls?: string[];
   type?: string;
-  aiResult?: string;
-  aiDecision?: string;
+  aiResult?: string;   // 판정 결과 코드 (PASS, FAIL, NEED_CHECK, RETAKE)
+  aiDetail?: string;   // AI 상세 결과 JSON (좌표 정보 등)
   confidence?: number;
   summary?: string;
   adminRequired: boolean;

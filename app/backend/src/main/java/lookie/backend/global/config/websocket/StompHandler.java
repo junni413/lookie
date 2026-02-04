@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.webrtc.mapper.CallHistoryMapper;
 import lookie.backend.domain.webrtc.vo.CallHistoryVO;
+import lookie.backend.domain.issue.mapper.IssueMapper;
+import lookie.backend.domain.issue.vo.IssueVO;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -27,14 +29,16 @@ import java.util.List;
 public class StompHandler implements ChannelInterceptor {
 
     private final JwtProvider jwtProvider;
-    private final CallHistoryMapper callHistoryMapper; // [Fix] Missing dependency added
+    private final CallHistoryMapper callHistoryMapper;
+    private final IssueMapper issueMapper;
     // [New] AntPathMatcher for robust path matching
     private final org.springframework.util.AntPathMatcher pathMatcher = new org.springframework.util.AntPathMatcher();
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-        if (accessor == null) accessor = StompHeaderAccessor.wrap(message);
+        if (accessor == null)
+            accessor = StompHeaderAccessor.wrap(message);
 
         StompCommand command = accessor.getCommand();
 
@@ -49,21 +53,31 @@ public class StompHandler implements ChannelInterceptor {
                 throw new WebSocketAuthenticationException("Authentication failed: User not authenticated");
             }
 
-            if (destination == null) return message;
+            if (destination == null)
+                return message;
 
             // 1. [권한 검사] /topic/video-calls/{callId}
             if (pathMatcher.match("/topic/video-calls/{callId}", destination)) {
-                String callIdStr = pathMatcher.extractUriTemplateVariables("/topic/video-calls/{callId}", destination).get("callId");
+                String callIdStr = pathMatcher.extractUriTemplateVariables("/topic/video-calls/{callId}", destination)
+                        .get("callId");
                 validateSubscription(callIdStr, user.getName());
+            }
+            // 1.5 [권한 검사] /topic/issues/{issueId} (추가)
+            else if (pathMatcher.match("/topic/issues/{issueId}", destination)) {
+                String issueIdStr = pathMatcher.extractUriTemplateVariables("/topic/issues/{issueId}", destination)
+                        .get("issueId");
+                validateIssueSubscription(issueIdStr, user.getName());
             }
             // 2. [Security Fix] /topic/calls/{userId} (본인 확인)
             else if (pathMatcher.match("/topic/calls/{userId}", destination)) {
-                String targetUserId = pathMatcher.extractUriTemplateVariables("/topic/calls/{userId}", destination).get("userId");
+                String targetUserId = pathMatcher.extractUriTemplateVariables("/topic/calls/{userId}", destination)
+                        .get("userId");
                 validateOwner(targetUserId, user.getName(), "Topic");
             }
             // 3. [Security Fix] /queue/calls/{userId} (본인 확인)
             else if (pathMatcher.match("/queue/calls/{userId}", destination)) {
-                String targetUserId = pathMatcher.extractUriTemplateVariables("/queue/calls/{userId}", destination).get("userId");
+                String targetUserId = pathMatcher.extractUriTemplateVariables("/queue/calls/{userId}", destination)
+                        .get("userId");
                 validateOwner(targetUserId, user.getName(), "Queue");
             }
         } else if (StompCommand.SEND.equals(command)) {
@@ -101,7 +115,8 @@ public class StompHandler implements ChannelInterceptor {
             Long callId = Long.parseLong(callIdStr);
             CallHistoryVO call = callHistoryMapper.findById(callId).orElse(null);
 
-            if (call == null) throw new WebSocketAuthenticationException("Subscription failed: Call not found");
+            if (call == null)
+                throw new WebSocketAuthenticationException("Subscription failed: Call not found");
 
             long uid = Long.parseLong(userId);
             if (uid != call.getCallerId() && uid != call.getCalleeId()) {
@@ -116,6 +131,24 @@ public class StompHandler implements ChannelInterceptor {
         if (!targetUserId.equals(currentUserId)) {
             log.warn("⛔ WebSocket 보안 경고: 타인의 {} 구독 시도 차단 (User={}, Target={})", type, currentUserId, targetUserId);
             throw new WebSocketAuthenticationException("Access Denied: Cannot subscribe to other user's " + type);
+        }
+    }
+
+    private void validateIssueSubscription(String issueIdStr, String userId) {
+        try {
+            Long issueId = Long.parseLong(issueIdStr);
+            IssueVO issue = issueMapper.findById(issueId);
+
+            if (issue == null)
+                throw new WebSocketAuthenticationException("Subscription failed: Issue not found");
+
+            long uid = Long.parseLong(userId);
+            if (uid != issue.getWorkerId()) {
+                log.warn("⛔ WebSocket 보안 경고: 타인의 이슈 구독 시도 차단 (User={}, IssueId={})", userId, issueId);
+                throw new WebSocketAuthenticationException("Subscription failed: Access denied");
+            }
+        } catch (NumberFormatException e) {
+            log.warn("Invalid Issue ID format");
         }
     }
 }
