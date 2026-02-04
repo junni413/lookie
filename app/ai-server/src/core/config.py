@@ -20,6 +20,17 @@ PRODUCT_CONFIG = {
         "gate_class_id": 46,
         "model_path": "model/best.onnx"
     },
+    # 테스트용: DB에 있는 상품들도 바나나 모델로 처리
+    1001: {
+        "target_name": "banana",
+        "gate_class_id": 46,
+        "model_path": "model/best.onnx"
+    },
+    1002: {
+        "target_name": "banana",
+        "gate_class_id": 46,
+        "model_path": "model/best.onnx"
+    },
     # 나중에 사과(47) 추가 시 여기에 작성
 }
 
