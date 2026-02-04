@@ -28,6 +28,22 @@ app = FastAPI(lifespan=lifespan)
 # 라우터 등록
 app.include_router(vision_router)
 
+# 백엔드 호환성을 위한 레거시 엔드포인트
+from fastapi import BackgroundTasks
+from src.vision.router import PredictRequest, predict
+
+@app.post("/predict")
+async def predict_legacy(
+    background_tasks: BackgroundTasks,
+    request: PredictRequest
+):
+    """
+    레거시 엔드포인트 (백엔드 호환성)
+    /api/vision/predict 사용 권장
+    """
+    # 라우터의 predict 함수 재사용
+    return await predict(background_tasks, request)
+
 # 헬스 체크
 @app.get("/health")
 def health_check(response: Response):
