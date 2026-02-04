@@ -26,6 +26,7 @@ import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
 import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +52,7 @@ public class IssueService {
     private final TaskItemService taskItemService;
     private final TaskMapper taskMapper;
     private final AiAnalysisClient aiAnalysisClient;
+    private final SimpMessagingTemplate messagingTemplate;
 
     /**
      * 이슈 생성
@@ -243,7 +245,9 @@ public class IssueService {
         if (existing != null && !"UNKNOWN".equals(existing.getAiDecision())) {
             log.warn("[IssueService] AI result already applied. Skip overwrite. issueId={}, existingDecision={}",
                     issueId, existing.getAiDecision());
-            return AiResultResponse.from(issue, calculateNextAction(issue));
+            return AiResultResponse.from(issue, calculateNextAction(issue),
+                    existing.getAiDecision(), existing.getSummary(),
+                    existing.getConfidence(), existing.getAiResult());
         }
 
         // 2. AI 판정 결과 업데이트
@@ -273,7 +277,15 @@ public class IssueService {
         // 6. nextAction 계산
         IssueNextAction nextAction = calculateNextAction(issue);
 
-        return AiResultResponse.from(issue, nextAction);
+        AiResultResponse response = AiResultResponse.from(issue, nextAction,
+                judgment.getAiDecision(), judgment.getSummary(),
+                judgment.getConfidence(), judgment.getAiResult());
+
+        // [WebSocket] AI 판정 결과 통보
+        messagingTemplate.convertAndSend("/topic/issues/" + issueId, response);
+        log.info("[IssueService] AI result signaled via WebSocket. issueId={}", issueId);
+
+        return response;
     }
 
     /**

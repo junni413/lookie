@@ -69,6 +69,7 @@ export type IssueDetail = {
   urgency: number;
   adminDecision: string;
   aiResult: string;
+  aiDetail?: string;
   confidence: number;
   summary: string;
   workerNextAction: string;
