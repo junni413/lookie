@@ -547,6 +547,36 @@ class IssueServiceTest {
     }
 
     @Test
+    @DisplayName("이슈 상세 조회 성공 - AI 판정 결과가 없는 경우 (null 체크)")
+    void getIssueDetail_Success_NoAiJudgment() {
+        // given
+        Long issueId = 3L;
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("DAMAGED");
+        issue.setStatus("OPEN");
+        issue.setUrgency(3);
+        issue.setIssueHandling("NON_BLOCKING");
+        issue.setAdminRequired(false);
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(null); // 판정 결과 없음
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertNotNull(response);
+        assertEquals(issueId, response.getIssueId());
+        assertNull(response.getAiResult());
+        assertNull(response.getConfidence());
+        assertNull(response.getSummary());
+        assertNull(response.getImageUrl()); // 이미지 URL도 null이어야 함
+        assertEquals("NEXT_ITEM", response.getIssueNextAction());
+    }
+
+    @Test
     @DisplayName("이슈 상세 조회 실패 - 존재하지 않는 이슈")
     void getIssueDetail_NotFound() {
         // given
