@@ -117,6 +117,7 @@ services:
     container_name: ai-server
     profiles: ["ai"]
     restart: always
+    env_file: [.env]
     environment:
       # CPU 스레드 제한 (서버 안정성)
       - OMP_NUM_THREADS=2
