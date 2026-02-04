@@ -2,7 +2,7 @@ package lookie.backend.domain.control.mapper;
 
 import java.util.List;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
-import lookie.backend.domain.control.dto.AdminResponseDto;
+import lookie.backend.domain.control.repository.vo.AdminQueryVo;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.map.ZoneLineDto;
 import lookie.backend.domain.control.dto.map.ZoneWorkerLocationDto;
@@ -97,5 +97,5 @@ public interface ControlMapper {
          * @param zoneId 구역 ID (Optional)
          * @param name   이름 검색어 (Optional)
          */
-        List<AdminResponseDto> selectAdmins(@Param("zoneId") Long zoneId, @Param("name") String name);
+        List<AdminQueryVo> selectAdmins(@Param("zoneId") Long zoneId, @Param("name") String name);
 }
