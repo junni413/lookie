@@ -1,4 +1,4 @@
-export type IssueType = "DAMAGED" | "MISSING" | "OTHER";
+export type IssueType = "DAMAGED" | "OUT_OF_STOCK";
 export type AiVerdict = "OK" | "DAMAGED" | "NEED_REVIEW";
 export type IssueStatus = "OPEN" | "RESOLVED";
 

@@ -23,11 +23,10 @@ function formatHHmmKST(isoLike: string) {
   });
 }
 
-// assignedZoneId -> A/B/C...
+// ✅ assignedZoneId -> "ZONE-<id>"로 고정 표시
 function zoneLabelFromId(zoneId: number | null | undefined) {
-  if (zoneId === null || zoneId === undefined) return "—";
-  // ✅ 현재는 0->A 가정. 만약 1->A면 64+zoneId로 바꾸기
-  return String.fromCharCode(65 + zoneId);
+  if (zoneId === null || zoneId === undefined) return "ZONE-?";
+  return `ZONE-${zoneId}`;
 }
 
 function mapBackendStatusToUi(status: WorkLogStatus): WorkStatus {
@@ -43,17 +42,11 @@ function ZoneCard({ zone, status }: { zone: string; status: string }) {
         <div>
           <p className="text-sm font-extrabold text-slate-900">오늘 근무 구역</p>
         </div>
-        <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
-          {status}
-        </span>
       </div>
 
       <div className="mt-4 flex items-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-blue-50 text-blue-600">
-          <span className="text-[18px] font-black">{zone}</span>
-        </div>
         <div className="flex-1">
-          <div className="text-[16px] font-black text-slate-900">{zone}구역</div>
+          <div className="text-[16px] font-black text-slate-900">{zone}</div>
           <div className="mt-1 text-[12px] font-semibold text-slate-400">
             작업 시작 전 구역이 맞는지 확인해주세요.
           </div>
@@ -79,7 +72,7 @@ export default function Home() {
   const [stats, setStats] = useState<Stats>({ done: 0, issue: 0, waiting: 0 });
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const [zoneLabel, setZoneLabel] = useState<string>("—");
+  const [zoneLabel, setZoneLabel] = useState<string>("ZONE-?");
   const [zoneStatusText, setZoneStatusText] = useState<string>("근무중");
 
   // ✅ 진행중 작업(있으면 이어하기)
@@ -116,7 +109,7 @@ export default function Home() {
         setWorkStatus(uiStatus);
         setZoneStatusText(uiStatus === "WORKING" ? "근무중" : "근무중단");
 
-        // ✅ 구역 (swagger: assignedZoneId)
+        // ✅ 구역: "ZONE-<id>"
         setZoneLabel(zoneLabelFromId(cur.assignedZoneId));
 
         // ✅ 1-2) 출근 상태가 정상일 때만 "진행중 작업" 조회
@@ -370,9 +363,7 @@ export default function Home() {
         </button>
 
         {taskHelpText && (
-          <p className="px-1 text-[12px] font-semibold text-slate-400">
-            {taskHelpText}
-          </p>
+          <p className="px-1 text-[12px] font-semibold text-slate-400">{taskHelpText}</p>
         )}
       </div>
     </div>
