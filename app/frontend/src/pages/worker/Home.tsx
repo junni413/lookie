@@ -3,34 +3,11 @@ import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import type { MobileLayoutContext } from "../../components/layout/MobileLayout";
 import { taskService } from "../../services/taskService";
-import { workLogApi } from "../../services/attend.api";
+import { workLogApi } from "@/services/attend.api";
+import type { ApiResponse, WorkLogData, WorkLogStatus } from "@/services/attend.api";
 
 type WorkStatus = "WORKING" | "PAUSED";
 type Stats = { done: number; issue: number; waiting: number };
-
-// ✅ 백 응답(스웨거 기준)
-type WorkLogStatus = "START" | "PAUSE" | "RESUME" | "END";
-type ApiResponse<T> = {
-  success: boolean;
-  message: string;
-  errorCode: string | null;
-  data: T;
-};
-type WorkLogData = {
-  workLogId: number;
-  workerId: number;
-  workerName: string;
-  zoneId: number | null;
-  currentStatus: WorkLogStatus;
-  startedAt: string; // ISO string
-  endedAt?: string | null;
-  plannedEndAt?: string | null;
-  lastStatusChangedAt?: string | null;
-  lineId?: number | null;
-  locationCode?: string | null;
-  workCount?: number;
-  workRate?: number;
-};
 
 // ✅ 시간 포맷 통일 (UTC(Z) -> 브라우저 로컬(KST) 표시)
 function formatHHmmKST(isoLike: string) {
@@ -46,7 +23,7 @@ function formatHHmmKST(isoLike: string) {
   });
 }
 
-// zoneId -> A/B/C...
+// assignedZoneId -> A/B/C...
 function zoneLabelFromId(zoneId: number | null | undefined) {
   if (zoneId === null || zoneId === undefined) return "—";
   // ✅ 현재는 0->A 가정. 만약 1->A면 64+zoneId로 바꾸기
@@ -139,8 +116,8 @@ export default function Home() {
         setWorkStatus(uiStatus);
         setZoneStatusText(uiStatus === "WORKING" ? "근무중" : "근무중단");
 
-        // 구역
-        setZoneLabel(zoneLabelFromId(cur.zoneId));
+        // ✅ 구역 (swagger: assignedZoneId)
+        setZoneLabel(zoneLabelFromId(cur.assignedZoneId));
 
         // ✅ 1-2) 출근 상태가 정상일 때만 "진행중 작업" 조회
         setIsTaskChecking(true);
@@ -148,7 +125,12 @@ export default function Home() {
           const active = await taskService.getMyActiveTask();
           const payload = active?.data?.payload;
 
-          if (active.success && payload && typeof payload.batchTaskId === "number" && payload.batchTaskId > 0) {
+          if (
+            active.success &&
+            payload &&
+            typeof payload.batchTaskId === "number" &&
+            payload.batchTaskId > 0
+          ) {
             setActiveTaskId(payload.batchTaskId);
           } else {
             setActiveTaskId(null);
@@ -193,8 +175,6 @@ export default function Home() {
 
   // ✅ 새 작업/이어하기 버튼 클릭
   const onTaskButtonClick = () => {
-    // loading 페이지에서 getMyActiveTask 먼저 보고 이어가도록 만들어뒀으니
-    // 여기서는 그냥 loading으로 보내면 됨.
     navigate("/worker/task/loading");
   };
 
@@ -380,8 +360,9 @@ export default function Home() {
           disabled={taskBtnDisabled}
         >
           <span
-            className={`text-sm font-extrabold ${taskBtnDisabled ? "text-slate-400" : "text-slate-900"
-              }`}
+            className={`text-sm font-extrabold ${
+              taskBtnDisabled ? "text-slate-400" : "text-slate-900"
+            }`}
           >
             {taskBtnLabel}
           </span>

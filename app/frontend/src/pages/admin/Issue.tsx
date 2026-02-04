@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { issueService } from "@/services/issueService";
-import type { IssueResponse } from "@/types/db";
-import IssueTable from "./components/issue/IssueTable"; // New Table Component
+import type { AdminIssueSummary, IssueStatus } from "@/types/issue";
+import IssueTable from "./components/issue/IssueTable";
 import IssueDetail from "./components/issue/IssueDetail";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,15 +11,17 @@ import { ChevronRight, ChevronLeft, RefreshCcw } from "lucide-react";
 
 export default function Issue() {
     // State
-    const [currentTab, setCurrentTab] = useState<"OPEN" | "RESOLVED">("OPEN");
-    const [issues, setIssues] = useState<IssueResponse[]>([]);
+    const [currentTab, setCurrentTab] = useState<IssueStatus>("OPEN");
+    const [issues, setIssues] = useState<AdminIssueSummary[]>([]);
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
 
     // Pagination & Sort
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
-    const [sortKey, setSortKey] = useState<"TIME" | "PRIORITY">("TIME");
+    // Sort is handled by API defaults for now (OPEN: Urgency/Created, RESOLVED: ResolvedAt)
+    // If backend supports dynamic sort param, we can add it back. Currently mock had it, but API contract in service uses API defaults.
+
     const [totalCount, setTotalCount] = useState(0);
 
     const isMountedRef = useRef(false);
@@ -36,36 +38,30 @@ export default function Issue() {
             const result = await issueService.getIssues({
                 page,
                 size: pageSize,
-                status: currentTab,
-                sort: sortKey
+                status: currentTab
             });
 
             if (isMountedRef.current) {
-                setIssues(result.data);
-                setTotalCount(result.total);
+                setIssues(result.issues);
+                setTotalCount(result.paging.total);
             }
         } catch (error) {
             console.error("Failed to fetch issues", error);
         } finally {
             if (isMountedRef.current) setLoading(false);
         }
-    }, [page, pageSize, currentTab, sortKey]);
+    }, [page, pageSize, currentTab]);
 
     useEffect(() => {
         fetchIssues();
     }, [fetchIssues]);
 
     // Handle Tab Change
-    const handleTabChange = (tab: "OPEN" | "RESOLVED") => {
+    const handleTabChange = (tab: IssueStatus) => {
         setCurrentTab(tab);
         setPage(1);
         setSelectedId(null);
-        // Default sort for RESOLVED is TIME (implicit), but we can reset sort key if needed
-        if (tab === "RESOLVED") setSortKey("TIME");
     };
-
-    // Handle Selection
-    const selectedIssue = issues.find((i) => i.issueId === selectedId) || null;
 
     return (
         <div className="flex flex-col h-full overflow-hidden relative">
@@ -132,8 +128,6 @@ export default function Issue() {
                             tab={currentTab}
                             selectedId={selectedId}
                             onSelect={setSelectedId}
-                            sortKey={sortKey}
-                            onSort={setSortKey}
                         />
                     </div>
 
@@ -173,7 +167,7 @@ export default function Issue() {
                 )}>
                     {selectedId && (
                         <IssueDetail
-                            issue={selectedIssue}
+                            issueId={selectedId}
                             onUpdate={() => {
                                 fetchIssues();
                                 setSelectedId(null);

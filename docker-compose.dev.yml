@@ -36,7 +36,11 @@ services:
     networks:
       - lookie
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -p$${MYSQL_ROOT_PASSWORD} --silent",
+        ]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -87,6 +91,8 @@ services:
       - .env
     ports:
       - "8080:8080"
+    volumes:
+      - ./data/images:/data/images
     networks:
       - lookie
     depends_on:
@@ -109,6 +115,8 @@ services:
     environment:
       - BACKEND_URL=http://backend:8080
       - TZ=Asia/Seoul
+    env_file:
+      - .env
     volumes:
       - ./app/ai-server:/app
       - ./app/ai-server/model:/app/model
@@ -196,19 +204,20 @@ services:
 
     # ✅ FIX: 줄바꿈/옵션 분리 문제 방지 (배열형 command 유지)
     command: [
-      "bash", "-lc",
-      "set -euo pipefail; \
-       pip install --no-cache-dir -r /requirements.txt; \
-       airflow db migrate; \
-       airflow users create \
-         --username \"$AIRFLOW_ADMIN_USER\" \
-         --password \"$AIRFLOW_ADMIN_PASSWORD\" \
-         --firstname \"$AIRFLOW_ADMIN_FIRSTNAME\" \
-         --lastname \"$AIRFLOW_ADMIN_LASTNAME\" \
-         --role Admin \
-         --email \"$AIRFLOW_ADMIN_EMAIL\" \
-       || true"
-    ]
+        "bash",
+        "-lc",
+        "set -euo pipefail; \
+        pip install --no-cache-dir -r /requirements.txt; \
+        airflow db migrate; \
+        airflow users create \
+        --username \"$AIRFLOW_ADMIN_USER\" \
+        --password \"$AIRFLOW_ADMIN_PASSWORD\" \
+        --firstname \"$AIRFLOW_ADMIN_FIRSTNAME\" \
+        --lastname \"$AIRFLOW_ADMIN_LASTNAME\" \
+        --role Admin \
+        --email \"$AIRFLOW_ADMIN_EMAIL\" \
+        || true",
+      ]
     restart: "no"
 
   # ============================
@@ -250,7 +259,12 @@ services:
       - ./datapipeline/airflow/requirements.txt:/requirements.txt:ro
 
     # ✅ FIX: command도 배열형으로 통일(개행 이슈 방지)
-    command: ["bash","-lc","pip install --no-cache-dir -r /requirements.txt && airflow webserver"]
+    command:
+      [
+        "bash",
+        "-lc",
+        "pip install --no-cache-dir -r /requirements.txt && airflow webserver",
+      ]
     restart: unless-stopped
 
   # ============================
@@ -288,7 +302,12 @@ services:
       - ./datapipeline/airflow/requirements.txt:/requirements.txt:ro
 
     # ✅ FIX: command도 배열형
-    command: ["bash","-lc","pip install --no-cache-dir -r /requirements.txt && airflow scheduler"]
+    command:
+      [
+        "bash",
+        "-lc",
+        "pip install --no-cache-dir -r /requirements.txt && airflow scheduler",
+      ]
     restart: unless-stopped
 
 volumes:

@@ -8,19 +8,15 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import type { IssueResponse } from "@/types/db";
+import type { AdminIssueSummary, IssueStatus } from "@/types/issue";
 import { cn } from "@/utils/cn";
-import { ArrowUpDown } from "lucide-react";
 import { timeAgo } from "@/utils/format";
 
 interface IssueTableProps {
-    issues: IssueResponse[];
-    tab: "OPEN" | "RESOLVED";
+    issues: AdminIssueSummary[];
+    tab: IssueStatus;
     selectedId: number | null;
     onSelect: (id: number) => void;
-    sortKey: "TIME" | "PRIORITY";
-    onSort: (key: "TIME" | "PRIORITY") => void;
 }
 
 export default function IssueTable({
@@ -28,34 +24,34 @@ export default function IssueTable({
     tab,
     selectedId,
     onSelect,
-    sortKey,
-    onSort,
 }: IssueTableProps) {
-    // Helper to format urgency
-    const getUrgencyBadge = (priority: string) => {
+    // Helper to format urgency (1: High ~ 5: Low)
+    const getUrgencyBadge = (urgency: number) => {
         let color = "bg-green-100 text-green-800";
-        if (priority === "HIGH") color = "bg-red-100 text-red-800";
-        else if (priority === "MEDIUM") color = "bg-yellow-100 text-yellow-800";
+        if (urgency <= 2) color = "bg-red-100 text-red-800";
+        else if (urgency <= 4) color = "bg-yellow-100 text-yellow-800";
 
         return (
             <span className={cn("px-2 py-0.5 rounded text-xs font-bold", color)}>
-                {priority}
+                {urgency <= 2 ? "높음" : urgency <= 4 ? "중간" : "낮음"}
             </span>
         );
     };
 
     // Helper for AI Decision
-    const getAiDecisionBadge = (decision: string | undefined, confidence: number = 0) => {
+    const getAiDecisionBadge = (decision: string | undefined) => {
         if (!decision) return <span className="text-gray-400">-</span>;
 
         // Pass/Fail etc.
         const isPass = decision === "PASS";
+        const isUnknown = decision === "UNKNOWN";
+        const color = isPass ? "text-green-600" : isUnknown ? "text-gray-500" : "text-red-600";
+
         return (
             <div className="flex flex-col items-start gap-0.5">
-                <span className={cn("text-xs font-bold", isPass ? "text-green-600" : "text-red-600")}>
+                <span className={cn("text-xs font-bold", color)}>
                     {decision}
                 </span>
-                <span className="text-[10px] text-gray-500">{(confidence * 100).toFixed(0)}%</span>
             </div>
         );
     };
@@ -68,14 +64,7 @@ export default function IssueTable({
                         <TableRow>
                             {/* COMMON: Created At */}
                             <TableHead className="w-[120px]">
-                                <Button
-                                    variant="ghost"
-                                    onClick={() => onSort("TIME")}
-                                    className="p-0 hover:bg-transparent font-bold text-xs"
-                                >
-                                    발생 시각
-                                    {sortKey === "TIME" && <ArrowUpDown className="ml-2 h-3 w-3" />}
-                                </Button>
+                                발생 시각
                             </TableHead>
 
                             {/* RESOLVED ONLY: Resolved At */}
@@ -87,18 +76,9 @@ export default function IssueTable({
                             {/* COMMON: AI Decision */}
                             <TableHead>AI 판정</TableHead>
 
-                            {/* OPEN ONLY: Urgency (Sortable) */}
+                            {/* OPEN ONLY: Urgency */}
                             {tab === "OPEN" && (
-                                <TableHead>
-                                    <Button
-                                        variant="ghost"
-                                        onClick={() => onSort("PRIORITY")}
-                                        className="p-0 hover:bg-transparent font-bold text-xs"
-                                    >
-                                        긴급도
-                                        {sortKey === "PRIORITY" && <ArrowUpDown className="ml-2 h-3 w-3" />}
-                                    </Button>
-                                </TableHead>
+                                <TableHead>긴급도</TableHead>
                             )}
 
                             {/* RESOLVED ONLY: Admin Decision */}
@@ -106,10 +86,10 @@ export default function IssueTable({
 
 
                             {/* WORKER INFO */}
-                            <TableHead>{tab === "OPEN" ? "작업자 (연락처)" : "작업자 ID"}</TableHead>
+                            <TableHead>{tab === "OPEN" ? "작업자" : "작업자 ID"}</TableHead>
 
-                            {/* COMMON: Product (Using Zone as proxy or if product exists) */}
-                            <TableHead>상품 (구역)</TableHead>
+                            {/* COMMON: Product / Zone */}
+                            <TableHead>상품 (위치)</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -151,20 +131,20 @@ export default function IssueTable({
 
                                     {/* AI Decision */}
                                     <TableCell>
-                                        {getAiDecisionBadge(issue.judgment?.aiDecision, issue.judgment?.confidence || 0)}
+                                        {getAiDecisionBadge(issue.aiDecision)}
                                     </TableCell>
 
                                     {/* Urgency */}
                                     {tab === "OPEN" && (
                                         <TableCell>
-                                            {getUrgencyBadge(issue.priority)}
+                                            {getUrgencyBadge(issue.urgency)}
                                         </TableCell>
                                     )}
 
                                     {/* Admin Decision */}
                                     {tab === "RESOLVED" && (
                                         <TableCell className="text-xs font-bold">
-                                            {issue.requiredAction === "WORKER_CONTINUE" ? "정상 승인" : "폐기/조치"}
+                                            {issue.adminDecision || "-"}
                                         </TableCell>
                                     )}
 
@@ -173,7 +153,6 @@ export default function IssueTable({
                                         {tab === "OPEN" ? (
                                             <div>
                                                 <div className="font-bold">{issue.workerName}</div>
-                                                <div className="text-[10px] text-gray-500">010-XXXX-{(issue.workerId % 10000).toString().padStart(4, '0')}</div>
                                             </div>
                                         ) : (
                                             <div className="font-mono text-gray-600">ID: {issue.workerId}</div>
@@ -182,8 +161,8 @@ export default function IssueTable({
 
                                     {/* Product/Zone */}
                                     <TableCell className="text-xs">
-                                        {/* Assuming product name is not in IssueResponse yet, using Zone for now */}
-                                        <div className="font-medium text-gray-700">{issue.zoneName}</div>
+                                        <div className="font-medium text-gray-700">{issue.productName || "-"}</div>
+                                        <div className="text-[10px] text-gray-500">{issue.locationCode}</div>
                                     </TableCell>
                                 </TableRow>
                             ))

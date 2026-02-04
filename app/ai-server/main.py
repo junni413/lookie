@@ -28,6 +28,29 @@ app = FastAPI(lifespan=lifespan)
 # 라우터 등록
 app.include_router(vision_router)
 
+# 백엔드 호환성을 위한 레거시 엔드포인트
+from fastapi import BackgroundTasks
+from src.vision.router import PredictRequest
+
+@app.post("/predict")
+async def predict_legacy(
+    background_tasks: BackgroundTasks,
+    request: PredictRequest
+):
+    """
+    레거시 엔드포인트 (백엔드 호환성)
+    /api/vision/predict 사용 권장
+    """
+    # 서비스 레이어를 직접 호출 (라우터와 동일한 로직)
+    background_tasks.add_task(
+        vision_service.run_inference_from_url,
+        request.imageUrl,
+        request.productId,
+        request.issueId,
+        request.issueType
+    )
+    return {"status": "processing", "issue_id": request.issueId}
+
 # 헬스 체크
 @app.get("/health")
 def health_check(response: Response):

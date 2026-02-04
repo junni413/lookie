@@ -43,3 +43,11 @@ GMS_BASE_URL = get_required_env("GMS_BASE_URL") # 필수!
 
 # 모델명도 변수로 빼두는 것이 좋습니다 (나중에 gpt-4o로 바꿀 때 편함)
 GMS_MODEL_NAME = "gpt-4o-mini"
+
+# SSRF 방어: 허용된 이미지 URL 도메인 목록
+ALLOWED_IMAGE_DOMAINS = [
+    "nginx",  # Docker 내부 Nginx 서버
+    "localhost",  # 로컬 테스트용
+    "127.0.0.1",  # 로컬 테스트용
+    # 추가 허용 도메인이 필요하면 여기에 추가
+]
