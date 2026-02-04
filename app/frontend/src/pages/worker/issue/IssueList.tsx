@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import { taskService, type Issue } from "@/services/taskService";
+import { issueService, type MyIssueResponse } from "@/services/issueService";
 
 type Ctx = { setTitle: (t: string) => void };
 
@@ -10,14 +10,18 @@ export default function IssueListPage() {
   useEffect(() => setTitle("이슈 목록 조회"), [setTitle]);
 
   const [tab, setTab] = useState<"ALL" | "DONE" | "WAIT">("ALL");
-  const [data, setData] = useState<Issue[]>([]);
+  const [data, setData] = useState<MyIssueResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchIssues = async () => {
       try {
-        const issues = await taskService.getMyIssues();
-        setData(issues);
+        const res = await issueService.getMyIssues();
+        if (res.success && res.data) {
+          setData(res.data);
+        } else {
+          console.error("Failed to fetch issues:", res.message);
+        }
       } catch (err) {
         console.error("Fetch issues error:", err);
       } finally {
@@ -28,10 +32,22 @@ export default function IssueListPage() {
   }, []);
 
   const filtered = data.filter((it) => {
+    // API status: "OPEN" | "RESOLVED"
+    // Tab: "ALL" | "DONE" (RESOLVED) | "WAIT" (OPEN)
     if (tab === "ALL") return true;
-    if (tab === "DONE") return it.status === "DONE";
-    return it.status === "WAIT";
+    if (tab === "DONE") return it.status === "RESOLVED";
+    return it.status === "OPEN";
   });
+
+  // Helper to map issueType code to readable string if needed
+  const getIssueTypeLabel = (type: string) => {
+    switch (type) {
+      case "DAMAGED": return "파손 이슈";
+      case "MISSING": return "재고 부족";
+      case "OTHER": return "기타 이슈";
+      default: return type;
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -57,23 +73,32 @@ export default function IssueListPage() {
         ) : (
           filtered.map((it) => (
             <div
-              key={it.id}
+              key={it.issueId}
               onClick={() => navigate("/worker/issue/detail", { state: { issue: it } })}
               className="rounded-2xl border bg-white p-4 shadow-sm active:scale-[0.98] transition-all cursor-pointer"
             >
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs text-gray-500">{it.id}</div>
-                  <div className="mt-1 font-semibold text-gray-900">
-                    {it.title} - {it.productName}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-gray-500">#{it.issueId}</div>
+                  <div className="mt-1 font-bold text-lg text-gray-900 truncate">
+                    {it.productName || "상품명 없음"}
                   </div>
-                  <div className="mt-1 text-sm text-gray-500">{it.location}</div>
+                  <div className="mt-1 text-sm text-gray-500 flex items-center gap-1">
+                    <span className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-medium text-gray-600">
+                      {it.locationCode || "-"}
+                    </span>
+                  </div>
                 </div>
 
-                <StatusPill status={it.status} />
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <StatusPill status={it.status} />
+                  <span className="text-[11px] font-bold text-gray-500 bg-gray-50 px-2 py-1 rounded-lg">
+                    {getIssueTypeLabel(it.issueType)}
+                  </span>
+                </div>
               </div>
 
-              <div className="mt-3 text-xs text-gray-400">{it.createdAt}</div>
+              <div className="mt-3 text-xs text-gray-400">{new Date(it.createdAt).toLocaleString()}</div>
             </div>
           ))
         )}
@@ -105,8 +130,8 @@ function TabButton({
   );
 }
 
-function StatusPill({ status }: { status: "DONE" | "WAIT" }) {
-  const isDone = status === "DONE";
+function StatusPill({ status }: { status: string }) {
+  const isDone = status === "RESOLVED";
   return (
     <span
       className={[

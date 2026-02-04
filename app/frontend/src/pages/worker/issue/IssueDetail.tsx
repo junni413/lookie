@@ -1,30 +1,69 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
-import { type Issue } from "@/services/taskService";
+import { issueService, type IssueDetail as IssueDetailType } from "@/services/issueService";
 import { MapPin, Package, Calendar, AlertCircle, CheckCircle2, Clock } from "lucide-react";
 
 export default function IssueDetail() {
     const { setTitle } = useOutletContext<MobileLayoutContext>();
     const navigate = useNavigate();
     const { state } = useLocation();
-    const [issue, setIssue] = useState<Issue | null>(null);
+    const [issue, setIssue] = useState<IssueDetailType | null>(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         setTitle("이슈 상세 정보");
     }, [setTitle]);
 
     useEffect(() => {
-        if (state?.issue) {
-            setIssue(state.issue);
-        } else {
-            navigate("/worker/issue", { replace: true });
-        }
+        const fetchIssue = async () => {
+            // ✅ List에서 넘어온 데이터 우선 사용
+            if (state?.issue) {
+                const passed = state.issue;
+                console.log("Passed issue:", passed);
+                setIssue({
+                    ...passed,
+                    // Map List fields to Detail fields
+                    type: passed.issueType, // issueType -> type
+                    aiResult: passed.aiDecision, // aiDecision -> aiResult
+                } as any);
+                setLoading(false);
+                return;
+            }
+
+            // Supports both state.issueId (from list) or state.issue (legacy/direct)
+            const issueId = state?.issueId || state?.issue?.id || state?.issue?.issueId;
+
+            if (!issueId) {
+                navigate("/worker/issue/list", { replace: true });
+                return;
+            }
+
+            try {
+                setLoading(true);
+                const res = await issueService.getIssue(issueId);
+                if (res.success && res.data) {
+                    setIssue(res.data);
+                } else {
+                    console.error("Failed to load issue:", res.message);
+                }
+            } catch (err) {
+                console.error("Error loading issue:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchIssue();
     }, [state, navigate]);
 
-    if (!issue) return null;
+    if (loading) {
+        return <div className="flex justify-center items-center h-full text-gray-400">Loading details...</div>;
+    }
 
-    const isDone = issue.status === "DONE";
+    if (!issue) return <div className="text-center py-10">이슈 정보를 찾을 수 없습니다.</div>;
+
+    const isDone = issue.status === "RESOLVED" || issue.status === "DONE";
 
     return (
         <div className="flex flex-col h-full space-y-6 pb-10">
@@ -40,12 +79,12 @@ export default function IssueDetail() {
                         <p className={`text-sm font-bold ${isDone ? 'text-blue-600' : 'text-gray-500'}`}>
                             {isDone ? "처리 완료" : "대기 중"}
                         </p>
-                        <p className="text-xs text-gray-400 mt-0.5">{issue.id}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">#{issue.issueId}</p>
                     </div>
                 </div>
                 <div className="text-right text-[11px] font-bold text-gray-400">
                     <Calendar className="w-3 h-3 inline mr-1" />
-                    {issue.createdAt}
+                    {issue.createdAt ? new Date(issue.createdAt).toLocaleDateString() : ""}
                 </div>
             </div>
 
@@ -56,11 +95,11 @@ export default function IssueDetail() {
                         <Package className="w-8 h-8 text-gray-300" />
                     </div>
                     <div className="min-w-0">
-                        <h3 className="text-lg font-black text-gray-900 truncate">{issue.productName}</h3>
-                        <p className="text-sm font-medium text-gray-400 mt-0.5 tracking-tight">{issue.sku}</p>
+                        <h3 className="text-lg font-black text-gray-900 truncate">{issue.productName || "상품명 없음"}</h3>
+                        <p className="text-sm font-medium text-gray-400 mt-0.5 tracking-tight">{issue.sku || "-"}</p>
                         <div className="flex items-center gap-1.5 mt-2 bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg w-fit">
                             <MapPin className="w-3.5 h-3.5" />
-                            <span className="text-xs font-bold">{issue.location}</span>
+                            <span className="text-xs font-bold">{issue.locationCode || issue.locationCode || "-"}</span>
                         </div>
                     </div>
                 </div>
@@ -68,7 +107,7 @@ export default function IssueDetail() {
                 <div className="pt-6 border-t border-gray-50 flex flex-col gap-4">
                     <div className="flex justify-between items-center">
                         <span className="text-sm font-bold text-gray-400">신고 유형</span>
-                        <span className="text-sm font-black text-gray-900">{issue.title}</span>
+                        <span className="text-sm font-black text-gray-900">{issue.type || issue.issueType}</span>
                     </div>
                 </div>
             </div>
@@ -88,7 +127,7 @@ export default function IssueDetail() {
                                     {issue.aiResult === "MISSING" && "재고 없음 (결손 처리)"}
                                     {issue.aiResult === "WAIT" && "원복 대기 (재고 보충 예정)"}
                                     {issue.aiResult === "ADMIN" && "관리자 개입 필요"}
-                                    {issue.aiResult === "LOCATION_MOVE" && "지번 이동 확인 (A-12-03)"}
+                                    {issue.aiResult === "LOCATION_MOVE" && "지번 이동 확인"}
                                     {!["MISSING", "WAIT", "ADMIN", "LOCATION_MOVE"].includes(issue.aiResult) && issue.aiResult}
                                 </div>
                             </div>
@@ -103,6 +142,9 @@ export default function IssueDetail() {
                                     {!["OK", "DAMAGED", "NEED_REVIEW"].includes(issue.verdict) && issue.verdict}
                                 </div>
                             </div>
+                        )}
+                        {issue.confidence && (
+                            <p className="text-xs text-gray-400 mt-2">신뢰도: {(issue.confidence * 100).toFixed(1)}%</p>
                         )}
                     </div>
                 </div>

@@ -289,14 +289,14 @@ export default function Home() {
   const taskBtnLabel = isTaskChecking
     ? "작업 확인 중..."
     : hasActiveTask
-    ? "작업 이어서하기"
-    : "새로운 작업 시작";
+      ? "작업 이어서하기"
+      : "새로운 작업 시작";
 
   const taskHelpText = isPaused
     ? "근무가 중단된 상태에서는 작업을 진행할 수 없어요."
     : !isTaskChecking && hasActiveTask
-    ? "진행 중인 작업이 있어요. 이어서 진행할 수 있어요."
-    : "";
+      ? "진행 중인 작업이 있어요. 이어서 진행할 수 있어요."
+      : "";
 
   return (
     <div className="space-y-4">
@@ -380,9 +380,8 @@ export default function Home() {
           disabled={taskBtnDisabled}
         >
           <span
-            className={`text-sm font-extrabold ${
-              taskBtnDisabled ? "text-slate-400" : "text-slate-900"
-            }`}
+            className={`text-sm font-extrabold ${taskBtnDisabled ? "text-slate-400" : "text-slate-900"
+              }`}
           >
             {taskBtnLabel}
           </span>
