@@ -86,7 +86,10 @@ public class WorkLogService {
         workLog.setEndedAt(LocalDateTime.now());
         workLogMapper.updateWorkLogEnd(workLog);
 
-        // 2-2. 종료(END) 이벤트 기록
+        // 2-2. 구역 배정 해제 (Unassignment)
+        unassignZoneFromWorker(workerId);
+
+        // 2-3. 종료(END) 이벤트 기록
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.END, "퇴근");
         return WorkLogResponseDto.from(workLog, event);
     }
@@ -289,5 +292,18 @@ public class WorkLogService {
             // 4. 배정 이력 생성 (Source: AI)
             controlMapper.insertAssignmentHistory(workerId, recommendedZoneId, "출근 시 자동 구역 배정");
         }
+    }
+
+    /**
+     * 5. 작업자 구역 배정 해제 (Unassignment)
+     * - 퇴근 시 호출하여 사용자의 배정 구역을 NULL로 설정
+     * - 현재 활성 배정 이력을 종료 처리
+     */
+    private void unassignZoneFromWorker(Long workerId) {
+        // 1. 사용자 배정 정보 초기화 (assigned_zone_id = NULL)
+        controlMapper.updateUserAssignedZone(workerId, null);
+
+        // 2. 활성 배정 이력 종료 (ended_at = NOW())
+        controlMapper.closeActiveAssignment(workerId);
     }
 }
