@@ -51,16 +51,17 @@ export async function getAdmins(token: string, params?: AdminListParams): Promis
     // API 응답(adminId)을 프론트엔드 모델(userId)로 맵핑
     return rawData.map(item => ({
         // User Base Fields
+        // User Base Fields
         userId: item.adminId,
         name: item.name,
-        email: "", // API 미제공
-        phoneNumber: "", // API 미제공
+        email: undefined, // Optional in User
+        phoneNumber: "000-0000-0000", // Required in User, using placeholder
         role: "ADMIN" as const,
-        isActive: true, // API 미제공 (기본값)
-        passwordHash: "", // Not needed for frontend
-        createdAt: "",
-        updatedAt: "",
-        birthDate: "",
+        isActive: true,
+        passwordHash: "", // Required string
+        createdAt: new Date().toISOString(), // Required string
+        updatedAt: new Date().toISOString(), // Required string
+        birthDate: undefined, // Optional in User
 
         // AdminContact Specific
         assignedZoneId: item.assignedZoneId, // DB_User field

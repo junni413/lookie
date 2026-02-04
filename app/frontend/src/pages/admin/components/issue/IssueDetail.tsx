@@ -18,19 +18,27 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
     const [processing, setProcessing] = useState(false);
 
     useEffect(() => {
+        let ignore = false;
+
         const fetchDetail = async () => {
             setLoading(true);
             try {
                 const data = await issueService.getIssueDetail(issueId);
-                setIssue(data);
+                if (!ignore) {
+                    setIssue(data);
+                }
             } catch (err) {
-                console.error(err);
+                if (!ignore) console.error(err);
             } finally {
-                setLoading(false);
+                if (!ignore) setLoading(false);
             }
         };
 
         if (issueId) fetchDetail();
+
+        return () => {
+            ignore = true;
+        };
     }, [issueId]);
 
     const handleDecision = async (decision: "NORMAL" | "DAMAGED" | "CALLED_OTHER_PROCESS" | "FIXED") => {
