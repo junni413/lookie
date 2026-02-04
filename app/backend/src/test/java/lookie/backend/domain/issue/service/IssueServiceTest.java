@@ -163,6 +163,56 @@ class IssueServiceTest {
     }
 
     @Test
+    @DisplayName("이슈 생성 성공 - OUT_OF_STOCK (이미지 없이 생성)")
+    void createIssue_Success_OutOfStock_NoImage() {
+        // given
+        Long workerId = 1L;
+        Long taskId = 100L;
+        Long itemId = 200L;
+
+        CreateIssueRequest request = new CreateIssueRequest();
+        request.setBatchTaskId(taskId);
+        request.setBatchTaskItemId(itemId);
+        request.setIssueType("OUT_OF_STOCK");
+        request.setImageUrl(null); // 이미지 없음
+
+        TaskItemVO item = new TaskItemVO();
+        item.setBatchTaskItemId(itemId);
+        item.setBatchTaskId(taskId);
+        item.setStatus("PENDING");
+
+        TaskVO task = new TaskVO();
+        task.setBatchTaskId(taskId);
+        task.setWorkerId(workerId);
+
+        when(taskItemService.getTaskItem(itemId)).thenReturn(item);
+        when(taskMapper.findById(taskId)).thenReturn(task);
+
+        // when
+        IssueResponse response = issueService.createIssue(workerId, request);
+
+        // then
+        assertNotNull(response);
+        // Issue 저장 검증
+        ArgumentCaptor<IssueVO> issueCaptor = ArgumentCaptor.forClass(IssueVO.class);
+        verify(issueMapper).insertIssue(issueCaptor.capture());
+        assertEquals("OUT_OF_STOCK", issueCaptor.getValue().getIssueType());
+
+        // 중요: 이미지가 없으므로 insertIssueImage 호출되면 안됨
+        verify(issueMapper, never()).insertIssueImage(any());
+
+        // AiJudgment 생성 검증 (이미지 없이)
+        ArgumentCaptor<AiJudgmentVO> judgmentCaptor = ArgumentCaptor.forClass(AiJudgmentVO.class);
+        verify(issueMapper).insertAiJudgment(judgmentCaptor.capture());
+        assertNull(judgmentCaptor.getValue().getImageUrl());
+
+        // AI 분석 요청 검증 (이미지 null)
+        ArgumentCaptor<AiAnalysisRequest> aiRequestCaptor = ArgumentCaptor.forClass(AiAnalysisRequest.class);
+        verify(aiAnalysisClient).requestAnalysis(aiRequestCaptor.capture());
+        assertNull(aiRequestCaptor.getValue().getImageUrl());
+    }
+
+    @Test
     @DisplayName("이슈 생성 실패: TaskItem이 존재하지 않음")
     void createIssue_Fail_ItemNotFound() {
         // given
@@ -321,6 +371,72 @@ class IssueServiceTest {
         assertEquals(issueId, requestCaptor.getValue().getIssueId());
         assertEquals(500L, requestCaptor.getValue().getProductId());
         assertEquals(newImageUrl, requestCaptor.getValue().getImageUrl());
+    }
+
+    @Test
+    @DisplayName("보고용 이미지 등록 성공 - OUT_OF_STOCK 후행 등록")
+    void reportImage_Success() {
+        // given
+        Long workerId = 1L;
+        Long issueId = 100L;
+        String imageUrl = "https://example.com/report.jpg";
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setWorkerId(workerId);
+        issue.setIssueType("OUT_OF_STOCK");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setIssueId(issueId);
+        // 초기엔 이미지가 없었음
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        issueService.reportImage(workerId, issueId, imageUrl);
+
+        // then
+        // 1. 이미지 저장 검증
+        ArgumentCaptor<IssueImageVO> imageCaptor = ArgumentCaptor.forClass(IssueImageVO.class);
+        verify(issueMapper).insertIssueImage(imageCaptor.capture());
+        assertEquals(imageUrl, imageCaptor.getValue().getImageUrl());
+
+        // 2. AiJudgment 업데이트 검증 (이미지 URL만)
+        ArgumentCaptor<AiJudgmentVO> judgmentCaptor = ArgumentCaptor.forClass(AiJudgmentVO.class);
+        verify(issueMapper).updateAiJudgment(judgmentCaptor.capture());
+        assertEquals(imageUrl, judgmentCaptor.getValue().getImageUrl());
+
+        // 3. AI 재분석은 요청하지 않아야 함
+        verify(aiAnalysisClient, never()).requestAnalysis(any());
+    }
+
+    @Test
+    @DisplayName("NextAction 계산 - OUT_OF_STOCK + 관리자 필요 + 이미지 없음 -> UPLOAD_REPORT_IMAGE")
+    void calculateWorkerNextAction_UploadReportImage() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("OUT_OF_STOCK");
+        issue.setStatus("OPEN");
+        issue.setAdminRequired(true); // 관리자 연결 필요
+        issue.setIssueHandling("NON_BLOCKING"); // WebRTC 부재 시 NON_BLOCKING으로 전환됨
+
+        // 이미지가 없는 상태의 AiJudgment
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setIssueId(issueId);
+        judgment.setImageUrl(null);
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertEquals("UPLOAD_REPORT_IMAGE", response.getWorkerNextAction());
+        assertEquals("WAIT_REPORT_IMAGE", response.getIssueNextAction());
     }
 
     // ================================================================

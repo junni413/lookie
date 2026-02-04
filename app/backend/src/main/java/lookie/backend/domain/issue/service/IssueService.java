@@ -12,6 +12,7 @@ import lookie.backend.domain.issue.dto.IssueNextAction;
 import lookie.backend.domain.issue.dto.WorkerNextAction;
 import lookie.backend.domain.issue.dto.AdminNextAction;
 import lookie.backend.domain.issue.dto.AdminIssueListRequest;
+
 import lookie.backend.domain.issue.dto.AdminIssueListResponse;
 import lookie.backend.domain.issue.dto.AdminIssueSummary;
 import lookie.backend.domain.issue.dto.IssueResponse;
@@ -84,11 +85,13 @@ public class IssueService {
         issueMapper.insertIssue(issue);
         log.info("[IssueService] Issue created. issueId={}", issue.getIssueId());
 
-        // 3. 이슈 증빙 이미지 저장
-        IssueImageVO image = new IssueImageVO();
-        image.setIssueId(issue.getIssueId());
-        image.setImageUrl(request.getImageUrl());
-        issueMapper.insertIssueImage(image);
+        // 3. 이슈 증빙 이미지 저장 (이미지가 있는 경우에만)
+        if (request.getImageUrl() != null && !request.getImageUrl().isEmpty()) {
+            IssueImageVO image = new IssueImageVO();
+            image.setIssueId(issue.getIssueId());
+            image.setImageUrl(request.getImageUrl());
+            issueMapper.insertIssueImage(image);
+        }
 
         // 4. AI 판정 초기 데이터 생성 (UNKNOWN 상태)
         AiJudgmentVO judgment = new AiJudgmentVO();
@@ -499,6 +502,11 @@ public class IssueService {
      * 작업자 다음 행동 계산 (분기표 WorkerNextAction 컬럼 기준)
      */
     private WorkerNextAction calculateWorkerNextAction(IssueVO issue, AiJudgmentVO judgment) {
+        // 이미지가 필요한 상황인지 체크 (OUT_OF_STOCK + AdminRequired + NoImage)
+        if (isImageRequiredButMissing(issue)) {
+            return WorkerNextAction.UPLOAD_REPORT_IMAGE;
+        }
+
         // RETAKE 케이스
         if (judgment != null && "RETAKE".equals(judgment.getAiDecision())) {
             return WorkerNextAction.UPLOAD_IMAGE;
@@ -518,10 +526,62 @@ public class IssueService {
         return WorkerNextAction.CONTINUE_PICKING;
     }
 
+    private boolean isImageRequiredButMissing(IssueVO issue) {
+        // OUT_OF_STOCK 이슈이고 관리자 확인 필요(adminRequired=true) 상태인데
+        // 이미지가 등록되지 않았다면 사진 업로드 필요
+        if ("OUT_OF_STOCK".equals(issue.getIssueType()) && Boolean.TRUE.equals(issue.getAdminRequired())) {
+            // 이미지 존재 여부 확인 (AiJudgment가 있어도 RETAKE 등으로 인해 이미지가 없을 수 있으므로 직접 체크 권장하나
+            // 성능상 issue_images 조회가 부담스러우면 AiJudgment의 imageUrl 확인)
+            AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issue.getIssueId());
+            // judgment가 없거나(초기), judgment에 이미지가 없으면 업로드 필요
+            // 하지만 OUT_OF_STOCK은 초기 AI 분석 시 이미지가 없을 수 있음.
+            // 정확히는 "현재 유효한 증빙 이미지가 있는가"를 체크해야 함.
+            // 여기서는 간단히 "AiJudgment에 이미지가 없는 경우"를 미등록으로 간주
+            // (createIssue에서 이미지 없이 생성하면 judgment.imageUrl도 null로 들어감)
+            return judgment == null || judgment.getImageUrl() == null || judgment.getImageUrl().isEmpty();
+        }
+        return false;
+    }
+
+    @Transactional
+    public void reportImage(Long workerId, Long issueId, String imageUrl) {
+        log.info("[IssueService] reportImage started. workerId={}, issueId={}", workerId, issueId);
+
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 권한 체크
+        if (!workerId.equals(issue.getWorkerId())) {
+            throw new ApiException(ErrorCode.ISSUE_TASK_NOT_ASSIGNED);
+        }
+
+        // 이미지 저장
+        IssueImageVO image = new IssueImageVO();
+        image.setIssueId(issue.getIssueId());
+        image.setImageUrl(imageUrl);
+        issueMapper.insertIssueImage(image);
+
+        // AiJudgment에도 이미지 URL 업데이트 (관제에서 보기 위함, 재분석 X)
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
+        if (judgment != null) {
+            judgment.setImageUrl(imageUrl);
+            issueMapper.updateAiJudgment(judgment);
+        }
+
+        log.info("[IssueService] Report image saved. issueId={}", issueId);
+    }
+
     /**
      * 이슈 다음 행동 계산 (분기표 IssueNextAction 컬럼 기준)
      */
     private IssueNextAction calculateIssueNextAction(IssueVO issue, AiJudgmentVO judgment) {
+        // 이미지가 필요한 상황인지 체크
+        if (isImageRequiredButMissing(issue)) {
+            return IssueNextAction.WAIT_REPORT_IMAGE;
+        }
+
         // RETAKE 케이스
         if (judgment != null && "RETAKE".equals(judgment.getAiDecision())) {
             return IssueNextAction.WAIT_RETAKE;
@@ -654,6 +714,8 @@ public class IssueService {
             issue.setUrgency(1); // 관제 큐 최상위
             log.info("[IssueService] NEED_CHECK/STOCK_EXISTS → urgency=1. issueId={}", issueId);
         } else {
+            // 이미지가 없는 OUT_OF_STOCK 이슈는 사진 업로드 대기 상태로 유지하기 위해 urgency 조정
+            // (여기서는 일반적인 2로 설정하되, NextAction 계산 시 이미지 유무 체크)
             issue.setUrgency(2); // 그 외 → urgency=2
             log.info("[IssueService] Other cases → urgency=2. issueId={}", issueId);
         }
