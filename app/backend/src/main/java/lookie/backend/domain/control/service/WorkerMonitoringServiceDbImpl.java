@@ -7,6 +7,7 @@ import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
+import lookie.backend.domain.control.dto.AdminResponseDto;
 import lookie.backend.domain.control.mapper.ControlMapper;
 import lookie.backend.global.common.type.ZoneType;
 import org.springframework.stereotype.Service;
@@ -151,5 +152,27 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
 
         // 4. Update User Master Table (사용자 정보 업데이트)
         controlMapper.updateUserAssignedZone(workerId, zoneId);
+        // 4. Update User Master Table (사용자 정보 업데이트)
+        controlMapper.updateUserAssignedZone(workerId, zoneId);
+    }
+
+    /**
+     * 관리자 목록 조회 구현
+     * 1. DB 조회 (Dynamic SQL filtering)
+     * 2. 이름 포맷팅 및 Zone 이름 매핑
+     */
+    @Override
+    public List<AdminResponseDto> getAdmins(Long zoneId, String name) {
+        List<AdminResponseDto> admins = controlMapper.selectAdmins(zoneId, name);
+
+        for (AdminResponseDto admin : admins) {
+            // Business Logic 1: Use Raw Name for Admins (No Formatting)
+            admin.setName(admin.getRawName());
+
+            // Business Logic 2: Zone Mapping
+            admin.setZoneName(ZoneType.getNameById(admin.getAssignedZoneId()));
+        }
+
+        return admins;
     }
 }

@@ -184,4 +184,40 @@
         WHERE u.assigned_zone_id = #{zoneId}
     </select>
 
+    <!-- 관리자 목록 조회 (Window Function 사용 최적화) -->
+    <select id="selectAdmins" resultType="lookie.backend.domain.control.dto.AdminResponseDto">
+        SELECT
+            u.user_id AS adminId,
+            u.name AS rawName,
+            u.phone_number AS phoneNumber,
+            u.assigned_zone_id AS assignedZoneId,
+            
+            -- 최신 근무 상태 (Window Function 결과 이용)
+            IFNULL(le.event_type, 'END') AS currentStatus
+        FROM users u
+        
+        -- 현재 진행 중인 근무 로그 확인 (없으면 퇴근 상태)
+        LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        
+        -- 최신 이벤트 조인 (ROW_NUMBER 사용)
+        LEFT JOIN (
+            SELECT work_log_id, event_type,
+                   ROW_NUMBER() OVER(PARTITION BY work_log_id ORDER BY occurred_at DESC) as rn
+            FROM work_log_events
+        ) le ON wl.work_log_id = le.work_log_id AND le.rn = 1
+        
+        WHERE u.role = 'ADMIN'
+        
+        <!-- 동적 쿼리: 구역 필터링 -->
+        <if test="zoneId != null">
+            AND u.assigned_zone_id = #{zoneId}
+        </if>
+        
+        <!-- 동적 쿼리: 이름 검색 -->
+        <if test="name != null and name != ''">
+            AND u.name LIKE CONCAT('%', #{name}, '%')
+        </if>
+        
+        ORDER BY u.name ASC
+    </select>
 </mapper>
