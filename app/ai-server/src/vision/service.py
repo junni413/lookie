@@ -148,9 +148,16 @@ class VisionService:
     async def _download_image_from_url(self, image_url: str) -> bytes:
         """URL에서 이미지를 다운로드하여 bytes로 반환"""
         try:
-            response = await self.client.get(image_url, timeout=10.0)
+            # Docker 환경에서 localhost는 컨테이너 자신을 가리키므로 nginx로 변환
+            download_url = image_url.replace("http://localhost", "http://nginx")
+            download_url = download_url.replace("https://localhost", "http://nginx")
+            
+            if download_url != image_url:
+                logger.info(f"🔄 URL converted: {image_url} -> {download_url}")
+            
+            response = await self.client.get(download_url, timeout=10.0)
             response.raise_for_status()
-            logger.info(f"📥 Image downloaded: {image_url}")
+            logger.info(f"📥 Image downloaded: {download_url}")
             return response.content
         except Exception as e:
             raise ValueError(f"IMAGE_DOWNLOAD_ERROR: {str(e)}")
@@ -171,10 +178,10 @@ class VisionService:
 
         try:
             # 1. 상품 검증 (이미지 다운로드 전에 먼저 체크)
+            # 지원되지 않는 상품은 NEED_CHECK로 처리
             if issue_type == "DAMAGED" and product_id not in PRODUCT_CONFIG:
-                error_msg = f"PRODUCT_NOT_SUPPORTED: productId={product_id}"
-                logger.error(f"❌ {error_msg}")
-                await self._send_error_webhook(issue_id, error_msg)
+                logger.warning(f"⚠️ PRODUCT_NOT_SUPPORTED: productId={product_id}, sending NEED_CHECK")
+                await self._send_need_check_webhook(issue_id, f"지원되지 않는 상품입니다. (productId={product_id})")
                 return
             
             # 2. URL 검증 (SSRF 방어)
@@ -183,79 +190,12 @@ class VisionService:
             # 3. 이미지 다운로드
             image_bytes = await self._download_image_from_url(image_url)
             
-            # 4. issueType에 따라 분기
-            if issue_type == "DAMAGED":
-                await self._handle_damaged(image_bytes, product_id, issue_id)
-            elif issue_type == "OUT_OF_STOCK":
-                await self._handle_out_of_stock(image_bytes, product_id, issue_id)
-            else:
-                logger.warning(f"⚠️ Unknown issueType: {issue_type}, using DAMAGED logic")
-                await self._handle_damaged(image_bytes, product_id, issue_id)
+            # 4. 추론 실행 (DAMAGED 로직)
+            await self.run_inference(image_bytes, product_id, issue_id)
                 
         except Exception as e:
             logger.error(f"🔥 Error in run_inference_from_url: {e}")
             await self._send_error_webhook(issue_id, str(e))
-
-    async def _handle_damaged(self, image_bytes: bytes, product_id: int, issue_id: int):
-        """DAMAGED 케이스: 기존 로직 (Gatekeeper → Expert)"""
-        # 기존 run_inference 로직을 그대로 사용
-        await self.run_inference(image_bytes, product_id, issue_id)
-
-    async def _handle_out_of_stock(self, image_bytes: bytes, product_id: int, issue_id: int):
-        """OUT_OF_STOCK 케이스: Gatekeeper만 실행"""
-        start_time = time.perf_counter()
-        webhook_payload = {
-            "issueId": issue_id, 
-            "aiDecision": "UNKNOWN", 
-            "confidence": 0.0, 
-            "summary": "", 
-            "aiResult": ""
-        }
-        detail_data = {"detections": [], "time_info": {}, "error_log": None}
-
-        try:
-            # 1. 이미지 로드
-            img = self._load_image(image_bytes)
-
-            # 2. 설정 확인
-            if product_id not in PRODUCT_CONFIG:
-                raise ValueError(f"Unsupported Product ID: {product_id}")
-            
-            config = PRODUCT_CONFIG[product_id]
-            
-            # 3. Gatekeeper만 실행
-            is_pass, gate_conf, gate_names, gate_time = self._run_gatekeeper(img, config)
-            detail_data["time_info"]["gate"] = gate_time
-            
-            if is_pass:
-                # 상품이 인식됨 → 재고 있음 → FAIL
-                logger.info(f"🚪 OOS Check: FAIL (상품 발견) {gate_names}")
-                webhook_payload.update({
-                    "aiDecision": "FAIL",
-                    "confidence": round(gate_conf, 2),
-                    "summary": f"재고 없다고 했는데 상품이 있습니다. (감지: {', '.join(gate_names)})",
-                    "reasonCode": "STOCK_EXISTS"
-                })
-            else:
-                # 상품이 인식 안됨 → 재고 없음 확인 → PASS
-                logger.info(f"✅ OOS Check: PASS (상품 없음 확인)")
-                webhook_payload.update({
-                    "aiDecision": "PASS",
-                    "confidence": 0.0,
-                    "summary": "재고 없음이 확인되었습니다."
-                })
-
-        except Exception as e:
-            logger.error(f"🔥 Error in _handle_out_of_stock: {e}")
-            webhook_payload["summary"] = str(e)
-            detail_data["error_log"] = str(e)
-
-        # 4. 결과 전송
-        total_time = round(time.perf_counter() - start_time, 4)
-        detail_data["time_info"]["total"] = total_time
-        webhook_payload["aiResult"] = json.dumps(detail_data, ensure_ascii=False)
-        
-        await self._send_webhook(issue_id, webhook_payload)
 
     async def _send_error_webhook(self, issue_id: int, error_message: str):
         """에러 발생 시 웹훅 전송"""
@@ -265,6 +205,17 @@ class VisionService:
             "confidence": 0.0,
             "summary": error_message,
             "aiResult": json.dumps({"error_log": error_message}, ensure_ascii=False)
+        }
+        await self._send_webhook(issue_id, payload)
+
+    async def _send_need_check_webhook(self, issue_id: int, reason: str):
+        """수동 확인 필요 시 웹훅 전송"""
+        payload = {
+            "issueId": issue_id,
+            "aiDecision": "NEED_CHECK",
+            "confidence": 0.0,
+            "summary": reason,
+            "aiResult": json.dumps({"reason": reason}, ensure_ascii=False)
         }
         await self._send_webhook(issue_id, payload)
 

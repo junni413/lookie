@@ -83,6 +83,7 @@ services:
       - SPRING_FLYWAY_ENABLED=false
       - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
       - AI_SERVER_URL=http://ai-server:8000
+      - FILE_BASE_URL=http://localhost/images  # 로컬 개발용 이미지 URL
       - LIVEKIT_URL=${LIVEKIT_URL}
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
@@ -92,7 +93,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./data/images:/data/images
+      - ./data/images:/data/images  # 이미지 업로드용 볼륨 (nginx와 공유)
     networks:
       - lookie
     depends_on:
