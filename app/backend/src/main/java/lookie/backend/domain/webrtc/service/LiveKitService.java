@@ -24,6 +24,7 @@ import lookie.backend.domain.webrtc.event.CallEndedEvent;
 import lookie.backend.domain.webrtc.event.CallRejectedEvent;
 import lookie.backend.domain.webrtc.dto.WebRtcSignalType;
 import lookie.backend.domain.webrtc.dto.WebRtcSignalResponse;
+import lookie.backend.global.constant.RedisKeyConstants;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
@@ -41,7 +42,6 @@ public class LiveKitService {
     private final io.livekit.server.RoomServiceClient roomServiceClient;
     private final SimpMessagingTemplate messagingTemplate;
 
-    private static final String USER_STATUS_KEY = "user:status:";
     private static final String STATUS_BUSY = "BUSY";
 
     /**
@@ -86,7 +86,8 @@ public class LiveKitService {
         String token = generateToken(request.getCallerId().toString(), roomName);
 
         // [Refactored] Single Payload Generation
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REQUESTED, call.getId(), null, request.getCallerId());
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REQUESTED, call.getId(), null,
+                request.getCallerId());
 
         runAfterCommit(() -> sendDualPathSignal(request.getCalleeId(), payload));
 
@@ -121,7 +122,8 @@ public class LiveKitService {
         String token = generateToken(call.getCalleeId().toString(), call.getRoomName());
 
         // [Refactored] Single Payload Generation
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ACCEPTED, call.getId(), call.getRoomName(), call.getCalleeId());
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ACCEPTED, call.getId(),
+                call.getRoomName(), call.getCalleeId());
 
         runAfterCommit(() -> sendSignal(payload));
 
@@ -152,12 +154,13 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [Refactored] Single Payload Generation (Shared UUID)
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REJECTED, call.getId(), call.getRoomName(), call.getCalleeId());
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REJECTED, call.getId(),
+                call.getRoomName(), call.getCalleeId());
 
         runAfterCommit(() -> {
             // 1. Waiting 중인 Caller가 보고 있는 Call Topic
             sendSignal(payload);
-            
+
             // 2. 확실한 전달을 위한 User Queue (Dual-Path)
             sendDualPathSignal(call.getCallerId(), payload);
         });
@@ -180,7 +183,7 @@ public class LiveKitService {
                     call.getId(), call.getIssueId(), call.getCallerId(), call.getCalleeId()));
         }
 
-        Long senderId = getCurrentUserId(); 
+        Long senderId = getCurrentUserId();
 
         try {
             clearUserStatus(call.getCalleeId());
@@ -189,12 +192,13 @@ public class LiveKitService {
             log.error("[endCall] 리소스 정리 중 오류 발생: {}", e.getMessage());
         } finally {
             // [Refactored] Single Payload Generation (Shared UUID)
-            WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ENDED, call.getId(), null, senderId);
+            WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ENDED, call.getId(), null,
+                    senderId);
 
             runAfterCommit(() -> {
                 // To Call Topic
                 sendSignal(payload);
-                
+
                 // To User Queue (Dual-Path)
                 Long targetId = call.getCallerId().equals(senderId) ? call.getCalleeId() : call.getCallerId();
                 sendDualPathSignal(targetId, payload);
@@ -230,11 +234,12 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [Refactored] Single Payload Generation
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.CANCELED, call.getId(), null, call.getCallerId());
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.CANCELED, call.getId(), null,
+                call.getCallerId());
 
         runAfterCommit(() -> sendDualPathSignal(call.getCalleeId(), payload));
     }
-    
+
     // --- 내부 메서드 ---
 
     /**
@@ -266,7 +271,7 @@ public class LiveKitService {
     // --- Redis 메서드 ---
 
     private void validateUserAvailable(Long userId) {
-        String key = USER_STATUS_KEY + userId;
+        String key = RedisKeyConstants.USER_STATUS_KEY + userId;
         String status = redisTemplate.opsForValue().get(key);
 
         if (status != null) {
@@ -284,12 +289,12 @@ public class LiveKitService {
     }
 
     private void setUserBusy(Long userId) {
-        String key = USER_STATUS_KEY + userId;
+        String key = RedisKeyConstants.USER_STATUS_KEY + userId;
         redisTemplate.opsForValue().set(key, STATUS_BUSY, 10, TimeUnit.MINUTES);
     }
 
     private void clearUserStatus(Long userId) {
-        String key = USER_STATUS_KEY + userId;
+        String key = RedisKeyConstants.USER_STATUS_KEY + userId;
         redisTemplate.delete(key);
     }
 
@@ -319,7 +324,7 @@ public class LiveKitService {
      */
     private void sendSignal(WebRtcSignalResponse payload) {
         messagingTemplate.convertAndSend("/topic/video-calls/" + payload.getCallId(), payload);
-        log.info("[WebSocket] Signal sent: callId={}, type={}, senderId={}, msgId={}", 
+        log.info("[WebSocket] Signal sent: callId={}, type={}, senderId={}, msgId={}",
                 payload.getCallId(), payload.getType(), payload.getSenderId(), payload.getMessageId());
     }
 
@@ -334,11 +339,11 @@ public class LiveKitService {
      * [Overloaded] 사용자에게 확실하게 알림 전송 (Direct Payload)
      */
     private void sendDualPathSignal(Long userId, WebRtcSignalResponse payload) {
-        if (userId == null) return;
+        if (userId == null)
+            return;
         sendSignalToUser(userId, payload);
         sendSignalToUserTopic(userId, payload);
     }
-
 
     /**
      * 특정 사용자에게 1:1 시그널 전송
@@ -346,7 +351,7 @@ public class LiveKitService {
      */
     private void sendSignalToUser(Long userId, WebRtcSignalResponse payload) {
         messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/calls", payload);
-        log.info("[WebSocket] Private Signal sent to User {}: callId={}, type={}, msgId={}", 
+        log.info("[WebSocket] Private Signal sent to User {}: callId={}, type={}, msgId={}",
                 userId, payload.getCallId(), payload.getType(), payload.getMessageId());
     }
 
@@ -356,7 +361,7 @@ public class LiveKitService {
      */
     private void sendSignalToUserTopic(Long userId, WebRtcSignalResponse payload) {
         messagingTemplate.convertAndSend("/topic/calls/" + userId, payload);
-        log.info("[WebSocket] Public Topic Signal sent to User {}: callId={}, type={}, msgId={}", 
+        log.info("[WebSocket] Public Topic Signal sent to User {}: callId={}, type={}, msgId={}",
                 userId, payload.getCallId(), payload.getType(), payload.getMessageId());
     }
 
