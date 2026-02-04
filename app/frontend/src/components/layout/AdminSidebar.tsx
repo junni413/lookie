@@ -1,56 +1,89 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/utils/cn";
 import { ADMIN_MENU } from "@/config/adminMenu";
+import { useAuthStore } from "@/stores/authStore";
+import { LogOut } from "lucide-react";
 
 export default function AdminSidebar() {
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (token) {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Logout API failed:", error);
+    } finally {
+      logout();
+      navigate("/login");
+    }
+  };
+
   return (
-    <div className="h-full p-4 flex flex-col">
+    <div className="h-full p-6 flex flex-col">
       {/* Brand */}
-      <div className="p-4 mb-2">
-        <div className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
+      <div className="mb-8">
+        <div className="text-2xl font-bold text-white tracking-tight">
           LOOkie
         </div>
         <div className="text-xs text-slate-500 font-medium mt-1">Admin Console</div>
       </div>
 
-      <div className="my-2 h-px bg-slate-800/50 mx-4" />
-
-      <nav className="flex-1 space-y-1 mt-4 px-2">
+      {/* Navigation */}
+      <nav className="flex-1 space-y-1">
         {ADMIN_MENU.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
             className={({ isActive }) =>
               cn(
-                "group flex items-center rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
+                "flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
                 isActive
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20 translate-x-1"
-                  : "text-slate-400 hover:text-white hover:bg-white/5 hover:translate-x-1"
+                  ? "bg-primary text-white"
+                  : "text-slate-400 hover:text-white hover:bg-white/5"
               )
             }
           >
-            {/* Active Indicator Dot (Optional, or rely on bg) */}
-            <span className={cn(
-              "mr-3 inline-block h-2 w-2 rounded-full transition-colors",
-              (({ isActive }: { isActive: boolean }) => isActive ? "bg-white" : "bg-slate-600 group-hover:bg-slate-400")({ isActive: location.pathname.startsWith(item.path) }) // Simplify inline logic or removed. 
-              // Wait, NavLink render prop exposes isActive.
-            )} />
             {item.label}
           </NavLink>
         ))}
       </nav>
 
       {/* Footer */}
-      <div className="mt-auto pt-6 px-2 pb-4">
-        <div className="rounded-2xl bg-slate-800/50 p-4 border border-slate-700/50 flex items-center gap-3 hover:bg-slate-800 transition-colors cursor-pointer group">
-          <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold group-hover:bg-indigo-500 group-hover:text-white transition-colors">
-            A
+      <div className="mt-auto space-y-2">
+        {/* User Info */}
+        <div className="rounded-lg bg-slate-800/30 p-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-primary text-sm font-bold">
+            {user?.name?.charAt(0).toUpperCase() || "A"}
           </div>
-          <div>
-            <div className="text-xs text-slate-500 font-medium">Signed in as</div>
-            <div className="text-sm font-bold text-slate-200 group-hover:text-white">관리자</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-slate-500">Signed in as</div>
+            <div className="text-sm font-semibold text-slate-200 truncate">{user?.name || "관리자"}</div>
           </div>
         </div>
+
+        {/* Logout Button */}
+        <button
+          onClick={handleLogout}
+          className="w-full rounded-lg bg-slate-800/30 p-3 flex items-center gap-3 hover:bg-red-500/10 transition-all group"
+        >
+          <div className="w-9 h-9 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 group-hover:bg-red-500/20 transition-colors">
+            <LogOut size={16} />
+          </div>
+          <div className="flex-1 text-left">
+            <div className="text-sm font-semibold text-slate-300 group-hover:text-red-400 transition-colors">로그아웃</div>
+          </div>
+        </button>
       </div>
 
     </div>

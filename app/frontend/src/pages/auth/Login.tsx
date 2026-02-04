@@ -84,6 +84,9 @@ export default function Login() {
           birthDate: d.birthDate ?? undefined,
           role: d.role,
           isActive: d.isActive,
+          passwordHash: "",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         },
       });
 

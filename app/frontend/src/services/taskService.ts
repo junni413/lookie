@@ -51,7 +51,7 @@ async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
 }
 
 /** -----------------------------
- * Local stats helpers (UI용 통계)
+ * Local stats helpers (UI 통계)
  * ----------------------------- */
 export type WorkStats = { done: number; issue: number; waiting: number };
 
@@ -111,14 +111,17 @@ export type ActiveTaskData = {
  * taskService (Task API only)
  * ----------------------------- */
 export const taskService = {
-  /** ✅ 진행 중인 작업 조회 (복구용) */
+  /** 진행 중인 작업 조회 (복구용) */
   getMyActiveTask: async (): Promise<ApiResponse<ActiveTaskData>> => {
     return requestJSON(`/api/tasks/me/active`, { method: "GET" });
   },
 
-  /** ✅ 작업 할당 및 시작 (실 API) */
+  /** 작업 할당 및 시작 */
   startTask: async (): Promise<ApiResponse<TaskResponse<TaskVO>>> => {
-    return requestJSON(`/api/tasks`, { method: "POST" });
+    // 실제 백엔드와 연동
+    return requestJSON(`/api/tasks`, {
+      method: "POST",
+    });
   },
 
   /** 토트 등록(스캔) */
@@ -179,12 +182,12 @@ export const taskService = {
     setStats(stats);
   },
 
-  /** 홈 화면 통계 조회(UI용) */
+  /** 홈화면 통계 조회(UI용) */
   getWorkStats: async (): Promise<WorkStats> => {
     return getStats();
   },
 
-  /** 통계 초기화(퇴근 등에서 사용 가능) */
+  /** 통계 초기화(퇴근 버튼 클릭 시 사용) */
   resetWorkStats: async (): Promise<void> => {
     setStats({ done: 0, issue: 0, waiting: 0 });
   },
