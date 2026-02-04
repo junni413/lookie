@@ -1,5 +1,14 @@
 # src/core/config.py
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def get_required_env(key: str) -> str:
+    value = os.getenv(key)
+    if value is None:
+        raise EnvironmentError(f"Missing required environment variable: {key}")
+    return value
 
 # 백엔드 주소
 BACKEND_URL = os.getenv("BACKEND_URL", "http://host.docker.internal:8080")
@@ -16,3 +25,21 @@ PRODUCT_CONFIG = {
 
 # 공통 모델 경로
 GATE_MODEL_PATH = "model/yolov8n.onnx"
+
+# [추가] DB 설정
+DB_CONFIG = {
+    "host": os.getenv("DB_HOST", "host.docker.internal"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": get_required_env("DB_PASSWORD"), # 필수!
+    "db": get_required_env("DB_NAME"), # 필수!
+    "charset": "utf8mb4",
+    "cursorclass": "DictCursor" # 중요: 결과를 딕셔너리로 받음
+}
+
+# [수정] GMS (SSAFY AI) 설정
+# OpenAI 공식 키 대신 GMS 키를 사용
+GMS_API_KEY = get_required_env("GMS_API_KEY") # 필수!
+GMS_BASE_URL = get_required_env("GMS_BASE_URL") # 필수!
+
+# 모델명도 변수로 빼두는 것이 좋습니다 (나중에 gpt-4o로 바꿀 때 편함)
+GMS_MODEL_NAME = "gpt-4o-mini"
