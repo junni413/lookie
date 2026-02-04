@@ -78,7 +78,9 @@
             DATE_FORMAT(w.planned_end_at, '%Y-%m-%d %T') AS plannedEndAt,
 
             -- [식별] 이름 + 번호 뒷4자리
-            CONCAT(IFNULL(u.name, 'Unknown'), IFNULL(RIGHT(u.phone_number, 4), '0000')) AS workerName,
+            -- [식별] 이름 + 번호 뒷4자리 -> Java에서 포맷팅
+            IFNULL(u.name, 'Unknown') AS name,
+            u.phone_number AS phoneNumber,
 
             -- [Schema 반영] zone_assignments가 아닌 users 테이블에서 구역 ID 조회 (DTO 필드명: assignedZoneId)
             u.assigned_zone_id AS assignedZoneId,
@@ -130,7 +132,8 @@
             w.ended_at AS endedAt,
             DATE_FORMAT(w.planned_end_at, '%Y-%m-%d %T') AS plannedEndAt,
 
-            CONCAT(IFNULL(u.name, 'Unknown'), IFNULL(RIGHT(u.phone_number, 4), '0000')) AS workerName,
+            IFNULL(u.name, 'Unknown') AS name,
+            u.phone_number AS phoneNumber,
 
             -- [수정] users 테이블의 assigned_zone_id 사용 (DTO 필드명: assignedZoneId)
             u.assigned_zone_id AS assignedZoneId,
