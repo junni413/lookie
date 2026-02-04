@@ -401,6 +401,8 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
               -e DB_HOST=dummy \
               -e DB_PORT=3306 \
               -e DB_NAME=dummy \
+              -e GMS_API_KEY=dummy \
+              -e GMS_BASE_URL=https://example.com \
               "${REGISTRY_IMAGE_AI}:${AI_IMAGE_TAG}" pytest /app/test_main.py
 
             echo "[INFO] Test Passed! Pushing image..."
