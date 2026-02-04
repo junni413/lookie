@@ -69,16 +69,11 @@ pipeline {
     COMPOSE_DOCKER_CLI_BUILD = '1'
 
     // ============================================================
-    // ✅ [TAG/FLAG - SENTINEL]
-    //
-    // [FIX 핵심]
-    // - sh 내부에서 export/대입한 변수는 "그 sh 프로세스"에서만 유효합니다.
-    // - stage 간 공유하려면 반드시 Groovy에서 env.* 로 저장해야 합니다.
-    // - 그래서 기본값은 UNSET으로 두고, Set IMAGE_TAG stage에서 env.IMAGE_TAG를 확정합니다.
+    // [중요]
+    // IMAGE_TAG/AI_TAG 같은 "빌드마다 변하는 값"은 environment에 고정 선언하지 않음.
+    // - Declarative environment는 내부 withEnv로 주입되어 stage 경계에서 값이 되돌아오는 경우가 있음.
+    // - 대신 Groovy env.* 로 세팅 + workspace 파일(.image_tag)로 고정해서 안정화.
     // ============================================================
-    AI_BUILT     = 'false'
-    AI_IMAGE_TAG = 'UNSET'
-    IMAGE_TAG    = 'UNSET'
   }
 
   stages {
@@ -86,7 +81,9 @@ pipeline {
     stage('Detect Context') {
       steps {
         script {
-          // 여러 GitLab 플러그인/웹훅 변수명 차이를 흡수하기 위한 pick 헬퍼
+          // ------------------------------------------------------------
+          // 다양한 GitLab 플러그인/웹훅 변수명 차이를 흡수하는 pick 헬퍼
+          // ------------------------------------------------------------
           def pick = { List<String> keys ->
             for (k in keys) {
               def v = env."${k}"
@@ -95,20 +92,28 @@ pipeline {
             return ''
           }
 
-          // 이벤트 종류 판별
+          // ------------------------------------------------------------
+          // 이벤트 종류 판별 (push / merge_request)
+          // ------------------------------------------------------------
           env.EVENT_KIND = pick(['OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
           if (env.EVENT_KIND.toLowerCase().contains('merge')) env.EVENT_KIND = 'merge_request'
           if (env.EVENT_KIND.toLowerCase().contains('push'))  env.EVENT_KIND = 'push'
 
-          // push 브랜치
+          // ------------------------------------------------------------
+          // push 브랜치 계산
+          // ------------------------------------------------------------
           def refRaw = pick(['REF','ref','GIT_REF','gitRef','refChanges_0_refId'])
           env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').trim()
 
-          // MR source/target
+          // ------------------------------------------------------------
+          // MR source/target 계산
+          // ------------------------------------------------------------
           env.MR_SOURCE = pick(['MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch','gitlabSourceBranch']).trim()
           env.MR_TARGET = pick(['MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch','gitlabTargetBranch']).trim()
 
-          // 실행자
+          // ------------------------------------------------------------
+          // 실행자(유저) 정보
+          // ------------------------------------------------------------
           env.ACTOR = pick([
             'MR_USER_NAME','MR_USER_USERNAME',
             'PUSH_USER_NAME','PUSH_USER_USERNAME',
@@ -118,7 +123,9 @@ pipeline {
           ]).trim()
           if (!env.ACTOR) env.ACTOR = 'unknown'
 
+          // ------------------------------------------------------------
           // 실행 플래그 초기화
+          // ------------------------------------------------------------
           env.RUN_BACKEND  = "false"
           env.RUN_FRONTEND = "false"
           env.RUN_BUILDIMG = "false"
@@ -136,7 +143,9 @@ pipeline {
             env.RUN_DEPLOY   = "true"
           }
 
+          // ------------------------------------------------------------
           // checkout 브랜치 결정
+          // ------------------------------------------------------------
           env.CHECKOUT_BRANCH = ''
           if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
             env.CHECKOUT_BRANCH = env.MR_SOURCE
@@ -144,10 +153,19 @@ pipeline {
             env.CHECKOUT_BRANCH = env.PUSH_BRANCH
           }
 
-          // [FIX] 매 빌드마다 sentinel로 초기화해서 "이전 빌드 값"이 새 빌드에 섞이지 않게 함
+          // ------------------------------------------------------------
+          // 태그/플래그 초기화 (빌드마다 리셋)
+          // - stage 간 안전 공유는 .image_tag 파일과 ensureImageTag()로 해결
+          // ------------------------------------------------------------
           env.AI_BUILT     = "false"
           env.AI_IMAGE_TAG = "UNSET"
           env.IMAGE_TAG    = "UNSET"
+
+          // 이전 빌드에서 남은 태그 파일이 있을 수 있으니 초기화
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            rm -f .image_tag .ai_image_tag || true
+          '''
 
           echo """
 [kind=${env.EVENT_KIND}]
@@ -178,7 +196,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         sh '''#!/usr/bin/env bash
           set -euo pipefail
 
-          # [FIX] CHECKOUT_BRANCH 지정 시 origin 브랜치 존재 확인 후 checkout
+          # CHECKOUT_BRANCH 지정 시 origin 브랜치 존재 확인 후 checkout
           if [[ -n "${CHECKOUT_BRANCH:-}" ]]; then
             git rev-parse --verify "refs/remotes/origin/${CHECKOUT_BRANCH}" >/dev/null 2>&1 || {
               echo "[ERROR] origin/${CHECKOUT_BRANCH} not found"
@@ -198,12 +216,17 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
         script {
-          // [FIX 핵심] stage 간 공유를 위해 env.IMAGE_TAG를 Groovy에서 확정
+          // ------------------------------------------------------------
+          // [핵심 FIX]
+          // - 태그는 반드시 Groovy env.IMAGE_TAG에 저장
+          // - 동시에 workspace 파일(.image_tag)에 저장해서 stage 경계/withEnv 영향에도 절대 안전
+          // ------------------------------------------------------------
           def t = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-          if (!t) {
-            error("[ERROR] IMAGE_TAG 계산 실패: git rev-parse 결과가 비었습니다.")
-          }
+          if (!t) error("[ERROR] IMAGE_TAG 계산 실패: git rev-parse 결과가 비었습니다.")
+
           env.IMAGE_TAG = t
+          writeFile file: '.image_tag', text: "${t}\n"
+
           echo "IMAGE_TAG=${env.IMAGE_TAG}"
         }
       }
@@ -310,7 +333,6 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     stage('AI Test (MR only)') {
       when { expression { env.EVENT_KIND == 'merge_request' } }
       steps {
-        // ✅ Groovy 보간 제거: sh ''' ... ''' 사용 -> $/ ${} 안전
         sh '''#!/usr/bin/env bash
           set -euo pipefail
           echo "[INFO] AI Server MR Test Start..."
@@ -318,7 +340,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
 
           docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${TEST_TAG}" "${AI_CONTEXT}"
 
-          # ✅ import 단계에서 env 없어서 죽는 문제 방지: 최소 더미값
+          # import 단계에서 env 없어서 죽는 문제 방지: 최소 더미값
           docker run --rm \
             -e DB_PASSWORD=dummy \
             -e DB_USERNAME=dummy \
@@ -367,13 +389,12 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
         script {
-          // [FIX] 여기서 sh 안에서 IMAGE_TAG를 "수정"하지 말고,
-          //       Set IMAGE_TAG stage에서 이미 env.IMAGE_TAG가 확정돼야 함.
-          //       혹시 누락되었으면 즉시 fail해서 UNSET pull 같은 사고를 차단.
-          def t = (env.IMAGE_TAG ?: '').trim()
-          if (!t || t == 'UNSET' || t == 'null') {
-            error("[ERROR] IMAGE_TAG is invalid before Build: '${env.IMAGE_TAG}' (Set IMAGE_TAG stage가 실행되었는지 확인)")
-          }
+          // ------------------------------------------------------------
+          // 태그는 "언제든" ensureImageTag()로 확정해서 사용
+          // (Set IMAGE_TAG stage가 어떤 이유로 스킵/실패해도 여기서 최종 방어)
+          // ------------------------------------------------------------
+          def tag = ensureImageTag()
+          echo "[INFO] Using IMAGE_TAG=${tag}"
         }
 
         withCredentials([usernamePassword(
@@ -406,7 +427,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         allOf {
           expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" }
           anyOf {
-            // [주의] changeset은 checkout 이후 changelog를 기반으로 평가됩니다.
+            // changeset은 checkout 이후 changelog를 기반으로 평가됨
             changeset "app/ai-server/**"
             changeset "app/ai-server/model/**"
             changeset "infra/jenkins/Jenkinsfile"
@@ -416,15 +437,14 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       }
       steps {
         script {
-          // ✅ AI는 공통 IMAGE_TAG를 그대로 사용 (추적/롤백 쉬움)
-          // [FIX] 여기서도 env 기반으로만 세팅 (sh 내부에서 export로 "고치지" 않음)
-          def base = (env.IMAGE_TAG ?: '').trim()
-          if (!base || base == 'UNSET' || base == 'null') {
-            error("[ERROR] IMAGE_TAG is invalid before AI build: '${env.IMAGE_TAG}'")
-          }
+          def tag = ensureImageTag()
 
-          env.AI_IMAGE_TAG = base
+          // ------------------------------------------------------------
+          // AI 이미지 태그는 backend/nginx와 동일하게 고정 (롤백/추적 용이)
+          // ------------------------------------------------------------
+          env.AI_IMAGE_TAG = tag
           env.AI_BUILT = "true"
+          writeFile file: '.ai_image_tag', text: "${env.AI_IMAGE_TAG}\n"
 
           echo "AI_BUILT=${env.AI_BUILT}, AI_IMAGE_TAG=${env.AI_IMAGE_TAG}"
         }
@@ -467,15 +487,8 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_DEPLOY == "true" } }
       steps {
         script {
-          // [FIX] deploy 전에 태그 sanity check (UNSET pull 방지)
-          def t = (env.IMAGE_TAG ?: '').trim()
-          if (!t || t == 'UNSET' || t == 'null') {
-            error("[ERROR] Deploy aborted: IMAGE_TAG is invalid ('${env.IMAGE_TAG}')")
-          }
-
-          // AI가 빌드되지 않았다면 AI_IMAGE_TAG는 UNSET일 수 있음
-          // (원격에서 운영 태그 파일로 유지하도록 되어있음)
-          echo "Deploy IMAGE_TAG=${env.IMAGE_TAG}, AI_BUILT=${env.AI_BUILT}, AI_IMAGE_TAG=${env.AI_IMAGE_TAG}"
+          def tag = ensureImageTag()
+          echo "Deploy IMAGE_TAG=${tag}, AI_BUILT=${env.AI_BUILT}, AI_IMAGE_TAG=${env.AI_IMAGE_TAG}"
         }
 
         withCredentials([usernamePassword(
@@ -484,8 +497,6 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
           passwordVariable: 'DH_PASS'
         )]) {
           sshagent(credentials: [env.SSH_CRED_ID]) {
-            // ✅ 반드시 ''' 사용: Groovy $ 파싱 충돌 방지
-            // ✅ 변수들은 "로컬 쉘에서 확정된 값"이 SSH 커맨드에 주입되어 원격 env로 전달됨
             sh '''#!/usr/bin/env bash
               set -euo pipefail
               : > "${DEPLOY_LOG}"
@@ -520,7 +531,7 @@ git checkout -B develop origin/develop
 
 echo "${DH_PASS}" | docker login -u "${DH_USER}" --password-stdin >/dev/null
 
-# ✅ 운영 AI 태그 유지 파일 (AI가 변경되지 않으면 기존 운영 태그로 계속 실행)
+# 운영 AI 태그 유지 파일 (AI가 변경되지 않으면 기존 운영 태그로 계속 실행)
 AI_TAG_FILE=".deploy_ai_tag"
 
 # (1) 현재 운영 중인 AI 태그 읽기(없으면 latest)
@@ -566,7 +577,7 @@ else
   echo "[INFO] Keep ai-server container (no change)"
 fi
 
-# 나머지 서비스 (DB/redis 등)도 compose 상태 보장
+# 나머지 서비스도 compose 상태 보장
 docker compose -f "${COMPOSE_PROD_FILE}" up -d
 
 docker image prune -f >/dev/null 2>&1 || true
@@ -586,7 +597,7 @@ EOSSH
         def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
         def title = ok ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패"
 
-        // [FIX] 멀티브랜치/폴더형 Job 대응 URL 생성
+        // 멀티브랜치/폴더형 Job 대응 URL 생성
         def jobName = (env.JOB_NAME ?: '').trim()
         def buildNo = (env.BUILD_NUMBER ?: '').trim()
         def jobPath = jobName ? jobName.split('/').collect { "job/${it}" }.join('/') : ''
@@ -605,6 +616,47 @@ EOSSH
       }
     }
   }
+}
+
+// =====================================================================
+// Helper Functions (pipeline 블록 밖에 둬야 안전)
+// =====================================================================
+
+/**
+ * "비정상/센티널" 태그 판별
+ */
+def isInvalidTag(String v) {
+  def t = (v ?: '').trim()
+  return (!t || t == 'UNSET' || t == 'null')
+}
+
+/**
+ * IMAGE_TAG를 확정하는 단일 진입점
+ * 우선순위: env -> workspace 파일(.image_tag) -> git
+ *
+ * - Set IMAGE_TAG stage가 실행되었으면 env/파일에서 바로 가져옴
+ * - 혹시 스킵되거나 withEnv 영향으로 env가 흔들려도 파일/깃으로 복구
+ * - 최종적으로 env.IMAGE_TAG에 다시 저장해 이후 sh에서 ${IMAGE_TAG}로 사용 가능하게 함
+ */
+def ensureImageTag() {
+  if (!isInvalidTag(env.IMAGE_TAG)) return env.IMAGE_TAG.trim()
+
+  if (fileExists('.image_tag')) {
+    def fromFile = readFile('.image_tag').trim()
+    if (!isInvalidTag(fromFile)) {
+      env.IMAGE_TAG = fromFile
+      return env.IMAGE_TAG
+    }
+  }
+
+  def t = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+  if (isInvalidTag(t)) {
+    error("[ERROR] IMAGE_TAG 계산 실패: git rev-parse 결과가 비었습니다.")
+  }
+
+  env.IMAGE_TAG = t
+  writeFile file: '.image_tag', text: "${t}\n"
+  return env.IMAGE_TAG
 }
 
 def mmNotify(boolean success, Map info) {
