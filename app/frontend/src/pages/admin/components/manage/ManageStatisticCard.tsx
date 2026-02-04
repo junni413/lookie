@@ -24,7 +24,7 @@ export default function ManageStatisticCard({
                 {/* 왼쪽: 원형 구역 배지 */}
                 <div className="shrink-0 w-14 h-14 rounded-full bg-[#EEF2FF] flex items-center justify-center transition-transform group-hover:scale-110">
                     <span className="text-2xl font-bold text-primary">
-                        {zoneName.replace(/^zone\s*/i, '')}
+                        {(zoneName || "").replace(/^zone\s*/i, '')}
                     </span>
                 </div>
 

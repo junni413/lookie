@@ -1,18 +1,12 @@
 
 import type { DB_Worker, ZoneLayout } from "@/types/db";
-import { zonesLayoutMock, db_users, db_zones, zoneNames } from "@/mocks/mockData";
+import { zonesLayoutMock, db_users } from "@/mocks/mockData";
 import { request } from "@/api/http";
 import type { ApiResponse } from "@/api/type";
+import { adminService } from "./adminService";
 
-export interface ZoneStat {
-    zoneId: number;
-    name: string;
-    status: "STABLE" | "NORMAL" | "CRITICAL";
-    workerCount: number;
-    workRate: number; // percentage (0-100)
-}
-
-
+import { DEFAULT_ZONES, mergeZoneData } from "@/utils/zoneUtils";
+import type { ZoneStat } from "@/types/db"; // Import from types/db
 
 export const manageService = {
     // Get all workers with full details
@@ -85,29 +79,18 @@ export const manageService = {
         }
     },
 
-    // Get statistics for all zones
+    // Get statistics for all zones (Now uses Real API via adminService)
     getZoneStats: async (): Promise<ZoneStat[]> => {
-        // Fetch real workers first
-        const workers = await manageService.getAllWorkers();
-
-        // Use static db_zones
-        return db_zones.map((zone) => {
-            const zoneWorkers = workers.filter((w) => w.currentZoneId === zone.zoneId);
-
-            // Calculate average work rate
-            const totalRate = zoneWorkers.reduce((sum, w) => sum + (w.workRate || 0), 0);
-            const avgRate = zoneWorkers.length > 0 ? Math.floor(totalRate / zoneWorkers.length) : 0;
-
-            const name = zoneNames[zone.zoneId] || "Unknown";
-
-            return {
-                zoneId: zone.zoneId,
-                name: name,
-                status: "STABLE", // Simplified logic
-                workerCount: zoneWorkers.length,
-                workRate: avgRate,
-            };
-        });
+        try {
+            // 1. Fetch real stats from API
+            const apiZones = await adminService.getZones();
+            
+            // 2. Merge with Default Zones (Fallback) using shared utility
+            return mergeZoneData(apiZones);
+        } catch (error) {
+            console.error("Failed to load real zone stats, using defaults:", error);
+            return DEFAULT_ZONES;
+        }
     },
 
     // Update worker zone (Mock)

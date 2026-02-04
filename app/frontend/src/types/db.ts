@@ -287,6 +287,15 @@ export interface DB_CallHistory {
 
 // =========================
 // UI Types
+
+export interface ZoneStat {
+    zoneId: number;
+    name: string;
+    status: ZoneStatus;
+    workerCount: number;
+    workRate: number; // percentage (0-100)
+}
+
 export type ZoneStatus = 'STABLE' | 'NORMAL' | 'CRITICAL';
 
 

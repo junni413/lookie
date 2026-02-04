@@ -2,15 +2,19 @@ import { useEffect, useState } from "react";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 
-import { manageService, type ZoneStat } from "@/services/manageService";
+import { manageService } from "@/services/manageService";
+import type { ZoneStat } from "@/types/db"; // Import from shared types
 import type { DB_Worker } from "@/types/db";
+import { DEFAULT_ZONES } from "@/utils/zoneUtils"; // Import shared constant
 import ManageStatisticCard from "./components/manage/ManageStatisticCard";
 import ManageZoneColumn from "./components/manage/ManageZoneColumn";
 import AiReallocationModal from "./components/manage/AiReallocationModal";
 import { RotateCcw, Wand2, Check } from "lucide-react";
 
+
 export default function Manage() {
-    const [stats, setStats] = useState<ZoneStat[]>([]);
+    // Init with Defaults to prevent flash of empty content
+    const [stats, setStats] = useState<ZoneStat[]>(DEFAULT_ZONES);
     const [workers, setWorkers] = useState<DB_Worker[]>([]);
 
     // History State
@@ -29,17 +33,38 @@ export default function Manage() {
         setLoading(true);
         setError(null);
         try {
-            const [fetchedStats, fetchedWorkers] = await Promise.all([
+            const [statsResult, workersResult] = await Promise.allSettled([
                 manageService.getZoneStats(),
                 manageService.getAllWorkers()
             ]);
-            setStats(fetchedStats);
-            setWorkers(fetchedWorkers);
-            setLastAppliedWorkers(structuredClone(fetchedWorkers));
+
+            // 1. Process Stats
+            if (statsResult.status === "fulfilled") {
+                const fetchedStats = statsResult.value;
+                // fetchedStats coming from manageService.getZoneStats() which already uses mergeZoneData
+                // So it is guaranteed to be ZoneStat[] with length 4
+                setStats(fetchedStats.length > 0 ? fetchedStats : DEFAULT_ZONES);
+            } else {
+                console.error("Failed to load zone stats", statsResult.reason);
+                // Keep DEFAULT_ZONES (already init state)
+            }
+
+            // 2. Process Workers (failure is non-blocking)
+            if (workersResult.status === "fulfilled") {
+                const fetchedWorkers = workersResult.value;
+                setWorkers(fetchedWorkers);
+                setLastAppliedWorkers(structuredClone(fetchedWorkers));
+            } else {
+                console.error("Failed to load workers", workersResult.reason);
+                // Optionally show a toast or partial error, but don't block UI
+                // setError(workersResult.reason?.message); // Uncomment if we want to blocking-fail
+                setWorkers([]);
+            }
+            
             setPrevAppliedWorkers(null);
         } catch (error: any) {
-            console.error("Failed to load manage data", error);
-            setError(error.message || "Unknown error");
+            console.error("Unexpected error in loadData", error);
+            // setError(error.message); // Don't block UI
         } finally {
             setLoading(false);
         }
@@ -106,7 +131,10 @@ export default function Manage() {
     };
 
     if (loading && stats.length === 0) {
-        return <div className="h-full flex items-center justify-center">Loading...</div>;
+        // Show loading but maybe empty layout first? 
+        // Actually, let's init state with DEFAULT_ZONES so we never show "Loading..." text for empty structure
+        // But if we want to show spinner:
+        return <div className="h-full flex items-center justify-center">데이터를 불러오는 중입니다...</div>;
     }
 
     if (error) {
