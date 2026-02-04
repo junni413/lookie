@@ -869,6 +869,7 @@ class IssueServiceTest {
                 .status("OPEN")
                 .urgency(1)
                 .workerName("홍길동")
+                .phoneNumber("01012345678") // Added phone number
                 .productName("티셔츠")
                 .build();
 
@@ -884,7 +885,7 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
         assertEquals(1, response.getIssues().size());
-        assertEquals("홍길동", response.getIssues().get(0).getWorkerName());
+        assertEquals("홍길동5678", response.getIssues().get(0).getWorkerName()); // Expect formatted name
         assertEquals(1, response.getPaging().getTotalCount());
         assertEquals(1, response.getPaging().getTotalPages());
 

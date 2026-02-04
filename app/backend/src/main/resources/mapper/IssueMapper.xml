@@ -116,6 +116,7 @@
             COALESCE(i.urgency, 5) AS urgency,
             i.worker_id AS workerId,
             u.name AS workerName,
+            u.phone_number AS phoneNumber,
             p.product_name AS productName,
             zl.location_code AS locationCode,
             i.created_at AS createdAt,
