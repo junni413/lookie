@@ -20,12 +20,13 @@ public class TaskVO {
 
     private Long workerId; // nullable
     private Long toteId;
+    private String toteBarcode; // 화면 표시용 토트 바코드
     private String status; // UNASSIGNED / IN_PROGRESS / COMPLETED
 
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
 
-    private Long currentLocationId; // [New] 현재 스캔된 지번 ID
+    private Long currentLocationId; // 현재 스캔된 지번 ID
     private LocalDateTime toteScannedAt;
     private LocalDateTime toteReleasedAt;
 

@@ -173,4 +173,55 @@ class TaskWorkflowFacadeTest {
             taskWorkflowFacade.completeTask(taskId);
         });
     }
+
+    @Test
+    @DisplayName("진행 중인 작업 조회 성공: 상태 복구 및 상세 데이터 반환 확인")
+    void getInProgressTask_Success() {
+        // given
+        Long workerId = 1L;
+        Long taskId = 100L;
+
+        TaskVO mockTask = new TaskVO();
+        mockTask.setBatchTaskId(taskId);
+        mockTask.setActionStatus(TaskActionStatus.SCAN_ITEM); // 상태 설정
+        mockTask.setToteBarcode("TOTE-1234"); // 토트 바코드 설정 (가정)
+
+        TaskItemVO mockNextItem = new TaskItemVO();
+        mockNextItem.setProductImage("http://img.url"); // 이미지 URL 설정
+
+        // 1. 진행 중 작업 조회
+        when(taskMapper.findInProgressByWorkerId(workerId)).thenReturn(mockTask);
+        // 2. 상세 조회
+        when(taskMapper.findById(taskId)).thenReturn(mockTask);
+        // 3. 다음 아이템 조회
+        when(taskItemService.getNextItem(taskId)).thenReturn(mockNextItem);
+
+        // when
+        TaskResponse<TaskVO> response = taskWorkflowFacade.getInProgressTask(workerId);
+
+        // then
+        assertNotNull(response);
+        assertEquals(taskId, response.getPayload().getBatchTaskId());
+        assertEquals("TOTE-1234", response.getPayload().getToteBarcode());
+        assertEquals(NextAction.SCAN_ITEM, response.getNextAction());
+
+        // 다음 아이템 검증
+        TaskItemVO nextItem = (TaskItemVO) response.getNextItem();
+        assertNotNull(nextItem);
+        assertEquals("http://img.url", nextItem.getProductImage());
+    }
+
+    @Test
+    @DisplayName("진행 중인 작업 조회: 작업이 없는 경우 null 반환")
+    void getInProgressTask_NotFound() {
+        // given
+        Long workerId = 1L;
+        when(taskMapper.findInProgressByWorkerId(workerId)).thenReturn(null);
+
+        // when
+        TaskResponse<TaskVO> response = taskWorkflowFacade.getInProgressTask(workerId);
+
+        // then
+        assertNull(response);
+    }
 }

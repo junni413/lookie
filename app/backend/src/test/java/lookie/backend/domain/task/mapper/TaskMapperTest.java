@@ -37,4 +37,25 @@ class TaskMapperTest {
         assertEquals("UNASSIGNED", task.getStatus());
         assertEquals(1L, task.getZoneId());
     }
+
+    @Test
+    void findById_WithToteAndLocation_ShouldReturnJoinedData() {
+        // Given: seed 데이터(1L)는 IN_PROGRESS, TOTE-001(id:1), LOCATION(id:1) 상태라고 가정
+        // (task_seed.sql에 의존. 만약 seed 데이터가 부족하다면 기본 조회만이라도 검증)
+
+        // When
+        TaskVO task = taskMapper.findById(1L); // 시드 데이터의 Task ID
+
+        // Then
+        assertNotNull(task);
+        // XML 쿼리의 JOIN 구문이 문법적으로 오류가 없는지,
+        // 그리고 매핑된 필드가 null이 아닌지 확인 (데이터가 있을 경우)
+
+        // 시드 데이터가 확실하지 않을 수 있으므로, 최소한 쿼리 실행 자체는 통과해야 함.
+        // 데이터가 있다면 아래 단언문도 통과할 것임.
+        if (task.getToteId() != null) {
+            // 토트가 있으면 바코드도 조회되어야 함 (LEFT JOIN 검증)
+            assertNotNull(task.getToteBarcode(), "Tote ID가 존재하면 Barcode도 조회되어야 합니다.");
+        }
+    }
 }

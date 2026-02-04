@@ -8,21 +8,23 @@
     <!--[조회] 작업 ID로 해당 작업 찾기-->
     <select id="findById" parameterType="long" resultType="TaskVO">
         SELECT
-            batch_task_id AS batchTaskId,
-            batch_id AS batchId,
-            zone_id AS zoneId,
-            worker_id AS workerId,
-            status,
-            action_status AS actionStatus,
-            started_at AS startedAt,
-            completed_at AS completedAt,
-            tote_id AS toteId,
-            current_location_id AS currentLocationId,
-            tote_scanned_at AS toteScannedAt,
-            location_scanned_at AS locationScannedAt,
-            tote_released_at AS toteReleasedAt
-        FROM batch_tasks
-        WHERE batch_task_id = #{batchTaskId}
+            bt.batch_task_id AS batchTaskId,
+            bt.batch_id AS batchId,
+            bt.zone_id AS zoneId,
+            bt.worker_id AS workerId,
+            bt.status,
+            bt.action_status AS actionStatus,
+            bt.started_at AS startedAt,
+            bt.completed_at AS completedAt,
+            bt.tote_id AS toteId,
+            t.barcode AS toteBarcode,
+            bt.current_location_id AS currentLocationId,
+            bt.tote_scanned_at AS toteScannedAt,
+            bt.location_scanned_at AS locationScannedAt,
+            bt.tote_released_at AS toteReleasedAt
+        FROM batch_tasks bt
+        LEFT JOIN totes t ON bt.tote_id = t.tote_id
+        WHERE bt.batch_task_id = #{batchTaskId}
     </select>
 
     <!--[조회] 다음 할당할 작업 찾기-->
