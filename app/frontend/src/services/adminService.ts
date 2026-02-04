@@ -1,112 +1,72 @@
+import { request } from "@/api/http";
 import type { ApiResponse } from "@/api/type";
-import type { User } from "@/stores/authStore";
-
-// ========================================
-// 🔧 Mock 데이터 설정
-// ========================================
-// 환경 변수로 자동 전환 (개발: true, 운영: false)
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
-
-// Mock 관리자 데이터
-const MOCK_ADMINS: User[] = [
-    {
-        userId: 101,
-        name: "김관리",
-        phoneNumber: "010-1234-5678",
-        email: "admin1@lookie.com",
-        role: "ADMIN",
-        isActive: true,
-        passwordHash: "",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    },
-    {
-        userId: 102,
-        name: "이매니저",
-        phoneNumber: "010-2345-6789",
-        email: "admin2@lookie.com",
-        role: "ADMIN",
-        isActive: true,
-        passwordHash: "",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    },
-    {
-        userId: 103,
-        name: "박감독",
-        phoneNumber: "010-3456-7890",
-        email: "admin3@lookie.com",
-        role: "ADMIN",
-        isActive: true,
-        passwordHash: "",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    },
-    {
-        userId: 104,
-        name: "최책임",
-        phoneNumber: "010-4567-8901",
-        email: "admin4@lookie.com",
-        role: "ADMIN",
-        isActive: true,
-        passwordHash: "",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    },
-    {
-        userId: 105,
-        name: "정팀장",
-        phoneNumber: "010-5678-9012",
-        email: "admin5@lookie.com",
-        role: "ADMIN",
-        isActive: true,
-        passwordHash: "",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    },
-    {
-        userId: 106,
-        name: "강실장",
-        phoneNumber: "010-6789-0123",
-        email: "admin6@lookie.com",
-        role: "ADMIN",
-        isActive: true,
-        passwordHash: "",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    },
-];
+import type { AdminContact } from "@/types/AdminContact";
 
 // ========================================
 // 📡 API 함수
 // ========================================
 
 /**
- * 관리자 목록 조회 (Mock 또는 실제 API)
- * GET /api/users?role=ADMIN
+ * 관리자 목록 조회
+ * GET /api/control/admins
  */
-export async function getAdmins(token: string): Promise<User[]> {
-    // Mock 데이터 사용
-    if (USE_MOCK) {
-        // 실제 API 호출처럼 약간의 지연 추가
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        console.log("🔧 [Mock] 관리자 목록 반환:", MOCK_ADMINS.length, "명");
-        return MOCK_ADMINS;
+// API Response Item Type
+interface AdminListResponseItem {
+    adminId: number;
+    name: string;
+    assignedZoneId: number | null;
+    zoneName: string;
+    currentStatus: string;
+}
+
+// API Params
+// API Params
+interface AdminListParams {
+    zoneId?: string;
+    name?: string;
+}
+
+export async function getAdmins(token: string, params?: AdminListParams): Promise<AdminContact[]> {
+    const query = new URLSearchParams();
+
+    // params handling
+    if (params?.name) {
+        query.append("name", params.name);
     }
 
-    // 실제 API 호출
-    const response = await fetch("/api/users?role=ADMIN", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+    if (params?.zoneId && params.zoneId !== 'all') {
+        query.append("zoneId", params.zoneId);
+    }
+
+    const queryString = query.toString();
+    const url = `/api/control/admins${queryString ? `?${queryString}` : ""}`;
+
+    const response = await request<ApiResponse<AdminListResponseItem[]>>(url, {
+        method: "GET",
+        token: token,
     });
 
-    if (!response.ok) {
-        throw new Error("관리자 목록 조회 실패");
-    }
+    const rawData = response.data || [];
 
-    const json: ApiResponse<User[]> = await response.json();
-    return json.data || [];
+    // API 응답(adminId)을 프론트엔드 모델(userId)로 맵핑
+    return rawData.map(item => ({
+        // User Base Fields
+        userId: item.adminId,
+        name: item.name,
+        email: "", // API 미제공
+        phoneNumber: "", // API 미제공
+        role: "ADMIN" as const,
+        isActive: true, // API 미제공 (기본값)
+        passwordHash: "", // Not needed for frontend
+        createdAt: "",
+        updatedAt: "",
+        birthDate: "",
+
+        // AdminContact Specific
+        assignedZoneId: item.assignedZoneId, // DB_User field
+        assignedZone: item.zoneName === 'UNKNOWN' ? undefined : item.zoneName, // UI Display
+        isOnline: true, // Always allow call (Requested)
+    })) as AdminContact[];
 }
 
 export const adminService = {

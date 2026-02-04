@@ -140,21 +140,20 @@ export const issueService = {
   },
 
   /** 이슈 상세 조회 */
-  getIssue: async (issueId: number): Promise<ApiResponse<IssueDetail>> => {
+  getIssue: async (issueId: number): Promise<ApiResponse<IssueDetailData>> => {
     return requestJSON(`/api/issues/${issueId}`, { method: "GET" });
   },
 
   /**
    * 관리자 관제 이슈 목록 조회 (GET /api/issues)
    */
-  getIssues: async (params: AdminIssueListRequest): Promise<AdminIssueListResponse> => {
+  getIssues: async (params?: AdminIssueListRequest): Promise<AdminIssueListResponse> => {
     // [MOCK MODE] Real API call commented out
     /*
-    const query = new URLSearchParams({
-      status: params.status,
-      page: (params.page || 1).toString(),
-      size: (params.size || 10).toString(),
-    });
+    const query = new URLSearchParams();
+    if (params?.status) query.append("status", params.status);
+    if (params?.page) query.append("page", params.page.toString());
+    if (params?.size) query.append("size", params.size.toString());
 
     const response = await requestJSON<ApiResponse<AdminIssueListResponse>>(`/api/issues?${query.toString()}`, {
       method: "GET",
@@ -164,13 +163,17 @@ export const issueService = {
     */
 
     const { mockIssueSummaries } = await import("@/mocks/issueMocks");
-    const filtered = mockIssueSummaries.filter(i => i.status === params.status);
+
+    // params가 없거나 status가 없으면 전체 반환
+    const filtered = params?.status
+      ? mockIssueSummaries.filter(i => i.status === params.status)
+      : mockIssueSummaries;
 
     return {
       issues: filtered,
       paging: {
-        page: params.page || 1,
-        size: params.size || 10,
+        page: params?.page || 1,
+        size: params?.size || 10,
         totalCount: filtered.length,
         totalPages: 1
       }
