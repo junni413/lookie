@@ -318,6 +318,10 @@ export interface DB_Worker extends DB_User {
     workRate?: number;
     lineNumber?: number;
     binNumber?: number;
+    // Enhanced fields for Manage Page
+    processingSpeed?: number;
+    currentTaskProgress?: number;
+    webrtcStatus?: string;
 }
 
 // Layout Types for Map

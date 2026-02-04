@@ -46,9 +46,27 @@ interface AdminListResponseItem {
 }
 
 // API Params
+// API Params
 interface AdminListParams {
     zoneId?: string;
     name?: string;
+}
+
+interface AdminZoneAssignmentRequest {
+    workerId: number;
+    zoneId: number;
+    reason?: string;
+}
+
+// Zone Worker DTO (Rich Data)
+export interface ZoneWorkerDto {
+    workerId: number;
+    name: string; // Formatted Name
+    workCount: number;
+    processingSpeed: number;
+    currentTaskProgress: number;
+    status: string; // "WORKING", etc.
+    webrtcStatus: string; // "AVAILABLE", etc.
 }
 
 
@@ -135,8 +153,32 @@ export async function getAdmins(token: string, params?: AdminListParams): Promis
     })) as AdminContact[];
 }
 
+/**
+ * 관리자 강제 구역 배정
+ * POST /api/control/assignments
+ */
+export async function assignWorkerToZone(workerId: number, zoneId: number, reason?: string): Promise<void> {
+    await request<ApiResponse<void>>("/api/control/assignments", {
+        method: "POST",
+        body: { workerId, zoneId, reason } as AdminZoneAssignmentRequest,
+    });
+}
+
+/**
+ * 구역별 작업자 상세 조회
+ * GET /api/control/zones/{zoneId}/workers
+ */
+export async function getWorkersByZone(zoneId: number): Promise<ZoneWorkerDto[]> {
+    const response = await request<ApiResponse<ZoneWorkerDto[]>>(`/api/control/zones/${zoneId}/workers`, {
+        method: "GET",
+    });
+    return response.data || [];
+}
+
 export const adminService = {
     getDashboardSummary,
     getZones,
     getAdmins,
+    assignWorkerToZone,
+    getWorkersByZone,
 };

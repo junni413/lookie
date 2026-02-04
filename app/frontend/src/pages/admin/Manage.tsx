@@ -35,7 +35,7 @@ export default function Manage() {
         try {
             const [statsResult, workersResult] = await Promise.allSettled([
                 manageService.getZoneStats(),
-                manageService.getAllWorkers()
+                manageService.getAssignedWorkers() // Use new API with merged details
             ]);
 
             // 1. Process Stats
@@ -61,7 +61,7 @@ export default function Manage() {
                 setWorkers([]);
             }
             
-            setPrevAppliedWorkers(null);
+            setPrevAppliedWorkers(null); 
         } catch (error: any) {
             console.error("Unexpected error in loadData", error);
             // setError(error.message); // Don't block UI
@@ -78,23 +78,8 @@ export default function Manage() {
             return w;
         }));
     };
-
-    // Helper: Deep comparison for worker state (optimization)
-    const hasWorkerStateChanged = (current: DB_Worker[], original: DB_Worker[]) => {
-        if (current.length !== original.length) return true;
-        for (let i = 0; i < current.length; i++) {
-            if (current[i].userId !== original[i].userId) return true; // Order changed (shouldn't happen if sorted, but safe check)
-            if (current[i].currentZoneId !== original[i].currentZoneId) return true; // Zone changed
-        }
-        return false;
-    };
-
-    const handleReset = () => {
-        if (lastAppliedWorkers.length > 0) {
-            setWorkers(structuredClone(lastAppliedWorkers));
-        }
-    };
-
+    
+    // Restore Previous Layout Handler
     const handleRestorePrevious = () => {
         if (prevAppliedWorkers) {
             if (confirm("정말 이전 배치로 되돌리시겠습니까? 현재 작업 내용은 저장되지 않습니다.")) {
@@ -103,11 +88,24 @@ export default function Manage() {
         }
     };
 
+
     const handleApply = async () => {
         setLoading(true);
         try {
-            // Call API
-            await manageService.updateWorkers(workers);
+            // Calculate changed workers
+            const changedWorkers = workers.filter((worker) => {
+                 const original = lastAppliedWorkers.find(w => w.userId === worker.userId);
+                 return original && original.currentZoneId !== worker.currentZoneId;
+            });
+
+            if (changedWorkers.length === 0) {
+                alert("변경된 사항이 없습니다.");
+                setLoading(false);
+                return;
+            }
+
+            // Call API only for changed workers
+            await manageService.updateWorkers(changedWorkers);
             alert("작업자 배치가 적용되었습니다.");
 
             // Update History with Deep Copy
@@ -141,8 +139,7 @@ export default function Manage() {
         return <div className="h-full flex items-center justify-center text-red-500">Error: {error}</div>;
     }
 
-    // Optimized diff check
-    const hasChanges = hasWorkerStateChanged(workers, lastAppliedWorkers);
+
 
 
     return (
@@ -161,8 +158,7 @@ export default function Manage() {
                         AI 추천 재배치
                     </Button>
                     <div className="w-px h-8 bg-slate-200 mx-1" />
-
-                    {/* Previous Restore Button */}
+                    
                     <Button
                         variant="outline"
                         onClick={handleRestorePrevious}
@@ -173,19 +169,6 @@ export default function Manage() {
                     >
                         <RotateCcw size={16} />
                         이전 배치
-                    </Button>
-
-                    {/* Reset Button */}
-                    <Button
-                        variant="outline"
-                        onClick={handleReset}
-                        disabled={!hasChanges}
-                        className="gap-2 text-slate-600 shadow-sm"
-                        title="현재 변경사항 초기화"
-                        size="sm"
-                    >
-                        <RotateCcw size={16} />
-                        되돌리기
                     </Button>
 
                     <Button

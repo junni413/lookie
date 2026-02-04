@@ -24,18 +24,20 @@ export default function ManageWorkerCard({ worker, onDragStart, isMoved }: Manag
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                         <div className="min-w-0 flex-1">
                             <h4 className="font-semibold text-sm text-slate-800 leading-tight truncate">{worker.name}</h4>
-                            <span className="text-[10px] text-slate-400">#{worker.userId}</span>
                         </div>
                     </div>
 
                     {/* 오른쪽: 작업 건수 및 구역 */}
                     <div className="flex items-center gap-2 shrink-0">
                         <span className="text-xs font-bold text-slate-700">{worker.todayWorkCount}건</span>
-                        {worker.currentZoneId && (
-                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                                Z{worker.currentZoneId}
-                            </span>
-                        )}
+                    </div>
+                </div>
+                
+                {/* 하단: 상세 스탯 (처리속도, 진행률) */}
+                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+                    <div className="flex gap-2">
+                        <span>속도 <span className="font-semibold text-slate-700">{worker.processingSpeed || 0}</span></span>
+                        <span>진행 <span className="font-semibold text-slate-700">{Math.floor(worker.currentTaskProgress || 0)}%</span></span>
                     </div>
                 </div>
             </Card>
