@@ -48,8 +48,7 @@ export default function MyPage() {
   return (
     <div className="flex h-full flex-col space-y-6">
       <div className="flex flex-col items-center justify-center py-6">
-        <div className="font-medium text-slate-800">{user.name} / {user.phoneNumber}</div>
-        <div className="text-xs text-slate-500">{user.userId}</div>
+
         <h2 className="mt-4 text-[22px] font-black tracking-tight text-slate-900">
           {view.name}님
         </h2>
@@ -95,10 +94,10 @@ function InfoRow({
         <Icon size={18} strokeWidth={2} />
       </div>
       <div className="ml-4 flex-1">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        <p className="text-sm font-bold uppercase tracking-wider text-slate-400">
           {label}
         </p>
-        <p className="mt-0.5 text-[15px] font-bold text-slate-800">{value}</p>
+        <p className="mt-0.5 text-lg font-bold text-slate-800">{value}</p>
       </div>
     </div>
   );

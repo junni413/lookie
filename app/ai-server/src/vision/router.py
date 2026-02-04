@@ -1,33 +1,34 @@
 # src/vision/router.py
-from fastapi import APIRouter, File, UploadFile, Form, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel
+from typing import Optional
 from src.vision.service import vision_service
 
 # 라우터 정의 (/api/vision 접두사 사용)
 router = APIRouter(prefix="/api/vision", tags=["Vision"])
 
+class PredictRequest(BaseModel):
+    imageUrl: str
+    productId: int
+    issueId: int
+    issueType: Optional[str] = "DAMAGED"  # 기본값: DAMAGED
+
 @router.post("/predict")
 async def predict(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...), 
-    product_id: int = Form(...),
-    issue_id: int = Form(...)
+    request: PredictRequest
 ):
     """
-    이미지를 받아 백그라운드에서 추론하고 결과를 백엔드로 Webhook 전송
+    이미지 URL을 받아 백그라운드에서 추론하고 결과를 백엔드로 Webhook 전송
     """
-    # 1. 파일 읽기
-    try:
-        image_bytes = await file.read()
-    except Exception:
-        raise HTTPException(status_code=400, detail="File Read Error")
-        
-    # 2. 백그라운드 작업 등록 (Service 호출)
+    # 백그라운드 작업 등록 (Service 호출)
     background_tasks.add_task(
-        vision_service.run_inference, 
-        image_bytes, 
-        product_id, 
-        issue_id
+        vision_service.run_inference_from_url,
+        request.imageUrl,
+        request.productId,
+        request.issueId,
+        request.issueType
     )
 
-    # 3. 즉시 응답
-    return {"status": "processing", "issue_id": issue_id}
+    # 즉시 응답
+    return {"status": "processing", "issue_id": request.issueId}

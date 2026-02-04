@@ -7,8 +7,9 @@ import type {
 } from "../types/issue";
 
 /** -----------------------------
- * HTTP Helper (Issue API 전용)
+ * HTTP Helper
  * ----------------------------- */
+
 const TOKEN_KEY = "accessToken";
 
 function getToken() {
@@ -22,7 +23,8 @@ async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
     ...(init.headers as Record<string, string> | undefined),
   };
 
-  if (init.body && !headers["Content-Type"]) {
+  // ❗ FormData일 때는 Content-Type 직접 지정 금지 (boundary 자동)
+  if (init.body && !(init.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -32,26 +34,20 @@ async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
 
   const res = await fetch(url, { ...init, headers });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
-
-  return data as T;
+  return (text ? JSON.parse(text) : {}) as T;
 }
 
-
-
 /** -----------------------------
- * Swagger 기반 타입
+ * Types (Swagger 기준)
  * ----------------------------- */
 
-/** POST /api/issues - request */
 export type CreateIssueRequest = {
   batchTaskId: number;
   batchTaskItemId: number;
-  issueType: string; // enum이면 "DAMAGED" | "MISSING" | ...
+  issueType: string; // "DAMAGED" | "MISSING" | "OTHER"
   imageUrl: string;
 };
 
-/** POST /api/issues - response.data */
 export type CreateIssueResponseData = {
   issueId: number;
   issueType: string;
@@ -62,152 +58,136 @@ export type CreateIssueResponseData = {
   issueHandling: string;
 };
 
-/** POST /api/issues/{issueId}/ai/retake - request */
-export type RetakeAiRequest = {
-  imageUrl: string;
-};
-
-/** POST /api/issues/{issueId}/ai/result - request */
-export type AiResultRequest = {
-  aiDecision: string;
-  reasonCode: string;
-  confidence: number;
-  summary: string;
-  aiResult: string;
-  newLocation: {
-    zoneLocationId: number;
-    locationCode: string;
-  };
-};
-
-/** POST /api/issues/{issueId}/ai/result - response.data */
-export type AiResultResponseData = {
+export type IssueDetail = {
   issueId: number;
+  type: string;
   status: string;
-  urgency: number;
+  priority: string;
   issueHandling: string;
   adminRequired: boolean;
   reasonCode: string;
-  resolvedAt: string; // ISO string
-  nextAction: string; // "NEXT_ITEM" 등
+  urgency: number;
+  adminDecision: string;
+  aiResult: string;
+  confidence: number;
+  summary: string;
+  workerNextAction: string;
+  issueNextAction: string;
+  adminNextAction: string;
+  availableActions: string[];
+
+  // UI 보조 필드
+  productName?: string;
+  issueType?: string;
+  locationCode?: string;
+  imageUrl?: string;
+  createdAt?: string;
+  verdict?: string;
+  sku?: string;
 };
 
-/** POST /api/issues/{issueId}/admin/confirm - request */
-export type AdminConfirmRequest = {
-  adminDecision: "NORMAL" | string; // enum이면 "NORMAL" | "DAMAGED" ...
+export type MyIssueResponse = {
+  issueId: number;
+  issueType: string;
+  status: string; // "OPEN" | "RESOLVED"
+  productName: string;
+  locationCode: string;
+  aiDecision: string;
+  adminRequired: boolean;
+  createdAt: string;
 };
-
-
 
 /** -----------------------------
- * issueService (Issue API only)
+ * issueService (Real API Only)
  * ----------------------------- */
+
 export const issueService = {
-  /** 이슈 등록 */
-  createIssue: async (body: CreateIssueRequest): Promise<ApiResponse<CreateIssueResponseData>> => {
+  /** ✅ 이미지 업로드 → imageUrl 반환 */
+  uploadImage: async (file: File): Promise<ApiResponse<string>> => {
+    const form = new FormData();
+    form.append("file", file);
+
+    return requestJSON(`/api/uploads/images`, {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  /** ✅ 이슈 생성 */
+  createIssue: async (
+    body: CreateIssueRequest
+  ): Promise<ApiResponse<CreateIssueResponseData>> => {
     return requestJSON(`/api/issues`, {
       method: "POST",
       body: JSON.stringify(body),
     });
   },
 
-  /** 이슈 재촬영(AI 판단 재요청) */
-  retakeAi: async (issueId: number, body: RetakeAiRequest): Promise<ApiResponse<{}>> => {
+  /** ✅ 이슈 상세 조회 (AI 결과 포함) */
+  getIssue: async (issueId: number): Promise<ApiResponse<IssueDetail>> => {
+    return requestJSON(`/api/issues/${issueId}`, {
+      method: "GET",
+    });
+  },
+
+  /** ✅ 내 이슈 목록 조회 */
+  getMyIssues: async (
+    status?: "OPEN" | "RESOLVED"
+  ): Promise<ApiResponse<MyIssueResponse[]>> => {
+    const qs = status ? `?status=${status}` : "";
+    return requestJSON(`/api/issues/my${qs}`, {
+      method: "GET",
+    });
+  },
+
+  /** ✅ 재촬영 요청 (AI 재분석) */
+  retakeIssue: async (
+    issueId: number,
+    imageUrl: string
+  ): Promise<ApiResponse<void>> => {
     return requestJSON(`/api/issues/${issueId}/ai/retake`, {
       method: "POST",
+      body: JSON.stringify({ imageUrl }),
+    });
+  },
+
+  /** ✅ Admin: 이슈 목록 조회 */
+  getIssues: async (
+    params?: AdminIssueListRequest
+  ): Promise<AdminIssueListResponse> => {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.append("page", String(params.page));
+    if (params?.size) qs.append("size", String(params.size));
+    if (params?.status) qs.append("status", params.status);
+    if (params?.sort) qs.append("sort", params.sort);
+
+    const queryString = qs.toString();
+    const url = `/api/admin/issues${queryString ? `?${queryString}` : ""}`;
+
+    return requestJSON(url, { method: "GET" });
+  },
+
+  /** ✅ Admin: 이슈 상세 조회 */
+  getIssueDetail: async (issueId: number): Promise<IssueDetailData | null> => {
+    try {
+      const response = await requestJSON<ApiResponse<IssueDetailData>>(
+        `/api/admin/issues/${issueId}`,
+        { method: "GET" }
+      );
+      return response.data || null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** ✅ Admin: 이슈 확정 */
+  confirmIssue: async (
+    issueId: number,
+    body: { adminDecision: string }
+  ): Promise<void> => {
+    await requestJSON(`/api/admin/issues/${issueId}`, {
+      method: "PATCH",
       body: JSON.stringify(body),
     });
-  },
-
-  /**
-   * AI 판정 결과 수신 (Webhook)
-   * 현재 백엔드가 호출하는 용도지만,
-   * 개발/테스트용으로 프론트에서 직접 호출할 수도 있음.
-   */
-  submitAiResult: async (issueId: number, body: AiResultRequest): Promise<ApiResponse<AiResultResponseData>> => {
-    return requestJSON(`/api/issues/${issueId}/ai/result`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  },
-
-  /** 관리자 확정 */
-  adminConfirm: async (issueId: number, body: AdminConfirmRequest): Promise<ApiResponse<{}>> => {
-    return requestJSON(`/api/issues/${issueId}/admin/confirm`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  },
-
-  /** 이슈 상세 조회 */
-  getIssue: async (issueId: number): Promise<ApiResponse<IssueDetailData>> => {
-    return requestJSON(`/api/issues/${issueId}`, { method: "GET" });
-  },
-
-  /**
-   * 관리자 관제 이슈 목록 조회 (GET /api/issues)
-   */
-  getIssues: async (params?: AdminIssueListRequest): Promise<AdminIssueListResponse> => {
-    // [MOCK MODE] Real API call commented out
-    /*
-    const query = new URLSearchParams();
-    if (params?.status) query.append("status", params.status);
-    if (params?.page) query.append("page", params.page.toString());
-    if (params?.size) query.append("size", params.size.toString());
-
-    const response = await requestJSON<ApiResponse<AdminIssueListResponse>>(`/api/issues?${query.toString()}`, {
-      method: "GET",
-    });
-
-    return response.data;
-    */
-
-    const { mockIssueSummaries } = await import("@/mocks/issueMocks");
-
-    // params가 없거나 status가 없으면 전체 반환
-    const filtered = params?.status
-      ? mockIssueSummaries.filter(i => i.status === params.status)
-      : mockIssueSummaries;
-
-    return {
-      issues: filtered,
-      paging: {
-        page: params?.page || 1,
-        size: params?.size || 10,
-        totalCount: filtered.length,
-        totalPages: 1
-      }
-    };
-  },
-
-  /**
-   * 이슈 상세 조회 (GET /api/issues/:id)
-   */
-  getIssueDetail: async (issueId: number): Promise<IssueDetailData> => {
-    // [MOCK MODE] Real API call commented out
-    /*
-    const response = await requestJSON<ApiResponse<IssueDetailData>>(`/api/issues/${issueId}`, {
-      method: "GET",
-    });
-    return response.data;
-    */
-
-    const { mockIssueDetails } = await import("@/mocks/issueMocks");
-    const detail = mockIssueDetails[issueId];
-    if (!detail) throw new Error("Mock issue not found");
-    return detail;
-  },
-
-  /**
-   * 이슈 확정 (POST /api/issues/:id/admin/confirm)
-   */
-  confirmIssue: async (issueId: number, body: AdminConfirmRequest): Promise<void> => {
-    console.log(`[MOCK] Confirmed issue ${issueId}:`, body);
-    /*
-    await requestJSON(`/api/issues/${issueId}/admin/confirm`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    */
   },
 };

@@ -81,12 +81,12 @@ export default function WorkDetail() {
   // ✅ 현재 아이템이 바뀔 때 nextAction 저장/복원
   useEffect(() => {
     if (!items[currentIndex]) return;
-    
+
     const item = items[currentIndex];
     const itemId = item.batchTaskItemId;
-    
-    console.log("🔄 useEffect triggered:", { 
-      currentIndex, 
+
+    console.log("🔄 useEffect triggered:", {
+      currentIndex,
       itemId,
       itemStatus: item.status,
       pickedQty: item.pickedQty,
@@ -99,7 +99,7 @@ export default function WorkDetail() {
       setNextAction("NEXT_ITEM");
       return;
     }
-    
+
     // ✅ 저장된 상태가 있으면 복원
     const savedState = itemStatesRef.current.get(itemId);
     if (savedState) {
@@ -133,19 +133,19 @@ export default function WorkDetail() {
   // ✅ 다음 아이템으로 이동 (수량 채워졌으면 completeItem 호출 후 이동)
   const handleNextItem = async () => {
     if (currentIndex >= items.length - 1) return;
-    
+
     const item = items[currentIndex];
-    
+
     // 수량이 다 채워졌고 아직 DONE이 아니면 completeItem 호출
     if (item && item.pickedQty >= item.requiredQty && item.status !== "DONE") {
       console.log("➡️ Completing item before moving to next:", item.batchTaskItemId);
-      
+
       try {
         const res = await taskService.completeItem(item.batchTaskItemId);
-        
+
         if (res.success && res.data) {
           console.log("➡️ Item completed, nextAction:", res.data.nextAction);
-          
+
           // 아이템 상태 업데이트
           const updatedPayload = res.data.payload;
           if (updatedPayload) {
@@ -154,7 +154,7 @@ export default function WorkDetail() {
             );
             setItems(updatedItems);
           }
-          
+
           // 다음 아이템으로 이동
           setCurrentIndex((i) => i + 1);
           setNextAction(res.data.nextAction || "SCAN_LOCATION");
@@ -203,7 +203,7 @@ export default function WorkDetail() {
 
           if (res.success && res.data) {
             console.log("📍 Setting nextAction to:", res.data.nextAction);
-            
+
             // ✅ Map을 먼저 업데이트하여 useEffect가 복원할 때 올바른 상태 사용
             itemStatesRef.current.set(currentItem.batchTaskItemId, res.data.nextAction);
             setNextAction(res.data.nextAction);
@@ -238,7 +238,7 @@ export default function WorkDetail() {
 
         if (res.success && res.data) {
           console.log("📦 Setting nextAction to:", res.data.nextAction);
-          
+
           // ✅ Map을 먼저 업데이트하여 useEffect가 복원할 때 올바른 상태 사용
           itemStatesRef.current.set(currentItem.batchTaskItemId, res.data.nextAction);
           setNextAction(res.data.nextAction);
@@ -294,7 +294,7 @@ export default function WorkDetail() {
       pickedQty: currentItem?.pickedQty,
       requiredQty: currentItem?.requiredQty,
     });
-    
+
     if (!currentItem) {
       console.log("🚀 No currentItem, returning");
       return;
@@ -306,13 +306,13 @@ export default function WorkDetail() {
       toast({ title: "작업 미완료", description: "현재 상품의 수량을 모두 채워주세요." });
       return;
     }
-    
+
     console.log("🚀 Proceeding to completeItem...");
 
     try {
       // ✅ 1. 현재 아이템 완료 처리 (백엔드 호출)
       const completeRes = await taskService.completeItem(currentItem.batchTaskItemId);
-      
+
       if (!completeRes.success) {
         const msg =
           (completeRes.errorCode && TASK_ERROR_MESSAGES[completeRes.errorCode as TaskErrorCode]) ||
@@ -329,7 +329,7 @@ export default function WorkDetail() {
       // ✅ 2. 마지막 아이템이고 모든 작업 완료인 경우
       if (nextActionFromServer === "COMPLETE_TASK") {
         const completeTaskRes = await taskService.completeTask(safeTask.batchTaskId);
-        
+
         if (completeTaskRes.success) {
           alert("축하합니다! 모든 배정 작업을 완료했습니다.");
           navigate("/worker/home");
@@ -356,7 +356,7 @@ export default function WorkDetail() {
       // 다음 아이템으로 이동 (useEffect가 새 아이템의 상태에 따라 nextAction 설정)
       setCurrentIndex((i) => i + 1);
       setNextAction(nextActionFromServer || "SCAN_LOCATION");
-      
+
     } catch (err: any) {
       toast({ title: "처리 실패", description: err?.message, variant: "destructive" });
     }
@@ -392,34 +392,34 @@ export default function WorkDetail() {
   // 혹은, 백엔드가 주는 nextAction이 ADJUST_QUANTITY 인지 확인.
   // 여기서는 "상품 스캔 전에는 비활성화" 이므로 -> nextAction === "SCAN_LOCATION" || nextAction === "SCAN_ITEM" 이면 비활성화
   const isQuantityControlEnabled =
-      nextAction !== "SCAN_LOCATION" && nextAction !== "SCAN_ITEM";
+    nextAction !== "SCAN_LOCATION" && nextAction !== "SCAN_ITEM";
 
   return (
     <>
       <div className="space-y-4 px-2 relative">
-        <div className="flex justify-start">
+        <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm flex justify-between items-center">
+          <div>
+            <p className="text-base font-bold text-gray-900">토트 스캔 완료</p>
+            <p className="mt-1 text-sm text-gray-400">
+              토트 바코드: <span className="text-gray-600 font-medium">{toteBarcode}</span>
+            </p>
+          </div>
           <button
             onClick={() => navigate("/worker/task/list", { state: { task: safeTask, toteBarcode } })}
-            className="p-2 -mt-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-50 rounded-lg transition-colors"
           >
-            <div className="flex flex-col gap-1 w-6">
-              <div className="h-0.5 w-full bg-gray-500 rounded-full" />
-              <div className="h-0.5 w-4/5 bg-gray-500 rounded-full" />
+            <div className="flex flex-col gap-1.5 items-end justify-center w-8">
+              <div className="h-0.5 w-full bg-gray-400 rounded-full" />
+              <div className="h-0.5 w-2/3 bg-gray-400 rounded-full" />
+              <div className="h-0.5 w-full bg-gray-400 rounded-full" />
             </div>
           </button>
-        </div>
-
-        <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p className="text-base font-bold text-gray-900">토트 스캔 완료</p>
-          <p className="mt-1 text-sm text-gray-400">
-            토트 바코드: <span className="text-gray-600 font-medium">{toteBarcode}</span>
-          </p>
         </section>
 
         <section className="rounded-[32px] border border-gray-50 bg-white p-6 shadow-sm relative overflow-hidden">
           <p className="text-[22px] font-black text-center text-gray-900 leading-tight">
             {nextAction === "SCAN_LOCATION" ? "지번을 스캔해주세요." :
-             nextAction === "SCAN_ITEM" ? "상품을 스캔해주세요." : "수량을 확인해주세요."}
+              nextAction === "SCAN_ITEM" ? "상품을 스캔해주세요." : "수량을 확인해주세요."}
           </p>
 
           <div className="mt-8 flex items-center gap-2">
@@ -467,28 +467,25 @@ export default function WorkDetail() {
                   <button
                     onClick={openLocationScanner}
                     disabled={!isLocationActive}
-                    className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${
-                      isLocationActive 
-                        ? "bg-blue-50/50 border-blue-100 shadow-sm" 
-                        : isLocationDone
-                          ? "bg-green-50/50 border-green-100"
-                          : "bg-white border-transparent"
-                    }`}
+                    className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${isLocationActive
+                      ? "bg-blue-50/50 border-blue-100 shadow-sm"
+                      : isLocationDone
+                        ? "bg-green-50/50 border-green-100"
+                        : "bg-white border-transparent"
+                      }`}
                   >
                     <div
-                      className={`p-2 rounded-full mb-2 ${
-                        isLocationActive 
-                          ? "bg-blue-600 text-white" 
-                          : isLocationDone
-                            ? "bg-green-500 text-white"
-                            : "bg-gray-100 text-gray-400"
-                      }`}
+                      className={`p-2 rounded-full mb-2 ${isLocationActive
+                        ? "bg-blue-600 text-white"
+                        : isLocationDone
+                          ? "bg-green-500 text-white"
+                          : "bg-gray-100 text-gray-400"
+                        }`}
                     >
                       {isLocationDone ? <Check className="w-5 h-5" /> : <MapPin className="w-5 h-5" />}
                     </div>
-                    <p className={`text-sm font-bold ${
-                      isLocationActive ? "text-gray-900" : isLocationDone ? "text-green-600" : "text-gray-400"
-                    }`}>
+                    <p className={`text-sm font-bold ${isLocationActive ? "text-gray-900" : isLocationDone ? "text-green-600" : "text-gray-400"
+                      }`}>
                       {isLocationDone ? "지번 확인 완료" : "지번 스캔"}
                     </p>
                     <p className="text-sm font-medium text-gray-500 mt-0.5">{currentItem.locationCode}</p>
@@ -498,28 +495,25 @@ export default function WorkDetail() {
                   <button
                     onClick={openItemScanner}
                     disabled={!isItemActive}
-                    className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${
-                      isItemActive 
-                        ? "bg-blue-50/50 border-blue-100 shadow-sm" 
-                        : isItemDone
-                          ? "bg-green-50/50 border-green-100"
-                          : "bg-white border-transparent"
-                    }`}
+                    className={`flex flex-col items-center justify-center h-32 rounded-[28px] border-2 transition-all duration-300 ${isItemActive
+                      ? "bg-blue-50/50 border-blue-100 shadow-sm"
+                      : isItemDone
+                        ? "bg-green-50/50 border-green-100"
+                        : "bg-white border-transparent"
+                      }`}
                   >
                     <div
-                      className={`p-2 rounded-full mb-2 ${
-                        isItemActive 
-                          ? "bg-blue-600 text-white" 
-                          : isItemDone
-                            ? "bg-green-500 text-white"
-                            : "bg-gray-100 text-gray-400"
-                      }`}
+                      className={`p-2 rounded-full mb-2 ${isItemActive
+                        ? "bg-blue-600 text-white"
+                        : isItemDone
+                          ? "bg-green-500 text-white"
+                          : "bg-gray-100 text-gray-400"
+                        }`}
                     >
                       {isItemDone ? <Check className="w-5 h-5" /> : <PackageSearch className="w-5 h-5" />}
                     </div>
-                    <p className={`text-sm font-bold ${
-                      isItemActive ? "text-gray-900" : isItemDone ? "text-green-600" : "text-gray-400"
-                    }`}>
+                    <p className={`text-sm font-bold ${isItemActive ? "text-gray-900" : isItemDone ? "text-green-600" : "text-gray-400"
+                      }`}>
                       {isItemDone ? "상품 확인 완료" : "상품 스캔"}
                     </p>
                     <p className="text-sm font-medium text-gray-500 mt-0.5">{currentItem.barcode}</p>
@@ -534,9 +528,8 @@ export default function WorkDetail() {
               <button
                 onClick={() => handleQuantityChange(-1)}
                 disabled={!isQuantityControlEnabled || currentItem.pickedQty === 0}
-                className={`p-3 rounded-full transition-colors ${
-                  !isQuantityControlEnabled || currentItem.pickedQty === 0 ? "bg-gray-50 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
-                }`}
+                className={`p-3 rounded-full transition-colors ${!isQuantityControlEnabled || currentItem.pickedQty === 0 ? "bg-gray-50 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                  }`}
               >
                 <Minus className="w-6 h-6" />
               </button>
@@ -551,11 +544,10 @@ export default function WorkDetail() {
               <button
                 onClick={() => handleQuantityChange(1)}
                 disabled={!isQuantityControlEnabled || currentItem.pickedQty >= currentItem.requiredQty}
-                className={`p-3 rounded-full transition-colors ${
-                  !isQuantityControlEnabled || currentItem.pickedQty >= currentItem.requiredQty
-                    ? "bg-gray-50 text-gray-300"
-                    : "bg-gray-100 hover:bg-gray-200 text-gray-600"
-                }`}
+                className={`p-3 rounded-full transition-colors ${!isQuantityControlEnabled || currentItem.pickedQty >= currentItem.requiredQty
+                  ? "bg-gray-50 text-gray-300"
+                  : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                  }`}
               >
                 <Plus className="w-6 h-6" />
               </button>
@@ -589,7 +581,7 @@ export default function WorkDetail() {
             </button>
           </div>
         </section>
-      </div>
+      </div >
 
       <IssueSelectSheet
         open={issueOpen}

@@ -23,6 +23,7 @@ import WorkHistory from "./pages/worker/WorkHistory";
 import IssueListPage from "./pages/worker/issue/IssueList";
 import IssueReportPage from "./pages/worker/issue/IssueReport";
 import IssueResultPage from "./pages/worker/issue/IssueResult";
+import IssueDetail from "./pages/worker/issue/IssueDetail";
 
 // ADMIN pages
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -137,6 +138,7 @@ export default function App() {
           <Route path="issue" element={<IssueListPage />} />
           <Route path="issue/report" element={<IssueReportPage />} />
           <Route path="issue/result" element={<IssueResultPage />} />
+          <Route path="issue/detail" element={<IssueDetail />} />
 
           {/* 사이드바 연결 페이지들 */}
           <Route path="mypage" element={<MyPage />} />
