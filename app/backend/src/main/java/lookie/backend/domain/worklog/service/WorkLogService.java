@@ -2,6 +2,9 @@ package lookie.backend.domain.worklog.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.user.mapper.UserMapper;
+import lookie.backend.domain.user.vo.UserRole;
+import lookie.backend.domain.user.vo.UserVO;
 import lookie.backend.domain.worklog.dto.DailyWorkLogStats;
 import lookie.backend.domain.worklog.dto.WorkLogRequestDto;
 import lookie.backend.domain.worklog.dto.WorkLogResponseDto;
@@ -36,34 +39,43 @@ public class WorkLogService {
 
     private final WorkLogMapper workLogMapper;
     private final ZoneAssignmentService zoneAssignmentService;
+    private final UserMapper userMapper;
 
     /**
      * 1. 출근 처리 (START) 수행
      * 현재 종료되지 않은 근무 세션이 있는지 확인한 후, 새로운 세션과 시작 이벤트를 생성
      *
-     * @param workerId 작업자 고유 식별자
+     * @param userId 작업자(또는 관리자) 고유 식별자
      * @return 생성된 근무 정보 및 초기 상태 DTO
      * @throws ApiException 이미 출근한 상태일 경우 발생
      */
     @Transactional
-    public WorkLogResponseDto startWork(Long workerId) {
+    public WorkLogResponseDto startWork(Long userId) {
         // 1-1. 중복 출근 검증
-        workLogMapper.findActiveWorkLogByWorkerId(workerId).ifPresent(log -> {
+        workLogMapper.findActiveWorkLogByWorkerId(userId).ifPresent(log -> {
             throw new ApiException(ErrorCode.WORK_ALREADY_STARTED, "이미 출근 처리된 상태입니다.");
         });
 
-        // 1-2. 근무 세션 생성
+        // 1-2. 사용자 Role 확인 (구역 배정 분기 처리를 위해)
+        UserVO user = userMapper.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+
+        // 1-3. 근무 세션 생성
         WorkLog workLog = WorkLog.builder()
-                .workerId(workerId)
+                .workerId(userId)
                 .startedAt(LocalDateTime.now())
                 .plannedEndAt(LocalDateTime.now().plusMinutes(5)) // 시연용 5분
                 .build();
 
-        // 1-3. 자동 구역 배정 (Load Balancing)
-        // ZoneAssignmentService에 위임
-        zoneAssignmentService.assignZoneToWorker(workerId);
+        // 1-4. 자동 구역 배정 (Load Balancing) - WORKER인 경우만 수행
+        if (UserRole.WORKER.equals(user.getRole())) {
+            zoneAssignmentService.assignZoneToWorker(userId);
+        } else {
+            // 관리자(ADMIN)는 구역 배정 로직을 건너뜀
+            log.info("Admin user {} started work without zone assignment.", userId);
+        }
 
-        // 1-4. 시작(START) 이벤트 기록
+        // 1-5. 시작(START) 이벤트 기록
         workLogMapper.insertWorkLog(workLog);
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.START, "출근");
 
@@ -74,20 +86,28 @@ public class WorkLogService {
      * 2. 퇴근 처리 (END) 수행
      * 활성화된 근무 세션을 찾아 종료 시각 업데이트 후 종료 이벤트 기록
      *
-     * @param workerId 작업자 고유 식별자
+     * @param userId 작업자(또는 관리자) 고유 식별자
      * @return 종료된 근무 정보 DTO
      * @throws ApiException 활성 근무 세션이 없을 경우 발생
      */
     @Transactional
-    public WorkLogResponseDto endWork(Long workerId) {
-        WorkLog workLog = getActiveWorkLogOrThrow(workerId);
+    public WorkLogResponseDto endWork(Long userId) {
+        WorkLog workLog = getActiveWorkLogOrThrow(userId);
 
         // 2-1. 종료 시각 반영 및 업데이트
         workLog.setEndedAt(LocalDateTime.now());
         workLogMapper.updateWorkLogEnd(workLog);
 
-        // 2-2. 구역 배정 해제 (Unassignment)
-        zoneAssignmentService.unassignZoneFromWorker(workerId);
+        // 2-2. 사용자 Role 확인 및 구역 배정 해제 (Unassignment)
+        UserVO user = userMapper.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+
+        if (UserRole.WORKER.equals(user.getRole())) {
+            zoneAssignmentService.unassignZoneFromWorker(userId);
+        } else {
+            // 관리자(ADMIN)는 구역 배정 해제 로직을 건너뜀
+            log.info("Admin user {} ended work (no zone unassignment needed).", userId);
+        }
 
         // 2-3. 종료(END) 이벤트 기록
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.END, "퇴근");
@@ -97,13 +117,13 @@ public class WorkLogService {
     /**
      * 3. 작업 중단/휴식 (PAUSE) 상태 기록
      *
-     * @param workerId 작업자 고유 식별자
-     * @param request  중단 사유를 포함한 DTO
+     * @param userId  작업자(또는 관리자) 고유 식별자
+     * @param request 중단 사유를 포함한 DTO
      * @return 변경된 상태 정보 DTO
      */
     @Transactional
-    public WorkLogResponseDto pauseWork(Long workerId, WorkLogRequestDto.StatusChange request) {
-        WorkLog workLog = getActiveWorkLogOrThrow(workerId);
+    public WorkLogResponseDto pauseWork(Long userId, WorkLogRequestDto.StatusChange request) {
+        WorkLog workLog = getActiveWorkLogOrThrow(userId);
         // 3-1. 중복 휴식 방지 검증
         validateStatusNot(workLog.getWorkLogId(), WorkLogEventType.PAUSE, ErrorCode.WORK_ALREADY_PAUSED);
 
@@ -115,13 +135,13 @@ public class WorkLogService {
      * 4. 작업 재개 (RESUME) 상태 기록
      * 이전 상태가 반드시 휴식(PAUSE) 상태여야 함
      *
-     * @param workerId 작업자 고유 식별자
+     * @param userId 작업자(또는 관리자) 고유 식별자
      * @return 변경된 상태 정보 DTO
      * @throws ApiException 휴식 상태가 아닌데 재개를 시도할 경우 발생
      */
     @Transactional
-    public WorkLogResponseDto resumeWork(Long workerId) {
-        WorkLog workLog = getActiveWorkLogOrThrow(workerId);
+    public WorkLogResponseDto resumeWork(Long userId) {
+        WorkLog workLog = getActiveWorkLogOrThrow(userId);
         WorkLogEvent lastEvent = workLogMapper.findLastEventByWorkLogId(workLog.getWorkLogId());
 
         // 4-1. 상태 전이 유효성 검사
@@ -161,11 +181,11 @@ public class WorkLogService {
      * '최근 근무 이력'을 조회해서 이름과 마지막 퇴근 시간을 채워서 반환함.
      */
     @Transactional(readOnly = true)
-    public WorkLogResponseDto getCurrentStatus(Long loginId, Long targetWorkerId) {
-        Long finalWorkerId = (targetWorkerId != null) ? targetWorkerId : loginId;
+    public WorkLogResponseDto getCurrentStatus(Long loginId, Long targetUserId) {
+        Long finalUserId = (targetUserId != null) ? targetUserId : loginId;
 
         // 1. 현재 근무 중인(Active) 로그 조회
-        List<WorkLogResponseDto> activeLogs = workLogMapper.findActiveWorkLogs(finalWorkerId);
+        List<WorkLogResponseDto> activeLogs = workLogMapper.findActiveWorkLogs(finalUserId);
 
         if (!activeLogs.isEmpty()) {
             activeLogs
@@ -175,7 +195,7 @@ public class WorkLogService {
 
         // 2. 근무 중이 아님 -> 가장 최근의 '지난 근무 이력' 조회 (이름, 구역, 퇴근시간 확보용)
         // (findWorkHistories는 이미 정렬되어 있으므로 0번째가 가장 최신)
-        List<WorkLogResponseDto> historyLogs = workLogMapper.findWorkHistories(finalWorkerId);
+        List<WorkLogResponseDto> historyLogs = workLogMapper.findWorkHistories(finalUserId);
 
         if (!historyLogs.isEmpty()) {
             historyLogs
@@ -187,7 +207,7 @@ public class WorkLogService {
         // 3. 신규 입사자라 근무 기록이 아예 없는 경우 (Edge Case)
         // 이때는 어쩔 수 없이 이름 없이 ID와 상태만 반환 (또는 UserMapper를 통해 이름만 조회하도록 추가 구현 가능)
         return WorkLogResponseDto.builder()
-                .workerId(finalWorkerId)
+                .workerId(finalUserId)
                 .currentStatus(WorkLogEventType.END)
                 .build();
     }
@@ -197,10 +217,10 @@ public class WorkLogService {
      * - 작업자: 본인 이력 조회
      * - 관리자: 특정 작업자 이력 조회
      */
-    public List<WorkLogResponseDto> getWorkHistories(Long loginId, Long targetWorkerId) {
-        Long finalWorkerId = (targetWorkerId != null) ? targetWorkerId : loginId;
+    public List<WorkLogResponseDto> getWorkHistories(Long loginId, Long targetUserId) {
+        Long finalUserId = (targetUserId != null) ? targetUserId : loginId;
         // 이력 조회 전용 최적화 쿼리 사용
-        List<WorkLogResponseDto> logs = workLogMapper.findWorkHistories(finalWorkerId);
+        List<WorkLogResponseDto> logs = workLogMapper.findWorkHistories(finalUserId);
         logs.forEach(log -> log.setWorkerName(WorkerNameFormatter.format(log.getName(), log.getPhoneNumber())));
         return logs;
     }
@@ -210,9 +230,9 @@ public class WorkLogService {
      * - 프론트엔드에서 reduce 할 필요 없이 백엔드에서 날짜별로 시간을 합쳐서 반환
      */
     @Transactional(readOnly = true)
-    public List<DailyWorkLogStats> getDailyStats(Long workerId) {
+    public List<DailyWorkLogStats> getDailyStats(Long userId) {
         // 1. 전체 이력 조회 (기존 로직 유지 - 엔티티 기반 계산)
-        List<WorkLog> logs = workLogMapper.findAllByWorkerId(workerId);
+        List<WorkLog> logs = workLogMapper.findAllByWorkerId(userId);
 
         // 2. 날짜별(LocalDate)로 그룹핑하여 근무 시간(분) 합산
         Map<LocalDate, Long> dailyMinutesMap = logs.stream()
@@ -244,8 +264,8 @@ public class WorkLogService {
     /**
      * 1. 진행 중인 근무 기록 조회하고 없으면 예외 던짐 (트랜잭션 처리용)
      */
-    private WorkLog getActiveWorkLogOrThrow(Long workerId) {
-        return workLogMapper.findActiveWorkLogByWorkerId(workerId)
+    private WorkLog getActiveWorkLogOrThrow(Long userId) {
+        return workLogMapper.findActiveWorkLogByWorkerId(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.WORK_SESSION_NOT_FOUND, "활성 근무 기록이 없습니다."));
     }
 
