@@ -16,7 +16,7 @@ type WorkLogData = {
   workLogId: number;
   workerId: number;
   workerName: string;
-  zoneId: number | null;
+  assignedZoneId: number | null;
   currentStatus: WorkLogStatus;
   startedAt: string; // ISO string (Z 포함 가능)
   endedAt?: string | null;
