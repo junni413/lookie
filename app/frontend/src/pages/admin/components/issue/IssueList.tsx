@@ -1,8 +1,9 @@
 import type { IssueResponse } from "@/types/db";
+import type { AdminIssueSummary } from "@/types/issue";
 import IssueListItem from "./IssueListItem";
 
 interface IssueListProps {
-    issues: IssueResponse[];
+    issues: (IssueResponse | AdminIssueSummary)[];
     selectedId?: number | null;
     onSelect?: (id: number) => void;
 }
