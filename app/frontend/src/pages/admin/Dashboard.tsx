@@ -5,16 +5,17 @@ import ZoneGrid from "./components/dashboard/ZoneGrid";
 import IssueList from "./components/issue/IssueList";
 import { manageService } from "@/services/manageService";
 import { issueService } from "@/services/issueService";
-import type { IssueResponse } from "@/types/db";
+import type { AdminIssueSummary } from "@/types/issue";
+import type { DB_Worker } from "@/types/db";
 import { Users, Package, CheckCircle2, History } from "lucide-react";
 import { cn } from "@/utils/cn";
 import type { ZoneItem } from "./components/dashboard/ZoneGrid";
 
 type SortKey = "TIME" | "PRIORITY";
-const priorityMap: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
 export default function Dashboard() {
-  const [issues, setIssues] = useState<IssueResponse[]>([]);
+  const [issues, setIssues] = useState<AdminIssueSummary[]>([]);
+  const [workers, setWorkers] = useState<DB_Worker[]>([]);
   const [zoneData, setZoneData] = useState<ZoneItem[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("TIME");
 
@@ -30,12 +31,12 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         const [fetchedIssuesResult, fetchedStats, fetchedWorkers] = await Promise.all([
-          issueService.getIssues(), // Now returns { data: [], total: number }
+          issueService.getIssues(),
           manageService.getZoneStats(),
           manageService.getAllWorkers(),
         ]);
 
-        const fetchedIssues = fetchedIssuesResult.data;
+        const fetchedIssues = fetchedIssuesResult.issues;
 
         // Issues
         const unresolved = fetchedIssues.filter((i) => i.status === "OPEN");
@@ -51,6 +52,7 @@ export default function Dashboard() {
           workRate: z.workRate,
         }));
         setZoneData(formattedZones);
+        setWorkers(fetchedWorkers);
 
         // Summary Calculation
         const workingCount = fetchedWorkers.filter((w) => w.status === "WORKING").length;
@@ -81,12 +83,19 @@ export default function Dashboard() {
     if (sortKey === "TIME") {
       arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } else {
-      // priority 큰 게 위로 (HIGH > MEDIUM > LOW)
-      // Note: If priority is undefined, fallback to 0
-      arr.sort((a, b) => (priorityMap[b.priority] || 0) - (priorityMap[a.priority] || 0));
+      // urgency Ascending (1 is High, so 1 comes first)
+      arr.sort((a, b) => (a.urgency || 99) - (b.urgency || 99));
     }
     return arr;
   }, [issues, sortKey]);
+
+  const enrichedIssues = useMemo(() => {
+    return sortedIssues.map((issue) => {
+      const worker = workers.find((w) => w.userId === issue.workerId);
+      // Return issue with injected worker (matches the extended logic in IssueListItem)
+      return { ...issue, worker };
+    });
+  }, [sortedIssues, workers]);
 
   return (
     // Global Container: strict h-full to fit parent, no overflow on body
@@ -181,7 +190,7 @@ export default function Dashboard() {
 
           {/* List Area */}
           <div className="flex-1 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1">
-            <IssueList issues={sortedIssues} />
+            <IssueList issues={enrichedIssues} />
           </div>
 
           {/* Footer: See All Button */}

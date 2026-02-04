@@ -1,11 +1,15 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { IssueResponse } from "@/types/db";
+import type { AdminIssueSummary } from "@/types/issue";
 import { cn } from "@/utils/cn";
 import { timeAgo } from "@/utils/format";
 
+// Define a union type for the issue prop
+type IssueItem = IssueResponse | AdminIssueSummary;
+
 interface IssueListItemProps {
-    issue: IssueResponse;
+    issue: IssueItem;
     selected?: boolean;
     onClick?: () => void;
 }
@@ -14,7 +18,10 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
     const isOutOfStock = issue.issueType === "OUT_OF_STOCK";
     const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
 
-    const worker = issue.worker || {
+    const param = issue as any; // Quick access for optional/missing fields
+    const rawWorker = param.worker; // AdminIssueSummary might have this injected
+
+    const worker = rawWorker || {
         worker_id: -1, // Dummy ID
         status: "OFF_WORK",
         todayWorkCount: 0,
@@ -109,7 +116,7 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
 
                 <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
                     <span className="uppercase tracking-wide">
-                        {issue.zoneName || "ZONE --"}
+                        {(issue as IssueResponse).zoneName || (issue as AdminIssueSummary).locationCode || "ZONE --"}
                     </span>
                 </span>
             </div>
