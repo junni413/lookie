@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.worklog.dto.DailyWorkLogStats;
 import lookie.backend.domain.worklog.dto.WorkLogRequestDto;
 import lookie.backend.domain.worklog.dto.WorkLogResponseDto;
-import lookie.backend.domain.control.mapper.ControlMapper;
+import lookie.backend.domain.control.service.ZoneAssignmentService;
 import lookie.backend.domain.worklog.mapper.WorkLogMapper;
 import lookie.backend.domain.worklog.vo.WorkLog;
 import lookie.backend.domain.worklog.vo.WorkLogEvent;
@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 public class WorkLogService {
 
     private final WorkLogMapper workLogMapper;
-    private final ControlMapper controlMapper;
+    private final ZoneAssignmentService zoneAssignmentService;
 
     /**
      * 1. 출근 처리 (START) 수행
@@ -60,8 +60,8 @@ public class WorkLogService {
                 .build();
 
         // 1-3. 자동 구역 배정 (Load Balancing)
-        // 가장 한가한 구역 조회 -> 배정 업데이트 -> 이력 기록
-        assignZoneToWorker(workerId);
+        // ZoneAssignmentService에 위임
+        zoneAssignmentService.assignZoneToWorker(workerId);
 
         // 1-4. 시작(START) 이벤트 기록
         workLogMapper.insertWorkLog(workLog);
@@ -87,7 +87,7 @@ public class WorkLogService {
         workLogMapper.updateWorkLogEnd(workLog);
 
         // 2-2. 구역 배정 해제 (Unassignment)
-        unassignZoneFromWorker(workerId);
+        zoneAssignmentService.unassignZoneFromWorker(workerId);
 
         // 2-3. 종료(END) 이벤트 기록
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.END, "퇴근");
@@ -274,36 +274,7 @@ public class WorkLogService {
     }
 
     /**
-     * 4. 작업자 구역 자동 배정 (Load Balancing)
-     * - 가장 한가한(작업자 수가 적은) 구역을 조회
-     * - 사용자의 배정 구역(assigned_zone_id)을 업데이트
+     * [Removed] assignZoneToWorker & unassignZoneFromWorker
+     * -> ZoneAssignmentService 로 이관됨 (Separation of Concerns)
      */
-    private void assignZoneToWorker(Long workerId) {
-        // 1. 가장 적은 수의 작업자가 있는 구역 조회
-        Long recommendedZoneId = controlMapper.selectZoneIdWithFewestWorkers();
-
-        if (recommendedZoneId != null) {
-            // 2. 사용자 배정 정보 업데이트
-            controlMapper.updateUserAssignedZone(workerId, recommendedZoneId);
-
-            // 3. 기존 활성 배정 종료 (혹시 모를 정합성 유지)
-            controlMapper.closeActiveAssignment(workerId);
-
-            // 4. 배정 이력 생성 (Source: AI)
-            controlMapper.insertAssignmentHistory(workerId, recommendedZoneId, "출근 시 자동 구역 배정");
-        }
-    }
-
-    /**
-     * 5. 작업자 구역 배정 해제 (Unassignment)
-     * - 퇴근 시 호출하여 사용자의 배정 구역을 NULL로 설정
-     * - 현재 활성 배정 이력을 종료 처리
-     */
-    private void unassignZoneFromWorker(Long workerId) {
-        // 1. 사용자 배정 정보 초기화 (assigned_zone_id = NULL)
-        controlMapper.updateUserAssignedZone(workerId, null);
-
-        // 2. 활성 배정 이력 종료 (ended_at = NOW())
-        controlMapper.closeActiveAssignment(workerId);
-    }
 }

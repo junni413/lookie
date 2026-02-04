@@ -236,5 +236,6 @@
         GROUP BY z.zone_id
         ORDER BY COUNT(wl.work_log_id) ASC, z.zone_id ASC
         LIMIT 1
+        FOR UPDATE
     </select>
 </mapper>
