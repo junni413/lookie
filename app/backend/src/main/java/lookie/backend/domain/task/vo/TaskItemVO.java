@@ -24,6 +24,7 @@ public class TaskItemVO {
 
     // Join을 위한 추가 필드
     private String productName;
+    private String productImage; // 상품 이미지 URL
     private String barcode;
     private String locationCode; // 지번 코드 (화면 표시용)
 }

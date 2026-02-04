@@ -105,6 +105,7 @@
             i.picked_qty AS pickedQty,
             i.status,
             p.product_name AS productName,
+            p.product_image AS productImage,
             p.barcode,
             l.location_code AS locationCode -- 지번 코드 추가
         FROM batch_task_items i
@@ -126,6 +127,7 @@
             i.picked_qty AS pickedQty,
             i.status,
             p.product_name AS productName,
+            p.product_image AS productImage,
             p.barcode,
             l.location_code AS locationCode
         FROM batch_task_items i
