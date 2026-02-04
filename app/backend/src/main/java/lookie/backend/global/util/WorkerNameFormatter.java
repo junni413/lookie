@@ -16,7 +16,7 @@ public class WorkerNameFormatter {
     public static String format(String name, String phoneNumber) {
         if (name != null && phoneNumber != null && phoneNumber.length() >= 4) {
             String last4Digits = phoneNumber.substring(phoneNumber.length() - 4);
-            return name + " " + last4Digits;
+            return name + last4Digits;
         }
         return name;
     }

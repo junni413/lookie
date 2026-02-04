@@ -115,7 +115,11 @@
             i.status,
             COALESCE(i.urgency, 5) AS urgency,
             i.worker_id AS workerId,
-            u.name AS workerName,
+            -- WorkerNameFormatter 로직을 DB 레벨로 이관 (name + phone 뒷 4자리)
+            CASE 
+                WHEN CHAR_LENGTH(u.phone_number) >= 4 THEN CONCAT(u.name, RIGHT(u.phone_number, 4))
+                ELSE u.name 
+            END AS workerName,
             p.product_name AS productName,
             zl.location_code AS locationCode,
             i.created_at AS createdAt,
