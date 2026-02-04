@@ -9,7 +9,7 @@ pipeline {
 
   environment {
     // ============================================================
-    // [DEPLOY] EC2 배포 대상 정보
+    // [DEPLOY]
     // ============================================================
     DEPLOY_HOST  = 'i14b105.p.ssafy.io'
     DEPLOY_USER  = 'ubuntu'
@@ -19,7 +19,7 @@ pipeline {
     COMPOSE_PROD_FILE = 'docker-compose.prod.yml'
 
     // ============================================================
-    // [REGISTRY] DockerHub 이미지 정보
+    // [REGISTRY]
     // ============================================================
     DOCKERHUB_CRED_ID      = 'dockerhub-cred'
     REGISTRY_IMAGE_BACKEND = 'sheonj/lookie-backend'
@@ -27,7 +27,7 @@ pipeline {
     REGISTRY_IMAGE_AI      = 'sheonj/lookie-ai'
 
     // ============================================================
-    // [BUILD PATH] Docker build context / Dockerfile 위치
+    // [BUILD PATH]
     // ============================================================
     BACKEND_CONTEXT    = 'app/backend'
     BACKEND_DOCKERFILE = 'app/backend/Dockerfile'
@@ -37,7 +37,7 @@ pipeline {
     AI_DOCKERFILE      = 'app/ai-server/Dockerfile'
 
     // ============================================================
-    // [NOTIFY] Mattermost 알림 관련
+    // [NOTIFY]
     // ============================================================
     MM_WEBHOOK_CRED_ID = 'mattermost-webhook'
     PUBLIC_JENKINS_URL = 'http://i14b105.p.ssafy.io:9000'
@@ -50,7 +50,20 @@ pipeline {
     DEPLOY_LOG   = 'ci_deploy.log'
 
     // ============================================================
-    // [DOCKER] 빌드 성능 옵션 (BuildKit)
+    // [CI - Redis/MySQL] MR 테스트용
+    // ============================================================
+    CI_REDIS_CONTAINER = 'ci-redis'
+    CI_REDIS_IMAGE     = 'redis:7-alpine'
+
+    CI_MYSQL_CONTAINER = 'ci-mysql'
+    CI_MYSQL_IMAGE     = 'mysql:8.0'
+    CI_MYSQL_DB        = 'lookie'
+    CI_MYSQL_USER      = 'lookie'
+    CI_MYSQL_PASSWORD  = 'lookiepass'
+    CI_MYSQL_ROOTPW    = 'rootpass'
+
+    // ============================================================
+    // [DOCKER]
     // ============================================================
     DOCKER_BUILDKIT = '1'
     COMPOSE_DOCKER_CLI_BUILD = '1'
@@ -110,8 +123,10 @@ pipeline {
             env.CHECKOUT_BRANCH = env.PUSH_BRANCH
           }
 
-          // ✅ AI 이번 파이프라인에서 이미지 만들었는지 플래그 (기본 false)
+          // ✅ AI 변경 여부 플래그 (기본 false)
           env.AI_BUILT = "false"
+          // ✅ AI_TAG는 “이번에 AI 빌드했을 때만” 세팅 (안 했으면 빈 값)
+          env.AI_IMAGE_TAG = ""
 
           echo """
 [kind=${env.EVENT_KIND}]
@@ -156,6 +171,160 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       }
     }
 
+    // ============================================================
+    // MR stages (네 코드 그대로, 생략 없이 유지)
+    // ============================================================
+
+    stage('Backend Test (MR only)') {
+      when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_BACKEND == "true" } }
+      steps {
+        dir('app/backend') {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            : > "../../${BACKEND_LOG}"
+
+            docker version >/dev/null 2>&1 || {
+              echo "[ERROR] docker not available" | tee -a "../../${BACKEND_LOG}"
+              exit 1
+            }
+
+            docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
+            docker rm -f "${CI_MYSQL_CONTAINER}" >/dev/null 2>&1 || true
+
+            docker pull "${CI_MYSQL_IMAGE}" >/dev/null 2>&1 || true
+            docker run -d --name "${CI_MYSQL_CONTAINER}" \
+              -e MYSQL_ROOT_PASSWORD="${CI_MYSQL_ROOTPW}" \
+              -e MYSQL_DATABASE="${CI_MYSQL_DB}" \
+              -e MYSQL_USER="${CI_MYSQL_USER}" \
+              -e MYSQL_PASSWORD="${CI_MYSQL_PASSWORD}" \
+              -p 0:3306 \
+              "${CI_MYSQL_IMAGE}" >/dev/null
+
+            MYSQL_HOST_PORT="$(docker port "${CI_MYSQL_CONTAINER}" 3306/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+            if [[ -z "${MYSQL_HOST_PORT}" ]]; then
+              echo "[ERROR] mysql port detect failed" | tee -a "../../${BACKEND_LOG}"
+              docker ps -a | tee -a "../../${BACKEND_LOG}" || true
+              docker logs "${CI_MYSQL_CONTAINER}" | tail -n 80 | tee -a "../../${BACKEND_LOG}" || true
+              exit 1
+            fi
+
+            for i in $(seq 1 90); do
+              if docker exec "${CI_MYSQL_CONTAINER}" mysqladmin ping -uroot -p"${CI_MYSQL_ROOTPW}" --silent >/dev/null 2>&1; then
+                if docker exec "${CI_MYSQL_CONTAINER}" mysql -uroot -p"${CI_MYSQL_ROOTPW}" -e "SELECT 1" >/dev/null 2>&1; then
+                  break
+                fi
+              fi
+              sleep 1
+              if [[ "$i" -eq 90 ]]; then
+                echo "[ERROR] mysql readiness timeout" | tee -a "../../${BACKEND_LOG}"
+                docker logs "${CI_MYSQL_CONTAINER}" | tail -n 80 | tee -a "../../${BACKEND_LOG}" || true
+                exit 1
+              fi
+            done
+
+            docker pull "${CI_REDIS_IMAGE}" >/dev/null 2>&1 || true
+            docker run -d --name "${CI_REDIS_CONTAINER}" -p 0:6379 "${CI_REDIS_IMAGE}" >/dev/null
+
+            REDIS_HOST_PORT="$(docker port "${CI_REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+            if [[ -z "${REDIS_HOST_PORT}" ]]; then
+              echo "[ERROR] redis port detect failed" | tee -a "../../${BACKEND_LOG}"
+              docker ps -a | tee -a "../../${BACKEND_LOG}" || true
+              docker logs "${CI_REDIS_CONTAINER}" | tail -n 80 | tee -a "../../${BACKEND_LOG}" || true
+              exit 1
+            fi
+
+            for i in $(seq 1 30); do
+              if docker exec "${CI_REDIS_CONTAINER}" redis-cli ping 2>/dev/null | grep -q PONG; then
+                break
+              fi
+              sleep 1
+              if [[ "$i" -eq 30 ]]; then
+                echo "[ERROR] redis readiness timeout" | tee -a "../../${BACKEND_LOG}"
+                docker logs "${CI_REDIS_CONTAINER}" | tail -n 80 | tee -a "../../${BACKEND_LOG}" || true
+                exit 1
+              fi
+            done
+
+            chmod +x mvnw || true
+            ./mvnw -q clean test \
+              -Dspring.profiles.active=ci \
+              -Dspring.datasource.url="jdbc:mysql://127.0.0.1:${MYSQL_HOST_PORT}/${CI_MYSQL_DB}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
+              -Dspring.datasource.username="${CI_MYSQL_USER}" \
+              -Dspring.datasource.password="${CI_MYSQL_PASSWORD}" \
+              -Dspring.data.redis.host=127.0.0.1 \
+              -Dspring.data.redis.port="${REDIS_HOST_PORT}" \
+              -Dspring.redis.host=127.0.0.1 \
+              -Dspring.redis.port="${REDIS_HOST_PORT}" \
+              2>&1 | tee -a "../../${BACKEND_LOG}"
+          '''
+        }
+      }
+      post {
+        always {
+          sh '''#!/usr/bin/env bash
+            set +e
+            docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
+            docker rm -f "${CI_MYSQL_CONTAINER}" >/dev/null 2>&1 || true
+          '''
+        }
+      }
+    }
+
+    stage('AI Test (MR only)') {
+      when { expression { env.EVENT_KIND == 'merge_request' } }
+      steps {
+        script {
+          def testTag = "test"
+          sh """#!/usr/bin/env bash
+            set -euo pipefail
+            echo "[INFO] AI Server MR Test Start..."
+
+            docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${testTag}" "${AI_CONTEXT}"
+
+            # ✅ AI 테스트에서 env 누락으로 import 단계가 터지는 것 방지 (최소 더미값 주입)
+            docker run --rm \
+              -e DB_PASSWORD=dummy \
+              -e DB_USERNAME=dummy \
+              -e DB_HOST=dummy \
+              -e DB_PORT=3306 \
+              -e DB_NAME=dummy \
+              "${REGISTRY_IMAGE_AI}:${testTag}" pytest /app/test_main.py
+
+            echo "[INFO] MR Test Passed! (Ready to Merge)"
+          """
+        }
+      }
+    }
+
+    stage('Frontend Build (MR only)') {
+      when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_FRONTEND == "true" } }
+      steps {
+        dir('app/frontend') {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            : > "../../${FRONTEND_LOG}"
+
+            docker version >/dev/null 2>&1 || {
+              echo "[ERROR] docker not available" | tee -a "../../${FRONTEND_LOG}"
+              exit 1
+            }
+
+            docker pull node:20-alpine >/dev/null 2>&1 || true
+            mkdir -p "${HOME}/.npm"
+
+            docker run --rm \
+              -v "$PWD":/app -w /app \
+              -v "${HOME}/.npm":/root/.npm \
+              node:20-alpine sh -lc "set -euo pipefail; npm ci; npm run build" \
+              2>&1 | tee -a "../../${FRONTEND_LOG}"
+          '''
+        }
+      }
+    }
+
+    // ============================================================
+    // develop push: Build & Push Backend & Nginx
+    // ============================================================
     stage('Build & Push: Backend & Nginx') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
@@ -186,6 +355,9 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       }
     }
 
+    // ============================================================
+    // develop push: Build & Push AI Server (ai-server 변경 감지 시에만)
+    // ============================================================
     stage('Build & Push: AI Server (only when changed)') {
       when {
         allOf {
@@ -194,6 +366,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
             changeset "app/ai-server/**"
             changeset "app/ai-server/model/**"
             changeset "infra/jenkins/Jenkinsfile"
+            changeset "Jenkinsfile"
           }
         }
       }
@@ -202,7 +375,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
           if (!env.IMAGE_TAG?.trim()) {
             env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           }
-          // ✅ 이번 배포에서 AI_IMAGE_TAG는 IMAGE_TAG로 고정(변경됐을 때만 갱신)
+          // ✅ 이번에 AI가 변경된 경우에만 AI_IMAGE_TAG 확정
           env.AI_IMAGE_TAG = env.IMAGE_TAG
           env.AI_BUILT = "true"
           echo "AI_BUILT=true, AI_IMAGE_TAG=${env.AI_IMAGE_TAG}"
@@ -221,7 +394,6 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
             echo "[INFO] AI Server Changed. Starting Build..."
             docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${AI_IMAGE_TAG}" "${AI_CONTEXT}"
 
-            # ✅ 테스트에서 DB_PASSWORD 같은 필수 env가 필요하면, 최소값을 주입해서 import 단계가 깨지지 않게
             echo "[INFO] AI Server Test Running..."
             docker run --rm \
               -e DB_PASSWORD=dummy \
@@ -238,16 +410,18 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       }
     }
 
-    stage('Deploy (develop push only)') {
+    // ============================================================
+    // develop push: Deploy
+    //  - backend/nginx는 항상 최신 IMAGE_TAG로 교체
+    //  - ai-server는 AI_BUILT=true일 때만 pull + recreate
+    //  - AI_BUILT=false면 기존 ai-server 컨테이너/이미지 그대로 유지
+    // ============================================================
+    stage('Deploy (develop push only, pull based)') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_DEPLOY == "true" } }
       steps {
         script {
           if (!env.IMAGE_TAG?.trim()) {
             env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-          }
-          // AI_IMAGE_TAG는 "이번에 빌드했다면 그 태그", 아니면 빈 값으로 내려보냄(원격에서 기존 값 유지)
-          if (!env.AI_IMAGE_TAG?.trim()) {
-            env.AI_IMAGE_TAG = ""
           }
           echo "Deploy IMAGE_TAG=${env.IMAGE_TAG}, AI_BUILT=${env.AI_BUILT}, AI_IMAGE_TAG=${env.AI_IMAGE_TAG}"
         }
@@ -270,8 +444,8 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
                  REGISTRY_IMAGE_NGINX='${REGISTRY_IMAGE_NGINX}' \
                  REGISTRY_IMAGE_AI='${REGISTRY_IMAGE_AI}' \
                  IMAGE_TAG='${IMAGE_TAG}' \
-                 AI_IMAGE_TAG='${AI_IMAGE_TAG}' \
                  AI_BUILT='${AI_BUILT}' \
+                 AI_IMAGE_TAG='${AI_IMAGE_TAG}' \
                  DH_USER='${DH_USER}' \
                  DH_PASS='${DH_PASS}' \
                  DEPLOY_DIR='${DEPLOY_DIR}' \
@@ -292,23 +466,20 @@ git checkout -B develop origin/develop
 
 echo "${DH_PASS}" | docker login -u "${DH_USER}" --password-stdin >/dev/null
 
-# ============================================================
-# ✅ AI 태그를 "유지"하기 위한 파일
-#    - AI 변경 없으면 기존 태그 그대로 사용
-#    - AI 변경 있으면 새 태그로 갱신
-# ============================================================
+# ✅ 운영 AI 태그 유지 파일
 AI_TAG_FILE=".deploy_ai_tag"
+
+# (1) 현재 운영 중인 AI 태그 읽기(없으면 latest)
 if [[ -f "${AI_TAG_FILE}" ]]; then
   CURRENT_AI_TAG="$(cat "${AI_TAG_FILE}" | tr -d '[:space:]')"
 else
-  # 최초 1회: 운영 기본 태그(원하는 값으로)
   CURRENT_AI_TAG="latest"
 fi
 
+# (2) 이번에 AI를 빌드했으면(변경 감지) 그 태그로 운영 태그 갱신
 if [[ "${AI_BUILT}" == "true" ]]; then
-  # 이번에 AI 이미지를 만들었으면 그 태그를 운영 태그로 확정
   if [[ -z "${AI_IMAGE_TAG}" ]]; then
-    echo "[ERROR] AI_BUILT=true인데 AI_IMAGE_TAG가 비어있음"
+    echo "[ERROR] AI_BUILT=true but AI_IMAGE_TAG is empty"
     exit 1
   fi
   CURRENT_AI_TAG="${AI_IMAGE_TAG}"
@@ -325,49 +496,32 @@ echo "[INFO] Rendered compose config (debug)"
 docker compose -f "${COMPOSE_PROD_FILE}" config >/tmp/compose.rendered.yml
 tail -n 80 /tmp/compose.rendered.yml || true
 
-# (1) backend/nginx는 항상 최신으로 pull
-echo "[INFO] Pull backend/nginx images"
+# ✅ backend/nginx는 항상 최신 이미지 pull
+echo "[INFO] Pull backend/nginx"
 docker compose -f "${COMPOSE_PROD_FILE}" pull backend nginx
 
-# (2) ✅ 변경 있을 때만 AI pull
+# ✅ AI는 변경됐을 때만 pull
 if [[ "${AI_BUILT}" == "true" ]]; then
-  echo "[INFO] Pull ai-server image (changed)"
+  echo "[INFO] Pull ai-server (changed)"
   docker compose -f "${COMPOSE_PROD_FILE}" pull ai-server
 else
   echo "[INFO] Skip ai-server pull (no change)"
 fi
 
-# (3) migrate
-echo "[INFO] Run migrate (flyway) once"
-docker compose -f "${COMPOSE_PROD_FILE}" run --rm \
-  -e FLYWAY_OUT_OF_ORDER=true \
-  migrate
+# ✅ up: backend/nginx만 강제 recreate (새 이미지 반영)
+echo "[INFO] Recreate backend/nginx"
+docker compose -f "${COMPOSE_PROD_FILE}" up -d --no-deps --force-recreate backend nginx
 
-# (4) ✅ backend/nginx만 새 이미지로 강제 교체
-echo "[INFO] Replace backend/nginx containers"
-docker compose -f "${COMPOSE_PROD_FILE}" up -d \
-  --no-deps \
-  --force-recreate \
-  backend nginx
-
-# (5) ✅ AI는 변경됐을 때만 교체(변경 없으면 컨테이너 유지)
+# ✅ AI는 변경됐을 때만 강제 recreate (변경 없으면 그대로 유지)
 if [[ "${AI_BUILT}" == "true" ]]; then
-  echo "[INFO] Replace ai-server container (changed)"
-  docker compose -f "${COMPOSE_PROD_FILE}" up -d \
-    --no-deps \
-    --force-recreate \
-    ai-server
+  echo "[INFO] Recreate ai-server (changed)"
+  docker compose -f "${COMPOSE_PROD_FILE}" up -d --no-deps --force-recreate ai-server
 else
   echo "[INFO] Keep ai-server container (no change)"
 fi
 
-# (6) 나머지 서비스는 건드리지 않고 상태만 맞춤(원하면 제거 가능)
+# ✅ 나머지 서비스는 상태만 맞춤 (원하면 제거 가능)
 docker compose -f "${COMPOSE_PROD_FILE}" up -d
-
-echo "[INFO] ===== docker compose ps ====="
-docker compose -f "${COMPOSE_PROD_FILE}" ps || true
-echo "[INFO] ===== docker ps (name/image) ====="
-docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}"
 
 docker image prune -f >/dev/null 2>&1 || true
 EOSSH
@@ -382,10 +536,8 @@ EOSSH
     always {
       script {
         def ok = (currentBuild.currentResult == 'SUCCESS')
-
         def kind = env.EVENT_KIND ?: ''
         def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
-
         def title = ok ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패"
 
         def jobName = (env.JOB_NAME ?: '').trim()
