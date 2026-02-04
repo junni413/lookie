@@ -72,9 +72,8 @@ public class LiveKitService {
         // 5. 거는 사람(Caller)용 LiveKit 토큰 발급
         String token = generateToken(request.getCallerId().toString(), roomName);
 
-        // 6. [WebSocket] Callee에게 요청 알림 전송 (개인 큐 + Topic Fallback)
-        sendSignalToUser(request.getCalleeId(), WebRtcSignalType.REQUESTED, call.getId(), null, request.getCallerId());
-        sendSignalToUserTopic(request.getCalleeId(), WebRtcSignalType.REQUESTED, call.getId(), null, request.getCallerId());
+        // 6. [WebSocket] Callee에게 요청 알림 전송 (Dual-Path)
+        sendDualPathSignal(request.getCalleeId(), WebRtcSignalType.REQUESTED, call.getId(), null, request.getCallerId());
 
         return new WebRtcDto.CallResponse(call.getId(), roomName, token);
     }
@@ -174,6 +173,10 @@ public class LiveKitService {
         } finally {
             // [WebSocket] 통화 종료 알림 전송 (필수 보장)
             sendSignal(call.getId(), WebRtcSignalType.ENDED, null, senderId);
+            
+            // [추가] 수신자에게도 확실하게 종료 알림 (Dual-Path)
+            Long targetId = call.getCallerId().equals(senderId) ? call.getCalleeId() : call.getCallerId();
+            sendDualPathSignal(targetId, WebRtcSignalType.ENDED, call.getId(), null, senderId);
         }
     }
 
@@ -216,9 +219,7 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [WebSocket] Callee에게 취소 알림 전송 (벨소리 중단용)
-        // sendSignal(call.getId(), WebRtcSignalType.CANCELED, null, call.getCallerId());
-        sendSignalToUser(call.getCalleeId(), WebRtcSignalType.CANCELED, call.getId(), null, call.getCallerId());
-        sendSignalToUserTopic(call.getCalleeId(), WebRtcSignalType.CANCELED, call.getId(), null, call.getCallerId());
+        sendDualPathSignal(call.getCalleeId(), WebRtcSignalType.CANCELED, call.getId(), null, call.getCallerId());
     }
 
     // --- 내부 메서드 ---
@@ -313,13 +314,22 @@ public class LiveKitService {
     }
 
     /**
+     * [Refactored] 사용자에게 확실하게 알림 전송 (Dual-Path Strategy)
+     * 1. 개인 큐 (/user/{id}/queue/calls)
+     * 2. 공용 토픽 (/topic/calls/{id}) - Fallback
+     */
+    private void sendDualPathSignal(Long userId, WebRtcSignalType type, Long callId, String roomName, Long senderId) {
+        if (userId == null) return;
+        sendSignalToUser(userId, type, callId, roomName, senderId);
+        sendSignalToUserTopic(userId, type, callId, roomName, senderId);
+    }
+
+    /**
      * 특정 사용자에게 1:1 시그널 전송
      * Destination: /user/{userId}/queue/calls
      */
     private void sendSignalToUser(Long userId, WebRtcSignalType type, Long callId, String roomName, Long senderId) {
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName, senderId);
-
-        // /user/{userId}/queue/calls 로 전송됨
         messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/calls", payload);
         log.info("[WebSocket] Private Signal sent to User {}: callId={}, type={}", userId, callId, type);
     }

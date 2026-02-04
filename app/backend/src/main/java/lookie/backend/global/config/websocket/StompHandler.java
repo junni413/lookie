@@ -87,6 +87,11 @@ public class StompHandler implements ChannelInterceptor {
             if (destination != null && destination.startsWith("/topic/video-calls/")) {
                 validateSubscription(destination, user.getName());
             }
+
+            // [Security Fix] /topic/calls/{userId} 구독 시 본인인지 확인
+            else if (destination != null && destination.startsWith("/topic/calls/")) {
+                validateTopicOwner(destination, user.getName());
+            }
         }
 
         // 3. 메시지 전송 (SEND): 인증 확인
@@ -133,6 +138,32 @@ public class StompHandler implements ChannelInterceptor {
 
         } catch (NumberFormatException e) {
             log.warn("WebSocket 구독 실패: 잘못된 Call ID 형식 ({})", destination);
+        }
+    }
+
+    /**
+     * [Security Fix] Topic 소유자 검증
+     * - /topic/calls/{targetUserId} 구독 시 targetUserId == currentUserId 인지 확인
+     */
+    private void validateTopicOwner(String destination, String currentUserId) {
+        try {
+            // URL 파싱: /topic/calls/{userId}
+            String[] parts = destination.split("/");
+            if (parts.length < 4) {
+                throw new WebSocketAuthenticationException("Subscription failed: Invalid topic format");
+            }
+            String targetUserId = parts[3];
+
+            if (!targetUserId.equals(currentUserId)) {
+                log.warn("⛔ WebSocket 보안 경고: 타인의 Topic 구독 시도 차단 (User={}, Target={})", currentUserId, targetUserId);
+                throw new WebSocketAuthenticationException("Access Denied: Cannot subscribe to other user's topic");
+            }
+            
+            log.info("✅ WebSocket 본인 Topic 구독 승인 (User={})", currentUserId);
+
+        } catch (Exception e) {
+            log.error("WebSocket 구독 검증 중 오류: {}", e.getMessage());
+            throw new WebSocketAuthenticationException("Subscription validation failed");
         }
     }
 }

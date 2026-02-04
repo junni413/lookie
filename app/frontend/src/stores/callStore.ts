@@ -306,6 +306,10 @@ export const useCallStore = create<CallStore>((set, get) => ({
                 console.warn("🚫 [CallStore] 'CANCELED' event received. Resetting state.");
                 toast.info("상대방이 통화를 취소했습니다.");
                 set((state) => ({ ...initialState }));
+            } else if (event.type === 'ENDED') {
+                console.warn("🚫 [CallStore] 'ENDED' event received via global listener. Resetting state.");
+                toast.info("통화가 종료되었습니다.");
+                set((state) => ({ ...initialState }));
             }
         });
 

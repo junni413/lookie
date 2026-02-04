@@ -13,9 +13,14 @@ export type CallStatusListener = (event: CallStatusEvent) => void;
 let client: Client | null = null;
 let subscription: StompSubscription | null = null;
 
-// 잠시 프록시 우회하여 8080 포트로 직접 연결 시도
-const brokerURL = `ws://localhost:8080/api/realtime/connect/websocket`;
-// const brokerURL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/realtime/connect/websocket`;
+// WebSocket Endpoint URL Setting
+// Detects environment automatically:
+// - Localhost: Direct connection to 8080 (Bypasses proxy for stability)
+// - Production: Uses window.location (Standard generic path)
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const brokerURL = isLocal
+    ? `ws://localhost:8080/api/realtime/connect/websocket`
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/realtime/connect/websocket`;
 
 /**
  * WebSocket(STOMP) 연결 및 통화 상태 구독
