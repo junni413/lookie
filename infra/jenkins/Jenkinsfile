@@ -367,7 +367,7 @@ docker compose -f "${COMPOSE_PROD_FILE}" up -d --remove-orphans --force-recreate
 if docker manifest inspect "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" >/dev/null 2>&1; then
   echo "[INFO] AI image found -> deploying ai-server"
   docker compose -f "${COMPOSE_PROD_FILE}" --profile ai pull
-  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai up -d --remove-orphans --force-recreate --pull always
+  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai up -d --remove-orphans
 else
   echo "[INFO] AI image not found -> skipping ai-server"
 fi
