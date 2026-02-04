@@ -167,7 +167,6 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     }
 
     stage('Checkout') {
-      // 실행 플래그가 true인 경우에만 checkout 수행
       when {
         expression {
           env.RUN_BACKEND == "true" ||
@@ -177,10 +176,8 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         }
       }
       steps {
-        // Jenkins가 알아서 가져온 scm 정보 기반 checkout
         checkout scm
 
-        // CHECKOUT_BRANCH가 있으면 해당 브랜치로 강제 checkout
         sh '''#!/usr/bin/env bash
           set -euo pipefail
 
@@ -206,11 +203,9 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     // (여기서는 생략)
 
     stage('Build & Push: Backend & Nginx') {
-      // develop push에서만 이미지 build/push 수행
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
         script {
-          // commit short SHA를 IMAGE_TAG로 사용(불변 태그)
           env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           echo "IMAGE_TAG=${env.IMAGE_TAG}"
         }
@@ -223,15 +218,12 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
           sh '''#!/usr/bin/env bash
             set -euo pipefail
 
-            # DockerHub 로그인
             echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
-            # Backend 이미지 build/push
             echo "[INFO] Backend Build..."
             docker build -f "${BACKEND_DOCKERFILE}" -t "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}" "${BACKEND_CONTEXT}"
             docker push "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}"
 
-            # Nginx 이미지 build/push
             echo "[INFO] Nginx Build..."
             docker build -f "${NGINX_DOCKERFILE}" -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" "${NGINX_CONTEXT}"
             docker push "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}"
@@ -241,20 +233,19 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     }
 
     stage('Build & Push: AI Server') {
-      // develop push + ai-server 관련 파일이 변경된 경우에만 빌드/푸시
       when {
         allOf {
           expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" }
           anyOf {
             changeset "app/ai-server/**"
             changeset "app/ai-server/model/**"
-            changeset "Jenkinsfile"
+            // ✅ Jenkinsfile 경로가 infra/jenkins/Jenkinsfile 이므로 수정
+            changeset "infra/jenkins/Jenkinsfile"
           }
         }
       }
       steps {
         script {
-          // IMAGE_TAG가 없으면 여기서도 생성
           if (!env.IMAGE_TAG?.trim()) {
             env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           }
@@ -270,15 +261,12 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
 
             echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
-            # AI 이미지 build
             echo "[INFO] AI Server Changed. Starting Build..."
             docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" "${AI_CONTEXT}"
 
-            # AI 테스트 실행
             echo "[INFO] AI Server Test Running..."
             docker run --rm "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" pytest /app/test_main.py
 
-            # 통과하면 push
             echo "[INFO] Test Passed! Pushing image..."
             docker push "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}"
           '''
@@ -287,11 +275,9 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     }
 
     stage('Deploy (develop push only, pull based)') {
-      // develop push에서만 배포
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_DEPLOY == "true" } }
       steps {
         script {
-          // IMAGE_TAG가 없으면 생성
           if (!env.IMAGE_TAG?.trim()) {
             env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           }
@@ -303,17 +289,14 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
           usernameVariable: 'DH_USER',
           passwordVariable: 'DH_PASS'
         )]) {
-          // Jenkins에 등록된 SSH 키로 EC2 접속
           sshagent(credentials: [env.SSH_CRED_ID]) {
             sh '''#!/usr/bin/env bash
               set -euo pipefail
               : > "${DEPLOY_LOG}"
 
-              # 배포 서버 known_hosts 등록(처음 접속 시 키 확인 프롬프트 방지)
               mkdir -p ~/.ssh
               ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-              # EC2에 필요한 값들을 env로 주입해서 원격 bash 실행
               ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
                 "REGISTRY_IMAGE_BACKEND='${REGISTRY_IMAGE_BACKEND}' \
                  REGISTRY_IMAGE_NGINX='${REGISTRY_IMAGE_NGINX}' \
@@ -347,32 +330,53 @@ export REGISTRY_IMAGE_BACKEND REGISTRY_IMAGE_NGINX REGISTRY_IMAGE_AI IMAGE_TAG
 # (4) compose 파일이 변수 치환된 상태로 어떻게 해석되는지 출력(디버깅용)
 echo "[INFO] Rendered compose config (debug)"
 docker compose -f "${COMPOSE_PROD_FILE}" config >/tmp/compose.rendered.yml
-tail -n 50 /tmp/compose.rendered.yml || true
+tail -n 80 /tmp/compose.rendered.yml || true
 
 # (5) 이미지 pull
 echo "[INFO] Pull images"
 docker compose -f "${COMPOSE_PROD_FILE}" pull
 
-# (6) ✅ DB migrate는 up 전에 강제로 1회 실행 (운영 안정성)
-#     - up -d에 맡기면 타이밍 꼬일 위험이 있으므로 run --rm 추천
+# (6) ✅ DB migrate는 up 전에 강제로 1회 실행
 echo "[INFO] Run migrate (flyway) once"
 docker compose -f "${COMPOSE_PROD_FILE}" run --rm \
   -e FLYWAY_OUT_OF_ORDER=true \
   migrate
 
-# (7) core 서비스 기동(airflow도 compose에 있으면 같이 올라감)
-echo "[INFO] Up core services (remove orphans)"
-docker compose -f "${COMPOSE_PROD_FILE}" up -d --remove-orphans --force-recreate --pull always
-# (8) AI는 이미지가 존재할 때만 profile로 배포
+# (7) ✅ 핵심 수정: 새 이미지로 컨테이너가 안 바뀌는 문제를 "rm -> up"로 강제 해결
+#     - backend/nginx(그리고 있을 경우 ai-server)만 의존성 건드리지 않고 교체
+echo "[INFO] Force replace containers (backend/nginx)"
+docker compose -f "${COMPOSE_PROD_FILE}" rm -sf backend nginx || true
+docker compose -f "${COMPOSE_PROD_FILE}" up -d \
+  --no-deps \
+  --force-recreate \
+  --pull always \
+  backend nginx
+
+# (8) 나머지 서비스는 그대로 두되 orphan 정리
+echo "[INFO] Up (cleanup orphans only)"
+docker compose -f "${COMPOSE_PROD_FILE}" up -d --remove-orphans
+
+# (9) AI는 이미지가 존재할 때만 배포 + rm -> up 강제
 if docker manifest inspect "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" >/dev/null 2>&1; then
   echo "[INFO] AI image found -> deploying ai-server"
-  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai pull
-  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai up -d --remove-orphans
+  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai pull || docker compose -f "${COMPOSE_PROD_FILE}" pull || true
+  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai rm -sf ai-server || true
+  docker compose -f "${COMPOSE_PROD_FILE}" --profile ai up -d \
+    --no-deps \
+    --force-recreate \
+    --pull always \
+    ai-server
 else
   echo "[INFO] AI image not found -> skipping ai-server"
 fi
 
-# (9) 오래된 이미지 정리
+# (10) 배포 결과 확인 (여기서 IMAGE_TAG가 바뀐 게 보여야 정상)
+echo "[INFO] ===== docker compose ps ====="
+docker compose -f "${COMPOSE_PROD_FILE}" ps || true
+echo "[INFO] ===== docker ps (name/image) ====="
+docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}"
+
+# (11) 오래된 이미지 정리
 docker image prune -f >/dev/null 2>&1 || true
 EOSSH
             '''
@@ -385,23 +389,18 @@ EOSSH
   post {
     always {
       script {
-        // 빌드 성공/실패 여부
         def ok = (currentBuild.currentResult == 'SUCCESS')
 
-        // 이벤트 종류 & 브랜치 정보(알림용)
         def kind = env.EVENT_KIND ?: ''
         def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
 
-        // 메시지 타이틀
         def title = ok ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패"
 
-        // 폴더형 job에서도 링크가 깨지지 않게 Jenkins URL 구성
         def jobName = (env.JOB_NAME ?: '').trim()
         def buildNo = (env.BUILD_NUMBER ?: '').trim()
         def jobPath = jobName ? jobName.split('/').collect { "job/${it}" }.join('/') : ''
         def buildUrl = jobPath ? "${env.PUBLIC_JENKINS_URL}/${jobPath}/${buildNo}/" : env.PUBLIC_JENKINS_URL
 
-        // Mattermost 알림 전송
         mmNotify(ok, [
           title   : title,
           mention : '@channel',
@@ -432,7 +431,6 @@ def mmNotify(boolean success, Map info) {
   if (info.target)   lines << "**타겟:** `${info.target}`"
   if (info.buildUrl) lines << "**Jenkins:** ${info.buildUrl}"
 
-  // Mattermost로 보낼 payload(JSON) 생성
   def payload = groovy.json.JsonOutput.toJson([
     username  : "Jenkins",
     icon_emoji: icon,
@@ -441,7 +439,6 @@ def mmNotify(boolean success, Map info) {
 
   writeFile file: 'mm_payload.json', text: payload
 
-  // webhook credential로 curl 전송
   withCredentials([string(credentialsId: info.credId, variable: 'MM_WEBHOOK')]) {
     sh '''#!/usr/bin/env bash
       curl -sS -X POST -H 'Content-Type: application/json' \
