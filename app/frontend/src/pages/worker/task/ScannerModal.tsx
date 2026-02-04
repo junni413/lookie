@@ -31,9 +31,17 @@ export default function ScannerModal({ isOpen, onClose, onScan, title, expectedV
                 setError(null);
                 const reader = new BrowserMultiFormatReader();
 
+                const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+                if (!devices || devices.length === 0) {
+                    setError("카메라 장치를 찾을 수 없습니다. 브라우저 권한을 확인해 주세요.");
+                    return;
+                }
+                const deviceId = devices[0].deviceId;
+                console.log("Scanner devices:", devices);
+
                 // 권한 확인 및 스트림 시작
                 controlsRef.current = await reader.decodeFromVideoDevice(
-                    undefined,
+                    deviceId,
                     videoRef.current!,
                     (result, err) => {
                         if (result && !scannedRef.current) {

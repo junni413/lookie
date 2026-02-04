@@ -20,7 +20,22 @@ export default function ToteScan() {
   useEffect(() => setTitle("토트 스캔"), [setTitle]);
 
   useEffect(() => {
-    if (!task) navigate("/worker/home", { replace: true });
+    if (!task) {
+      navigate("/worker/home", { replace: true });
+      return;
+    }
+
+    // 이미 토트 스캔 단계가 아니라면 작업 상세로 이동
+    if (task.actionStatus && task.actionStatus !== "SCAN_TOTE") {
+      navigate("/worker/task/work-detail", {
+        replace: true,
+        state: {
+          task,
+          toteBarcode: task.toteId ? `TOTE-00${task.toteId}` : undefined,
+          nextAction: task.actionStatus,
+        },
+      });
+    }
   }, [task, navigate]);
 
   const handleScanSuccess = async (barcode: string) => {
@@ -29,6 +44,33 @@ export default function ToteScan() {
     setScanned(true);
 
     try {
+      // 서버 상태 재확인 (클라 상태 불일치 방지)
+      const active = await taskService.getMyActiveTask();
+      const payload = active?.data?.payload;
+      if (
+        active?.success &&
+        payload &&
+        typeof payload.batchTaskId === "number" &&
+        payload.batchTaskId > 0 &&
+        payload.actionStatus &&
+        payload.actionStatus !== "SCAN_TOTE"
+      ) {
+        navigate("/worker/task/work-detail", {
+          replace: true,
+          state: {
+            task: payload,
+            toteBarcode: payload.toteId ? `TOTE-00${payload.toteId}` : undefined,
+            nextAction: payload.actionStatus,
+          },
+        });
+        return;
+      }
+
+      console.log("ToteScan request:", {
+        taskId: task.batchTaskId,
+        actionStatus: task.actionStatus,
+        barcode,
+      });
       // ✅ taskId = batchTaskId 그대로 사용 (백 엔드포인트가 taskId를 받음)
       const response = await taskService.scanTote(task.batchTaskId, barcode);
 
@@ -48,8 +90,36 @@ export default function ToteScan() {
       throw new Error(response.message || "토트 등록에 실패했습니다.");
     } catch (err: any) {
       console.error("Tote scan error:", err);
+      if (err?.response) {
+        console.error("Tote scan error response:", err.response?.status, err.response?.data);
+      }
+      if (err?.response?.data?.errorCode === "TASK_005") {
+        try {
+          const active = await taskService.getMyActiveTask();
+          const payload = active?.data?.payload;
+          if (
+            active?.success &&
+            payload &&
+            typeof payload.batchTaskId === "number" &&
+            payload.batchTaskId > 0
+          ) {
+            navigate("/worker/task/work-detail", {
+              replace: true,
+              state: {
+                task: payload,
+                toteBarcode: payload.toteId ? `TOTE-00${payload.toteId}` : undefined,
+                nextAction: payload.actionStatus,
+              },
+            });
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
       alert(err?.message || "토트 등록 중 오류가 발생했습니다.");
-      setScanned(false);
+      // 연속 요청 방지 (서버 409/429 스팸 방지)
+      setTimeout(() => setScanned(false), 800);
     }
   };
 

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "../../../components/layout/MobileLayout";
 import { taskService } from "@/services/taskService";
@@ -7,10 +7,14 @@ import { TASK_ERROR_MESSAGES, type TaskErrorCode } from "@/types/task";
 export default function TaskAssignLoading() {
   const navigate = useNavigate();
   const { setTitle } = useOutletContext<MobileLayoutContext>();
+  const didRunRef = useRef(false);
 
   useEffect(() => setTitle("작업 할당"), [setTitle]);
 
   useEffect(() => {
+    if (didRunRef.current) return;
+    didRunRef.current = true;
+
     const goWorkDetailWithActive = (active: Awaited<ReturnType<typeof taskService.getMyActiveTask>>) => {
       const payload = active.data.payload;
 
