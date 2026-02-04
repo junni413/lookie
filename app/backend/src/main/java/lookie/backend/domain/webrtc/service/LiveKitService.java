@@ -16,11 +16,12 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import lookie.backend.domain.webrtc.event.CallEndedEvent;
 import lookie.backend.domain.webrtc.event.CallRejectedEvent;
-
 import lookie.backend.domain.webrtc.dto.WebRtcSignalType;
 import lookie.backend.domain.webrtc.dto.WebRtcSignalResponse;
 import java.time.LocalDateTime;
@@ -32,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 @ConditionalOnProperty(name = "livekit.enabled", havingValue = "true", matchIfMissing = true)
 public class LiveKitService {
 
+    // ... (fields remain the same) ...
     private final LiveKitConfig liveKitConfig;
     private final StringRedisTemplate redisTemplate;
     private final CallHistoryMapper callHistoryMapper;
@@ -43,37 +45,50 @@ public class LiveKitService {
     private static final String STATUS_BUSY = "BUSY";
 
     /**
+     * [Helper] 트랜잭션 커밋 후 실행 (WebSocket 시그널 분리)
+     */
+    private void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            // 트랜잭션이 없으면 바로 실행
+            action.run();
+        }
+    }
+
+    // ... (previous methods) ...
+
+    /**
      * 1. 화상 요청 (전화 걸기)
      */
     @Transactional
     public WebRtcDto.CallResponse makeCall(WebRtcDto.CallRequest request) {
-
-        // 1. 받는 사람 상태 검증 (통화 중, 자리 비움 등 체크)
+        // ... (validation and DB logic) ...
         validateUserAvailable(request.getCalleeId());
-
-        // 2. LiveKit Room 이름 생성 (고유한 이름)
         String roomName = generateRoomName(request.getCallerId(), request.getCalleeId());
 
-        // 3. [MyBatis] VO 생성 및 DB 저장
         CallHistoryVO call = CallHistoryVO.builder()
                 .roomName(roomName)
                 .callerId(request.getCallerId())
                 .calleeId(request.getCalleeId())
-                .issueId(request.getIssueId()) // Nullable
+                .issueId(request.getIssueId())
                 .status("WAITING")
                 .createdAt(LocalDateTime.now())
                 .build();
 
         callHistoryMapper.save(call);
-
-        // 4. Redis 상태 설정 (받는 사람 BUSY)
         setUserBusy(request.getCalleeId());
-
-        // 5. 거는 사람(Caller)용 LiveKit 토큰 발급
         String token = generateToken(request.getCallerId().toString(), roomName);
 
-        // 6. [WebSocket] Callee에게 요청 알림 전송 (Dual-Path)
-        sendDualPathSignal(request.getCalleeId(), WebRtcSignalType.REQUESTED, call.getId(), null, request.getCallerId());
+        // [Refactored] Single Payload Generation
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REQUESTED, call.getId(), null, request.getCallerId());
+
+        runAfterCommit(() -> sendDualPathSignal(request.getCalleeId(), payload));
 
         return new WebRtcDto.CallResponse(call.getId(), roomName, token);
     }
@@ -92,25 +107,23 @@ public class LiveKitService {
      */
     @Transactional
     public String acceptCall(Long callId) {
-        // 1. 조회
         CallHistoryVO call = callHistoryMapper.findById(callId)
                 .orElseThrow(() -> new ApiException(ErrorCode.WEBRTC_SESSION_NOT_FOUND));
 
-        // 2. 상태 검증
         if (!"WAITING".equals(call.getStatus())) {
             throw new ApiException(ErrorCode.WEBRTC_CLIENT_ERROR, "대기 중인 통화가 아닙니다.");
         }
 
-        // 3. 상태 변경
         call.setStatus("ACTIVE");
         call.setStartTime(LocalDateTime.now());
         callHistoryMapper.update(call);
 
-        // 4. 받는 사람(Callee)용 LiveKit 토큰 발급
         String token = generateToken(call.getCalleeId().toString(), call.getRoomName());
 
-        // 5. [WebSocket] Caller에게 수락 알림 전송 (Polling 대체)
-        sendSignal(call.getId(), WebRtcSignalType.ACCEPTED, call.getRoomName(), call.getCalleeId());
+        // [Refactored] Single Payload Generation
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ACCEPTED, call.getId(), call.getRoomName(), call.getCalleeId());
+
+        runAfterCommit(() -> sendSignal(payload));
 
         return token;
     }
@@ -126,7 +139,6 @@ public class LiveKitService {
         call.setStatus("REJECTED");
         callHistoryMapper.update(call);
 
-        // [Event 발행] "통화가 거절됨"
         if (call.getIssueId() != null) {
             eventPublisher.publishEvent(new CallRejectedEvent(
                     call.getId(),
@@ -136,12 +148,19 @@ public class LiveKitService {
                     "REJECTED"));
         }
 
-        // 리소스 정리
         clearUserStatus(call.getCalleeId());
         closeLiveKitRoom(call.getRoomName());
 
-        // [WebSocket] Caller에게 거절 알림 전송
-        sendSignal(call.getId(), WebRtcSignalType.REJECTED, null, call.getCalleeId());
+        // [Refactored] Single Payload Generation (Shared UUID)
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REJECTED, call.getId(), call.getRoomName(), call.getCalleeId());
+
+        runAfterCommit(() -> {
+            // 1. Waiting 중인 Caller가 보고 있는 Call Topic
+            sendSignal(payload);
+            
+            // 2. 확실한 전달을 위한 User Queue (Dual-Path)
+            sendDualPathSignal(call.getCallerId(), payload);
+        });
     }
 
     /**
@@ -156,27 +175,30 @@ public class LiveKitService {
         call.setEndTime(LocalDateTime.now());
         callHistoryMapper.update(call);
 
-        // [Event 발행] "통화 정상 종료"
         if (call.getIssueId() != null) {
             eventPublisher.publishEvent(new CallEndedEvent(
                     call.getId(), call.getIssueId(), call.getCallerId(), call.getCalleeId()));
         }
 
-        Long senderId = getCurrentUserId(); // 현재 종료 요청한 사용자 (없으면 null or 0L)
+        Long senderId = getCurrentUserId(); 
 
         try {
-            // 리소스 정리 (에러 발생해도 시그널은 가야 함)
             clearUserStatus(call.getCalleeId());
             closeLiveKitRoom(call.getRoomName());
         } catch (Exception e) {
             log.error("[endCall] 리소스 정리 중 오류 발생: {}", e.getMessage());
         } finally {
-            // [WebSocket] 통화 종료 알림 전송 (필수 보장)
-            sendSignal(call.getId(), WebRtcSignalType.ENDED, null, senderId);
-            
-            // [추가] 수신자에게도 확실하게 종료 알림 (Dual-Path)
-            Long targetId = call.getCallerId().equals(senderId) ? call.getCalleeId() : call.getCallerId();
-            sendDualPathSignal(targetId, WebRtcSignalType.ENDED, call.getId(), null, senderId);
+            // [Refactored] Single Payload Generation (Shared UUID)
+            WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ENDED, call.getId(), null, senderId);
+
+            runAfterCommit(() -> {
+                // To Call Topic
+                sendSignal(payload);
+                
+                // To User Queue (Dual-Path)
+                Long targetId = call.getCallerId().equals(senderId) ? call.getCalleeId() : call.getCallerId();
+                sendDualPathSignal(targetId, payload);
+            });
         }
     }
 
@@ -192,36 +214,27 @@ public class LiveKitService {
             throw new ApiException(ErrorCode.WEBRTC_CLIENT_ERROR, "대기 중인 통화만 취소할 수 있습니다.");
         }
 
-        // 사유에 따른 분기 처리
         if ("TIMEOUT".equals(request.getReason())) {
-            // 시나리오 1: 30초 동안 안 받음 -> "응답 없음"
             call.setStatus("NO_ANSWER");
-
-            // [중요] 응답 없음은 "도움 요청 실패" -> 긴급도 격상
             if (call.getIssueId() != null) {
                 eventPublisher.publishEvent(new CallRejectedEvent(
-                        call.getId(),
-                        call.getIssueId(),
-                        call.getCallerId(),
-                        call.getCalleeId(),
-                        "TIMEOUT"));
+                        call.getId(), call.getIssueId(), call.getCallerId(), call.getCalleeId(), "TIMEOUT"));
             }
-
         } else {
-            // 시나리오 2: 잘못 눌러서 취소함 -> "취소됨"
             call.setStatus("CANCELED");
         }
 
         callHistoryMapper.update(call);
 
-        // 뒷정리 (공통)
         clearUserStatus(call.getCalleeId());
         closeLiveKitRoom(call.getRoomName());
 
-        // [WebSocket] Callee에게 취소 알림 전송 (벨소리 중단용)
-        sendDualPathSignal(call.getCalleeId(), WebRtcSignalType.CANCELED, call.getId(), null, call.getCallerId());
-    }
+        // [Refactored] Single Payload Generation
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.CANCELED, call.getId(), null, call.getCallerId());
 
+        runAfterCommit(() -> sendDualPathSignal(call.getCalleeId(), payload));
+    }
+    
     // --- 내부 메서드 ---
 
     /**
@@ -234,10 +247,6 @@ public class LiveKitService {
             token.setIdentity(identity);
 
             // [Security Fix] Token Restrictions
-            // Use RoomJoin(true) AND Room(roomName) to restrict access to the specific room
-            // only.
-            // This is the functional equivalent of configuring VideoGrants with
-            // roomJoin=true and room=roomName.
             token.addGrants(new RoomJoin(true), new Room(roomName));
 
             return token.toJwt();
@@ -299,49 +308,56 @@ public class LiveKitService {
     }
 
     /**
-     * WebSocket 시그널 전송 공통 메서드
-     * Destination: /topic/video-calls/{callId}
-     */
-    /**
-     * WebSocket 시그널 전송 공통 메서드
-     * Destination: /topic/video-calls/{callId}
+     * WebSocket 시그널 전송 공통 메서드 (Legacy Wrapper)
      */
     private void sendSignal(Long callId, WebRtcSignalType type, String roomName, Long senderId) {
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName, senderId);
-
-        messagingTemplate.convertAndSend("/topic/video-calls/" + callId, payload);
-        log.info("[WebSocket] Signal sent: callId={}, type={}, senderId={}", callId, type, senderId);
+        sendSignal(WebRtcSignalResponse.from(type, callId, roomName, senderId));
     }
 
     /**
-     * [Refactored] 사용자에게 확실하게 알림 전송 (Dual-Path Strategy)
-     * 1. 개인 큐 (/user/{id}/queue/calls)
-     * 2. 공용 토픽 (/topic/calls/{id}) - Fallback
+     * [Overloaded] WebSocket 시그널 전송 (Direct Payload)
+     */
+    private void sendSignal(WebRtcSignalResponse payload) {
+        messagingTemplate.convertAndSend("/topic/video-calls/" + payload.getCallId(), payload);
+        log.info("[WebSocket] Signal sent: callId={}, type={}, senderId={}, msgId={}", 
+                payload.getCallId(), payload.getType(), payload.getSenderId(), payload.getMessageId());
+    }
+
+    /**
+     * [Refactored] 사용자에게 확실하게 알림 전송 (Dual-Path Strategy) (Legacy Wrapper)
      */
     private void sendDualPathSignal(Long userId, WebRtcSignalType type, Long callId, String roomName, Long senderId) {
-        if (userId == null) return;
-        sendSignalToUser(userId, type, callId, roomName, senderId);
-        sendSignalToUserTopic(userId, type, callId, roomName, senderId);
+        sendDualPathSignal(userId, WebRtcSignalResponse.from(type, callId, roomName, senderId));
     }
+
+    /**
+     * [Overloaded] 사용자에게 확실하게 알림 전송 (Direct Payload)
+     */
+    private void sendDualPathSignal(Long userId, WebRtcSignalResponse payload) {
+        if (userId == null) return;
+        sendSignalToUser(userId, payload);
+        sendSignalToUserTopic(userId, payload);
+    }
+
 
     /**
      * 특정 사용자에게 1:1 시그널 전송
      * Destination: /user/{userId}/queue/calls
      */
-    private void sendSignalToUser(Long userId, WebRtcSignalType type, Long callId, String roomName, Long senderId) {
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName, senderId);
+    private void sendSignalToUser(Long userId, WebRtcSignalResponse payload) {
         messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/calls", payload);
-        log.info("[WebSocket] Private Signal sent to User {}: callId={}, type={}", userId, callId, type);
+        log.info("[WebSocket] Private Signal sent to User {}: callId={}, type={}, msgId={}", 
+                userId, payload.getCallId(), payload.getType(), payload.getMessageId());
     }
 
     /**
      * 특정 사용자에게 Topic으로 시그널 전송 (Fallback)
      * Destination: /topic/calls/{userId}
      */
-    private void sendSignalToUserTopic(Long userId, WebRtcSignalType type, Long callId, String roomName, Long senderId) {
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName, senderId);
+    private void sendSignalToUserTopic(Long userId, WebRtcSignalResponse payload) {
         messagingTemplate.convertAndSend("/topic/calls/" + userId, payload);
-        log.info("[WebSocket] Public Topic Signal sent to User {}: callId={}, type={}", userId, callId, type);
+        log.info("[WebSocket] Public Topic Signal sent to User {}: callId={}, type={}, msgId={}", 
+                userId, payload.getCallId(), payload.getType(), payload.getMessageId());
     }
 
     /**

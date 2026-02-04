@@ -6,6 +6,7 @@ export interface CallStatusEvent {
     roomId?: string;
     reason?: string;
     timestamp: number;
+    messageId?: string; // [New] UUID for deduplication
 }
 
 export type CallStatusListener = (event: CallStatusEvent) => void;
@@ -32,6 +33,37 @@ export function subscribeCallStatus(
     onError?: (error: any) => void
 ): () => void {
 
+    const onConnectHandler = () => {
+        console.log('✅ [STOMP] Connected (Call Status)');
+
+        const topic = `/topic/video-calls/${callId}`;
+        console.log(`📡 [STOMP] Subscribing to ${topic}`);
+
+        if (subscription) {
+            subscription.unsubscribe();
+        }
+
+        subscription = client!.subscribe(topic, (message) => {
+            try {
+                const backendMessage = JSON.parse(message.body);
+                console.log(`📨 [STOMP] Message:`, backendMessage);
+
+                // Transform backend DTO to frontend event
+                const frontendEvent: CallStatusEvent = {
+                    type: backendMessage.type,
+                    callId: backendMessage.callId,
+                    roomId: backendMessage.roomId || undefined,
+                    timestamp: backendMessage.timestamp,
+                    messageId: backendMessage.messageId, // Map messageId
+                };
+
+                onStatusChange(frontendEvent);
+            } catch (e) {
+                console.error('❌ [STOMP] Parse error:', e);
+            }
+        });
+    };
+
     if (!client) {
         client = new Client({
             brokerURL,
@@ -57,47 +89,29 @@ export function subscribeCallStatus(
         Authorization: `Bearer ${token}`,
     };
 
-    client.onConnect = () => {
-        console.log('✅ [STOMP] Connected');
-
-        const topic = `/topic/video-calls/${callId}`;
-        console.log(`📡 [STOMP] Subscribing to ${topic}`);
-
-        subscription = client!.subscribe(topic, (message) => {
-            try {
-                const backendMessage = JSON.parse(message.body);
-                console.log(`📨 [STOMP] Message:`, backendMessage);
-
-                // Transform backend DTO to frontend event
-                const frontendEvent: CallStatusEvent = {
-                    type: backendMessage.type,
-                    callId: backendMessage.callId,
-                    roomId: backendMessage.roomId || undefined,
-                    timestamp: backendMessage.timestamp,
-                };
-
-                onStatusChange(frontendEvent);
-            } catch (e) {
-                console.error('❌ [STOMP] Parse error:', e);
-            }
-        });
-    };
-
-    if (!client.active) {
-        client.activate();
+    // [Fix] Handle "Already Connected" State
+    // If connected, run handler immediately. Otherwise, set callback.
+    if (client.connected) {
+        onConnectHandler();
+    } else {
+        client.onConnect = onConnectHandler;
+        if (!client.active) {
+            client.activate();
+        }
     }
 
     // Cleanup function
     return () => {
-        console.log('🔌 [STOMP] Cleanup');
+        console.log('🔌 [STOMP] Cleanup (Unsubscribing only)');
         if (subscription) {
             subscription.unsubscribe();
             subscription = null;
         }
-        if (client) {
-            client.deactivate();
-            client = null;
-        }
+        // [Fix] Do NOT deactivate client here. Keep connection alive.
+        // if (client) {
+        //     client.deactivate();
+        //     client = null;
+        // }
     };
 }
 
@@ -141,21 +155,25 @@ export function subscribeIncomingCalls(
     const subscribeAction = () => {
         console.log(`📡 [STOMP] Subscribing to incoming call topics for User ${userId}`);
 
-        // Deduplication Cache
-        const processedEvents = new Set<string>();
+        // Deduplication Cache (UUID based)
+        const processedMessageIds = new Set<string>();
 
         const handler = (message: any, topicName: string) => {
             try {
                 const body = JSON.parse(message.body);
-                const eventKey = `${body.type}-${body.callId}`;
+                const messageId = body.messageId; // Backend now provides UUID
 
-                if (processedEvents.has(eventKey)) {
-                    console.log(`🧹 [STOMP] Ignoring duplicate event: ${eventKey}`);
+                // Fallback for legacy messages without UUID (though backend enforces it now)
+                const dedupKey = messageId || `${body.type}-${body.callId}`;
+
+                if (processedMessageIds.has(dedupKey)) {
+                    console.log(`🧹 [STOMP] Ignoring duplicate event (ID: ${dedupKey})`);
                     return;
                 }
 
-                processedEvents.add(eventKey);
-                setTimeout(() => processedEvents.delete(eventKey), 500); // 0.5초 후 만료
+                processedMessageIds.add(dedupKey);
+                // Keep ID in cache for 10 seconds to handle network jitter
+                setTimeout(() => processedMessageIds.delete(dedupKey), 10000);
 
                 console.log(`📨 [STOMP] Incoming Call via [${topicName}]:`, body);
 
@@ -164,7 +182,8 @@ export function subscribeIncomingCalls(
                     callId: body.callId,
                     roomId: body.roomId,
                     timestamp: body.timestamp || Date.now(),
-                    reason: body.callerName
+                    reason: body.callerName,
+                    messageId: messageId
                 };
                 onIncomingCall(frontendEvent);
 
