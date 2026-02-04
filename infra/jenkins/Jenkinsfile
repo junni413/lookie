@@ -67,6 +67,15 @@ pipeline {
     // ============================================================
     DOCKER_BUILDKIT = '1'
     COMPOSE_DOCKER_CLI_BUILD = '1'
+
+    // ------------------------------------------------------------
+    // ✅ (추가/안전) AI 관련 기본값을 env에 "명시"
+    // - Groovy에서 env.AI_IMAGE_TAG="" 해도, 실제 sh 환경엔 빈 문자열이 "unset"으로 보이는 케이스가 있어서
+    //   Deploy 단계에서 `${AI_IMAGE_TAG:-}` 처리를 더 했지만, 그래도 기본값을 하나 더 박아둠.
+    // - "의미"는 AI_BUILT로만 결정하므로, 여기 값은 안전장치용.
+    // ------------------------------------------------------------
+    AI_BUILT     = 'false'
+    AI_IMAGE_TAG = ''
   }
 
   stages {
@@ -172,7 +181,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     }
 
     // ============================================================
-    // MR stages (네 코드 그대로, 생략 없이 유지)
+    // MR stages
     // ============================================================
 
     stage('Backend Test (MR only)') {
@@ -416,9 +425,6 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
 
     // ============================================================
     // develop push: Deploy
-    //  - backend/nginx는 항상 최신 IMAGE_TAG로 교체
-    //  - ai-server는 AI_BUILT=true일 때만 pull + recreate
-    //  - AI_BUILT=false면 기존 ai-server 컨테이너/이미지 그대로 유지
     // ============================================================
     stage('Deploy (develop push only, pull based)') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_DEPLOY == "true" } }
@@ -427,7 +433,10 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
           if (!env.IMAGE_TAG?.trim()) {
             env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           }
-          echo "Deploy IMAGE_TAG=${env.IMAGE_TAG}, AI_BUILT=${env.AI_BUILT}, AI_IMAGE_TAG=${env.AI_IMAGE_TAG}"
+
+          // ✅ (표시용) AI_IMAGE_TAG가 unset/blank여도 표시에서만 빈 값처럼 보이게
+          def aiTagForLog = (env.AI_IMAGE_TAG ?: '').trim()
+          echo "Deploy IMAGE_TAG=${env.IMAGE_TAG}, AI_BUILT=${env.AI_BUILT}, AI_IMAGE_TAG=${aiTagForLog}"
         }
 
         withCredentials([usernamePassword(
@@ -436,6 +445,15 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
           passwordVariable: 'DH_PASS'
         )]) {
           sshagent(credentials: [env.SSH_CRED_ID]) {
+
+            // ----------------------------------------------------------------
+            // ✅ (핵심 수정)
+            // - 아래 sh는 bash + set -u라서, "unset 변수"를 ${VAR}로 참조하는 순간 즉시 죽음.
+            // - Jenkins가 빈 문자열 env를 실제 프로세스 환경에선 "unset"으로 보이게 만들 수 있음.
+            // - 그래서 SSH로 넘기는 인자들은 전부 `${VAR:-}` / `${VAR-}` 로 안전 처리.
+            // - 또한 비밀번호/값에 `'`가 있으면 `AI_IMAGE_TAG='...'` 같은 싱글쿼트 인자가 깨질 수 있어
+            //   bash 안전 싱글쿼트 함수(sq)로 감쌈.
+            // ----------------------------------------------------------------
             sh '''#!/usr/bin/env bash
               set -euo pipefail
               : > "${DEPLOY_LOG}"
@@ -443,18 +461,40 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
               mkdir -p ~/.ssh
               ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
+              # ✅ bash-safe single-quote: abc'def -> 'abc'"'"'def'
+              sq() {
+                local s="${1-}"
+                s="${s//\'/\'\"\'\"\' }"
+                printf "'%s'" "$s"
+              }
+
+              # ✅ unset 가능 변수는 ${VAR-} / ${VAR:-} 로 접근
+              # - ${VAR-}  : VAR unset이면 '' (빈 값), set -u에서 안전
+              # - ${VAR:-} : VAR unset OR empty면 '' (빈 값), set -u에서 안전
+              REGISTRY_IMAGE_BACKEND_V="$(sq "${REGISTRY_IMAGE_BACKEND-}")"
+              REGISTRY_IMAGE_NGINX_V="$(sq "${REGISTRY_IMAGE_NGINX-}")"
+              REGISTRY_IMAGE_AI_V="$(sq "${REGISTRY_IMAGE_AI-}")"
+              IMAGE_TAG_V="$(sq "${IMAGE_TAG-}")"
+              AI_BUILT_V="$(sq "${AI_BUILT-}")"
+              AI_IMAGE_TAG_V="$(sq "${AI_IMAGE_TAG-}")"
+              DH_USER_V="$(sq "${DH_USER-}")"
+              DH_PASS_V="$(sq "${DH_PASS-}")"
+              DEPLOY_DIR_V="$(sq "${DEPLOY_DIR-}")"
+              GIT_REPO_SSH_V="$(sq "${GIT_REPO_SSH-}")"
+              COMPOSE_PROD_FILE_V="$(sq "${COMPOSE_PROD_FILE-}")"
+
               ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
-                "REGISTRY_IMAGE_BACKEND='${REGISTRY_IMAGE_BACKEND}' \
-                 REGISTRY_IMAGE_NGINX='${REGISTRY_IMAGE_NGINX}' \
-                 REGISTRY_IMAGE_AI='${REGISTRY_IMAGE_AI}' \
-                 IMAGE_TAG='${IMAGE_TAG}' \
-                 AI_BUILT='${AI_BUILT}' \
-                 AI_IMAGE_TAG='${AI_IMAGE_TAG}' \
-                 DH_USER='${DH_USER}' \
-                 DH_PASS='${DH_PASS}' \
-                 DEPLOY_DIR='${DEPLOY_DIR}' \
-                 GIT_REPO_SSH='${GIT_REPO_SSH}' \
-                 COMPOSE_PROD_FILE='${COMPOSE_PROD_FILE}' \
+                "REGISTRY_IMAGE_BACKEND=${REGISTRY_IMAGE_BACKEND_V} \
+                 REGISTRY_IMAGE_NGINX=${REGISTRY_IMAGE_NGINX_V} \
+                 REGISTRY_IMAGE_AI=${REGISTRY_IMAGE_AI_V} \
+                 IMAGE_TAG=${IMAGE_TAG_V} \
+                 AI_BUILT=${AI_BUILT_V} \
+                 AI_IMAGE_TAG=${AI_IMAGE_TAG_V} \
+                 DH_USER=${DH_USER_V} \
+                 DH_PASS=${DH_PASS_V} \
+                 DEPLOY_DIR=${DEPLOY_DIR_V} \
+                 GIT_REPO_SSH=${GIT_REPO_SSH_V} \
+                 COMPOSE_PROD_FILE=${COMPOSE_PROD_FILE_V} \
                  bash -s" <<'EOSSH' 2>&1 | tee -a "${DEPLOY_LOG}"
 set -euo pipefail
 
@@ -481,6 +521,7 @@ else
 fi
 
 # (2) 이번에 AI를 빌드했으면(변경 감지) 그 태그로 운영 태그 갱신
+#     - AI_BUILT=true 인데 AI_IMAGE_TAG가 비어있으면 "구성 오류"로 실패시키는 정책 유지
 if [[ "${AI_BUILT}" == "true" ]]; then
   if [[ -z "${AI_IMAGE_TAG}" ]]; then
     echo "[ERROR] AI_BUILT=true but AI_IMAGE_TAG is empty"
