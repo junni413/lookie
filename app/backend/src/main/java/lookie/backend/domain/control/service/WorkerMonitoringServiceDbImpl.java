@@ -26,6 +26,7 @@ import lookie.backend.global.util.WorkerNameFormatter;
 public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
 
     private final ControlMapper controlMapper;
+    private final lookie.backend.domain.user.service.UserService userService; // 실시간 상태 주입용
 
     /**
      * 구역별 현황 조회 구현
@@ -166,15 +167,32 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
         // 1. Fetch raw data as VO
         List<AdminQueryVo> adminVos = controlMapper.selectAdmins(zoneId, name);
 
-        // 2. Map VO to DTO
-        return adminVos.stream()
-                .map(vo -> AdminResponseDto.builder()
-                        .adminId(vo.getAdminId())
-                        .name(vo.getRawName()) // 정책: 관리자는 원본 이름 사용
-                        .assignedZoneId(vo.getAssignedZoneId())
-                        .zoneName(ZoneType.getNameById(vo.getAssignedZoneId())) // Enum 매핑
-                        .currentStatus(vo.getCurrentStatus())
-                        .build())
+        // 2. Fetch UserVO for real-time status injection
+        List<lookie.backend.domain.user.vo.UserVO> userVOs = adminVos.stream()
+                .map(vo -> {
+                    lookie.backend.domain.user.vo.UserVO userVO = new lookie.backend.domain.user.vo.UserVO();
+                    userVO.setUserId(vo.getAdminId());
+                    return userVO;
+                })
+                .toList();
+
+        // 3. Inject real-time Redis status (ONLINE/BUSY/PAUSED/AWAY)
+        userService.populateUserStatus(userVOs);
+
+        // 4. Map VO to DTO with real-time status
+        return java.util.stream.IntStream.range(0, adminVos.size())
+                .mapToObj(i -> {
+                    AdminQueryVo vo = adminVos.get(i);
+                    lookie.backend.domain.user.vo.UserVO userVO = userVOs.get(i);
+
+                    return AdminResponseDto.builder()
+                            .adminId(vo.getAdminId())
+                            .name(vo.getRawName()) // 정책: 관리자는 원본 이름 사용
+                            .assignedZoneId(vo.getAssignedZoneId())
+                            .zoneName(ZoneType.getNameById(vo.getAssignedZoneId())) // Enum 매핑
+                            .currentStatus(userVO.getStatus()) // 실시간 Redis 상태 사용
+                            .build();
+                })
                 .toList();
     }
 }
