@@ -158,7 +158,7 @@
         WHERE aa.admin_id = #{adminId}
           AND i.status = #{req.status}
     </select>
-    <!-- 내 이슈 목록 조회 -->
+    <!-- 내 이슈 목록 조회 (최적화: Window Function 사용) -->
     <select id="findMyIssues" resultType="lookie.backend.domain.issue.dto.MyIssueSummary">
         SELECT
             i.issue_id AS issueId,
@@ -166,19 +166,18 @@
             i.status,
             p.product_name AS productName,
             zl.location_code AS locationCode,
-            (
-                SELECT aj.ai_decision
-                FROM ai_judgments aj
-                WHERE aj.issue_id = i.issue_id
-                ORDER BY aj.created_at DESC
-                LIMIT 1
-            ) AS aiDecision,
+            latest_aj.ai_decision AS aiDecision,
             i.admin_required AS adminRequired,
             i.created_at AS createdAt
         FROM issues i
         LEFT JOIN batch_task_items bti ON i.batch_task_item_id = bti.batch_task_item_id
         LEFT JOIN products p ON bti.product_id = p.product_id
         LEFT JOIN zone_locations zl ON i.zone_location_id = zl.location_id
+        LEFT JOIN (
+            SELECT ai_decision, issue_id,
+                   ROW_NUMBER() OVER (PARTITION BY issue_id ORDER BY created_at DESC) as rn
+            FROM ai_judgments
+        ) latest_aj ON i.issue_id = latest_aj.issue_id AND latest_aj.rn = 1
         WHERE i.worker_id = #{workerId}
         <if test="status != null">
             AND i.status = #{status}
