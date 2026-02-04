@@ -21,6 +21,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import lookie.backend.domain.issue.dto.IssueStatus;
+import lookie.backend.domain.issue.dto.MyIssueSummary;
+
 /**
  * Issue(이슈) 도메인 API 컨트롤러
  * - 이슈 생성 (작업자)
@@ -122,6 +126,21 @@ public class IssueController {
                 return ResponseEntity.ok(ApiResponse.success(
                                 "이슈가 확정 처리되었습니다.",
                                 null));
+        }
+
+        /**
+         * 내 이슈 목록 조회
+         * - 작업자 본인이 등록한 이슈 목록 조회
+         * - status (OPEN/RESOLVED) 필터링 가능
+         */
+        @Operation(summary = "내 이슈 목록 조회", description = "로그인한 작업자의 이슈 목록을 조회합니다.")
+        @GetMapping("/my")
+        public ResponseEntity<ApiResponse<List<MyIssueSummary>>> getMyIssues(
+                        @Parameter(description = "이슈 상태 (OPEN, RESOLVED)") @RequestParam(required = false) IssueStatus status) {
+                Long workerId = SecurityUtil.getCurrentUserId();
+                List<MyIssueSummary> response = issueService
+                                .getMyIssueList(workerId, status);
+                return ResponseEntity.ok(ApiResponse.success("내 이슈 목록 조회 성공", response));
         }
 
         /**
