@@ -25,6 +25,7 @@ public class UserVO {
     private String email;
     private LocalDate birthDate;
     private Boolean isActive;
+    private Long assignedZoneId; // 배정된 구역 ID (WebRTC 자동 선택용)
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
