@@ -11,6 +11,7 @@ import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
 import lookie.backend.domain.control.dto.map.ZoneMapResponse;
+import lookie.backend.domain.control.dto.AdminResponseDto;
 import lookie.backend.domain.control.service.WorkerLocationService;
 import lookie.backend.domain.control.service.WorkerMonitoringService;
 import lookie.backend.global.response.ApiResponse;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -110,6 +112,21 @@ public class ControlController {
     @GetMapping("/zones/{zoneId}/map")
     public ApiResponse<ZoneMapResponse> getZoneMap(@PathVariable Long zoneId) {
         ZoneMapResponse result = workerLocationService.getZoneMap(zoneId);
+        return ApiResponse.success(result);
+    }
+
+    /**
+     * 7. 관리자 목록 조회 API
+     * 이름 및 구역 필터링을 지원하여 관리자 목록 및 현재 상태를 조회
+     * 권한: ADMIN
+     */
+    @Operation(summary = "관리자 목록 조회", description = "관리자 이름 및 구역 필터링을 통해 목록을 조회합니다.")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    @GetMapping("/admins")
+    public ApiResponse<List<AdminResponseDto>> getAdmins(
+            @RequestParam(required = false) Long zoneId,
+            @RequestParam(required = false) String name) {
+        List<AdminResponseDto> result = workerMonitoringService.getAdmins(zoneId, name);
         return ApiResponse.success(result);
     }
 }
