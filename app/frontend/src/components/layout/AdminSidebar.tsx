@@ -1,8 +1,10 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { cn } from "@/utils/cn";
 import { ADMIN_MENU } from "@/config/adminMenu";
 import { useAuthStore } from "@/stores/authStore";
-import { LogOut } from "lucide-react";
+import { LogOut, Briefcase, Clock } from "lucide-react";
+import { workLogService } from "@/services/workLogService";
 
 export default function AdminSidebar() {
   const user = useAuthStore((state) => state.user);
@@ -86,6 +88,84 @@ export default function AdminSidebar() {
         </button>
       </div>
 
+      {/* Attendance Button (Absolute or placed above footer) */}
+      <div className="mt-4 border-t border-slate-700/50 pt-4">
+          <AttendanceButton />
+      </div>
+
     </div>
   );
+}
+
+
+
+function AttendanceButton() {
+    const user = useAuthStore((state) => state.user);
+    const [status, setStatus] = useState<'WORKING' | 'OFF_WORK'>('OFF_WORK');
+    const [loading, setLoading] = useState(false);
+
+    // Initial Status Check
+    useEffect(() => {
+        const checkStatus = async () => {
+            if (user?.userId) {
+                const current = await workLogService.getMyWorkStatus();
+                setStatus(current);
+            }
+        };
+        checkStatus();
+    }, [user?.userId]);
+
+    const toggleWorkStatus = async () => {
+        if (!user?.userId) return;
+        setLoading(true);
+        try {
+            if (status === 'OFF_WORK') {
+                await workLogService.startWork();
+                setStatus('WORKING');
+                alert("출근 처리가 완료되었습니다.");
+            } else {
+                await workLogService.endWork();
+                setStatus('OFF_WORK');
+                alert("퇴근 처리가 완료되었습니다.");
+            }
+            // Re-verify status just in case (optional, but safer)
+            const current = await workLogService.getMyWorkStatus();
+            setStatus(current);
+
+        } catch (error) {
+            console.error("Attendance API failed:", error);
+            alert("처리 중 오류가 발생했습니다.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <button
+            onClick={toggleWorkStatus}
+            disabled={loading || !user}
+            className={cn(
+                "w-full rounded-lg p-3 flex items-center gap-3 transition-all group border",
+                status === 'WORKING' 
+                    ? "bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20 text-amber-500" 
+                    : "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-500",
+                loading && "opacity-50 cursor-not-allowed"
+            )}
+        >
+            <div className={cn(
+                "w-9 h-9 rounded-full flex items-center justify-center transition-colors",
+                status === 'WORKING' ? "bg-amber-500/20" : "bg-emerald-500/20"
+            )}>
+                {status === 'WORKING' ? <Clock size={16} /> : <Briefcase size={16} />}
+            </div>
+            <div className="flex-1 text-left">
+                <div className="text-xs font-medium opacity-80">
+                    {status === 'WORKING' ? "현재 업무 중" : "현재 휴식 중"}
+                </div>
+                <div className="text-sm font-bold">
+                    {status === 'WORKING' ? "퇴근하기" : "출근하기"}
+                </div>
+            </div>
+        </button>
+    );
 }

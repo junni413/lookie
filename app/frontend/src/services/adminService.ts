@@ -1,7 +1,7 @@
 import { request } from "@/api/http";
 import type { ApiResponse } from "@/api/type";
 import type { AdminContact } from "@/types/AdminContact";
-import type { AdminIssueSummary, IssueDetailData } from "@/types/issue";
+
 // import type { ZoneStat } from "./manageService"; // Reusing ZoneStat or defining new one
 // ZoneStat is not used, removing import
 
@@ -46,16 +46,30 @@ interface AdminListResponseItem {
 }
 
 // API Params
+// API Params
 interface AdminListParams {
     zoneId?: string;
     name?: string;
 }
 
-interface IssueListParams {
-    status?: "OPEN" | "RESOLVED"; // Literal type matches Backend Enum strings
-    page?: number;
-    size?: number;
+interface AdminZoneAssignmentRequest {
+    workerId: number;
+    zoneId: number;
+    reason?: string;
 }
+
+// Zone Worker DTO (Rich Data)
+export interface ZoneWorkerDto {
+    workerId: number;
+    name: string; // Formatted Name
+    workCount: number;
+    processingSpeed: number;
+    currentTaskProgress: number;
+    status: string; // "WORKING", etc.
+    webrtcStatus: string; // "AVAILABLE", etc.
+}
+
+
 
 // ========================================
 // 📡 API 함수
@@ -140,55 +154,31 @@ export async function getAdmins(token: string, params?: AdminListParams): Promis
 }
 
 /**
- * 이슈 목록 조회 (대시보드용)
- * GET /api/control/issues
+ * 관리자 강제 구역 배정
+ * POST /api/control/assignments
  */
-export async function getDashboardIssues(params?: IssueListParams): Promise<AdminIssueSummary[]> {
-    const query = new URLSearchParams();
-    if (params?.status) query.append("status", params.status);
-    if (params?.page) query.append("page", params.page.toString());
-    if (params?.size) query.append("size", params.size.toString());
-
-    const queryString = query.toString();
-    const url = `/api/issues${queryString ? `?${queryString}` : ""}`;
-
-    const response = await request<ApiResponse<{ issues: AdminIssueSummary[] }>>(url, {
-        method: "GET",
-    });
-
-    // 백엔드 응답 구조에 따라 조정 필요 (페이징 포함 여부 등)
-    // 현재 구현 계획: Dashboard에서는 리스트만 필요
-    return response.data?.issues || [];
-}
-
-/**
- * 이슈 상세 조회
- * GET /api/issues/{id}
- */
-export async function getIssueDetail(issueId: number): Promise<IssueDetailData> {
-    const response = await request<ApiResponse<IssueDetailData>>(`/api/issues/${issueId}`, {
-        method: "GET",
-    });
-    if (!response.data) throw new Error("Issue not found");
-    return response.data;
-}
-
-/**
- * 이슈 확정 (Decision)
- * POST /api/issues/{id}/admin/confirm
- */
-export async function confirmIssue(issueId: number, decision: string): Promise<void> {
-    await request<ApiResponse<void>>(`/api/issues/${issueId}/admin/confirm`, {
+export async function assignWorkerToZone(workerId: number, zoneId: number, reason?: string): Promise<void> {
+    await request<ApiResponse<void>>("/api/control/assignments", {
         method: "POST",
-        body: JSON.stringify({ adminDecision: decision }),
+        body: { workerId, zoneId, reason } as AdminZoneAssignmentRequest,
     });
+}
+
+/**
+ * 구역별 작업자 상세 조회
+ * GET /api/control/zones/{zoneId}/workers
+ */
+export async function getWorkersByZone(zoneId: number): Promise<ZoneWorkerDto[]> {
+    const response = await request<ApiResponse<ZoneWorkerDto[]>>(`/api/control/zones/${zoneId}/workers`, {
+        method: "GET",
+    });
+    return response.data || [];
 }
 
 export const adminService = {
     getDashboardSummary,
     getZones,
     getAdmins,
-    getDashboardIssues,
-    getIssueDetail,
-    confirmIssue,
+    assignWorkerToZone,
+    getWorkersByZone,
 };

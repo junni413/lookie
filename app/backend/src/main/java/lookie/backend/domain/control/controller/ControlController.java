@@ -43,7 +43,7 @@ public class ControlController {
      * 권한: ADMIN
      */
     @Operation(summary = "구역별 현황 조회", description = "각 구역(Zone)의 작업자 수와 진행률을 조회합니다.")
-    @PreAuthorize("hasAuthority('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/zones")
     public ApiResponse<List<ZoneOverviewDto>> getZoneOverviews() {
         List<ZoneOverviewDto> result = workerMonitoringService.getZoneOverviews();
@@ -56,7 +56,7 @@ public class ControlController {
      * 권한: ADMIN
      */
     @Operation(summary = "구역별 작업자 조회", description = "특정 구역에 배정된 작업자 목록을 조회합니다.")
-    @PreAuthorize("hasAuthority('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/zones/{zoneId}/workers")
     public ApiResponse<List<ZoneWorkerDto>> getWorkersByZone(@PathVariable Long zoneId) {
         List<ZoneWorkerDto> result = workerMonitoringService.getWorkersByZone(zoneId);
@@ -69,7 +69,7 @@ public class ControlController {
      * 권한: ADMIN
      */
     @Operation(summary = "대시보드 요약 조회", description = "전체 작업자 수, 이슈 현황, 구역별 요약 정보를 조회합니다.")
-    @PreAuthorize("hasAuthority('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/summary")
     public ApiResponse<DashboardSummaryDto> getDashboardSummary() {
         DashboardSummaryDto result = workerMonitoringService.getDashboardSummary();
@@ -82,7 +82,7 @@ public class ControlController {
      * 권한: ADMIN
      */
     @Operation(summary = "작업자 호버 정보 조회", description = "작업자 마우스 오버 시 필요한 요약 정보를 조회합니다.")
-    @PreAuthorize("hasAuthority('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/workers/{workerId}/hover")
     public ApiResponse<WorkerHoverDto> getWorkerHoverInfo(@PathVariable Long workerId) {
         WorkerHoverDto result = workerMonitoringService.getWorkerHoverInfo(workerId);
@@ -95,7 +95,7 @@ public class ControlController {
      * 권한: ADMIN
      */
     @Operation(summary = "관리자 강제 구역 배정", description = "작업자를 특정 구역으로 강제 배정합니다.")
-    @PreAuthorize("hasAuthority('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/assignments")
     public ApiResponse<Void> assignWorkerToZone(@RequestBody @Valid AdminZoneAssignmentRequest request) {
         workerMonitoringService.assignWorkerToZone(request);
@@ -108,7 +108,7 @@ public class ControlController {
      * 권한: ADMIN
      */
     @Operation(summary = "구역 상세 맵 조회", description = "구역 내 라인 및 작업자 실시간 위치 정보를 조회합니다.")
-    @PreAuthorize("hasAuthority('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/zones/{zoneId}/map")
     public ApiResponse<ZoneMapResponse> getZoneMap(@PathVariable Long zoneId) {
         ZoneMapResponse result = workerLocationService.getZoneMap(zoneId);
@@ -121,7 +121,7 @@ public class ControlController {
      * 권한: ADMIN
      */
     @Operation(summary = "관리자 목록 조회", description = "관리자 이름 및 구역 필터링을 통해 목록을 조회합니다.")
-    @PreAuthorize("hasAuthority('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admins")
     public ApiResponse<List<AdminResponseDto>> getAdmins(
             @RequestParam(required = false) Long zoneId,
