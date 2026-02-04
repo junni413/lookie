@@ -150,4 +150,44 @@ export const issueService = {
       body: JSON.stringify({ imageUrl }),
     });
   },
+
+  /** ✅ Admin: 이슈 목록 조회 */
+  getIssues: async (
+    params?: AdminIssueListRequest
+  ): Promise<AdminIssueListResponse> => {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.append("page", String(params.page));
+    if (params?.size) qs.append("size", String(params.size));
+    if (params?.status) qs.append("status", params.status);
+    if (params?.sort) qs.append("sort", params.sort);
+
+    const queryString = qs.toString();
+    const url = `/api/admin/issues${queryString ? `?${queryString}` : ""}`;
+
+    return requestJSON(url, { method: "GET" });
+  },
+
+  /** ✅ Admin: 이슈 상세 조회 */
+  getIssueDetail: async (issueId: number): Promise<IssueDetailData | null> => {
+    try {
+      const response = await requestJSON<ApiResponse<IssueDetailData>>(
+        `/api/admin/issues/${issueId}`,
+        { method: "GET" }
+      );
+      return response.data || null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** ✅ Admin: 이슈 확정 */
+  confirmIssue: async (
+    issueId: number,
+    body: { adminDecision: string }
+  ): Promise<void> => {
+    await requestJSON(`/api/admin/issues/${issueId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
 };
