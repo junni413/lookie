@@ -68,6 +68,22 @@ public class IssueController {
         }
 
         /**
+         * 이슈 보고용 이미지 등록
+         * - 관리자 부재 시, 현장 상황을 기록하기 위해 이미지를 등록합니다. (AI 재분석 X)
+         */
+        @Operation(summary = "이슈 보고용 이미지 등록", description = "관리자 부재 시 등 현장 상황 기록을 위해 이미지를 등록합니다. (AI 재분석 없음)")
+        @PostMapping("/{issueId}/image")
+        public ResponseEntity<ApiResponse<Void>> reportImage(
+                        @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
+                        @RequestBody lookie.backend.domain.issue.dto.ReportImageRequest request) {
+
+                Long workerId = SecurityUtil.getCurrentUserId();
+                issueService.reportImage(workerId, issueId, request.getImageUrl());
+
+                return ResponseEntity.ok(ApiResponse.success("이미지가 등록되었습니다.", null));
+        }
+
+        /**
          * 이슈 상세 조회
          * - 작업자가 신고한 이슈의 현재 상태 및 AI 판정 결과 조회
          */
