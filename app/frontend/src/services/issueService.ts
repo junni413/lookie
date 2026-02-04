@@ -169,10 +169,17 @@ export const issueService = {
     return requestJSON(`/api/issues/${issueId}`, { method: "GET" });
   },
 
-  /** ✅ 내 이슈 목록 조회 */
   getMyIssues: async (status?: "OPEN" | "RESOLVED"): Promise<ApiResponse<MyIssueResponse[]>> => {
     const qs = status ? `?status=${status}` : "";
     return requestJSON(`/api/issues/my${qs}`, { method: "GET" });
+  },
+
+  /** ✅ 재촬영 요청 (AI 재분석) */
+  retakeIssue: async (issueId: number, imageUrl: string): Promise<ApiResponse<void>> => {
+    return requestJSON(`/api/issues/${issueId}/ai/retake`, {
+      method: "POST",
+      body: JSON.stringify({ imageUrl }),
+    });
   },
 
   /**
