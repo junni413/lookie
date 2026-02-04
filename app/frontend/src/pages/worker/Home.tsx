@@ -16,11 +16,12 @@ type ApiResponse<T> = {
   errorCode: string | null;
   data: T;
 };
+
 type WorkLogData = {
   workLogId: number;
   workerId: number;
   workerName: string;
-  zoneId: number | null;
+  assignedZoneId: number | null; 
   currentStatus: WorkLogStatus;
   startedAt: string; // ISO string
   endedAt?: string | null;
@@ -46,7 +47,7 @@ function formatHHmmKST(isoLike: string) {
   });
 }
 
-// zoneId -> A/B/C...
+// assignedZoneId -> A/B/C...
 function zoneLabelFromId(zoneId: number | null | undefined) {
   if (zoneId === null || zoneId === undefined) return "—";
   // ✅ 현재는 0->A 가정. 만약 1->A면 64+zoneId로 바꾸기
@@ -139,8 +140,8 @@ export default function Home() {
         setWorkStatus(uiStatus);
         setZoneStatusText(uiStatus === "WORKING" ? "근무중" : "근무중단");
 
-        // 구역
-        setZoneLabel(zoneLabelFromId(cur.zoneId));
+        // ✅ 구역 (swagger: assignedZoneId)
+        setZoneLabel(zoneLabelFromId(cur.assignedZoneId));
 
         // ✅ 1-2) 출근 상태가 정상일 때만 "진행중 작업" 조회
         setIsTaskChecking(true);
@@ -380,8 +381,9 @@ export default function Home() {
           disabled={taskBtnDisabled}
         >
           <span
-            className={`text-sm font-extrabold ${taskBtnDisabled ? "text-slate-400" : "text-slate-900"
-              }`}
+            className={`text-sm font-extrabold ${
+              taskBtnDisabled ? "text-slate-400" : "text-slate-900"
+            }`}
           >
             {taskBtnLabel}
           </span>
