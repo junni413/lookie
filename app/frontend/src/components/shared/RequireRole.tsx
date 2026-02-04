@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { DEFAULT_ROUTE_BY_ROLE } from "@/config/roleRoute";
-import type { UserRole } from "@/stores/authStore";
+import type { UserRole } from "@/types/db";
 import type { ReactNode } from "react";
 
 type RequireRoleProps = {

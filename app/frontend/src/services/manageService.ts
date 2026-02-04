@@ -1,42 +1,64 @@
-import { workersMock, zonesMock, getDerivedWorker, zonesLayoutMock } from "@/mocks/mockData";
+
 import type { DB_Worker, ZoneLayout } from "@/types/db";
+import { zonesLayoutMock, db_users, db_zones, zoneNames, getDerivedWorker } from "@/mocks/mockData";
 
 export interface ZoneStat {
-    zone_id: number;
+    zoneId: number;
     name: string;
-    status: "NORMAL" | "BUSY" | "ISSUE";
-    worker_count: number;
-    work_rate: number; // percentage (0-100)
+    status: "STABLE" | "NORMAL" | "CRITICAL";
+    workerCount: number;
+    workRate: number; // percentage (0-100)
 }
+
+
 
 export const manageService = {
     // Get all workers with full details
     getAllWorkers: async (): Promise<DB_Worker[]> => {
-        // Simulate network delay
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        try {
+            await new Promise(r => setTimeout(r, 200)); // Simulate delay
+            // Use mock data because the real API might be 403 or not ready as per context
+            // But if we want to try API first:
+            // const response = await request<ApiResponse<WorkLogResponseDto[]>>("/api/admin/work-logs/active");
 
-        return Object.keys(workersMock).map((id) => getDerivedWorker(Number(id)));
+            // For this Refactor Task, lets rely on our new robust Mock Data first to ensure UI works,
+            // or try API and fallback.
+            // Current Mock Data `getDerivedWorker` is perfect.
+
+            const workers = db_users
+                .filter(u => u.role === "WORKER")
+                .map(u => getDerivedWorker(u.userId))
+                .filter((w): w is DB_Worker => w !== null);
+
+            return workers;
+
+        } catch (error) {
+            console.error("API Error fetching workers:", error);
+            return [];
+        }
     },
 
     // Get statistics for all zones
     getZoneStats: async (): Promise<ZoneStat[]> => {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        // Fetch real workers first
+        const workers = await manageService.getAllWorkers();
 
-        const workers = Object.keys(workersMock).map((id) => getDerivedWorker(Number(id)));
+        // Use static db_zones
+        return db_zones.map((zone) => {
+            const zoneWorkers = workers.filter((w) => w.currentZoneId === zone.zoneId);
 
-        return zonesMock.map((zone) => {
-            const zoneWorkers = workers.filter((w) => w.current_zone_id === zone.id);
+            // Calculate average work rate
+            const totalRate = zoneWorkers.reduce((sum, w) => sum + (w.workRate || 0), 0);
+            const avgRate = zoneWorkers.length > 0 ? Math.floor(totalRate / zoneWorkers.length) : 0;
 
-            // Mock random work rate for demo purposes, or derive from tasks if available
-            // For now, let's use a static random logic based on zone ID to keep it consistent
-            const mockRate = 60 + (zone.id * 10) % 35;
+            const name = zoneNames[zone.zoneId] || "Unknown";
 
             return {
-                zone_id: zone.id,
-                name: zone.name,
-                status: zone.status as "NORMAL" | "BUSY" | "ISSUE",
-                worker_count: zoneWorkers.length,
-                work_rate: mockRate,
+                zoneId: zone.zoneId,
+                name: name,
+                status: "STABLE", // Simplified logic
+                workerCount: zoneWorkers.length,
+                workRate: avgRate,
             };
         });
     },
@@ -45,13 +67,15 @@ export const manageService = {
     moveWorker: async (workerId: number, targetZoneId: number): Promise<void> => {
         await new Promise((resolve) => setTimeout(resolve, 300));
         console.log(`[Mock API] Moved worker ${workerId} to zone ${targetZoneId}`);
+        // Update mock data in memory
+        const u = db_users.find(u => u.userId === workerId);
+        if (u) u.assignedZoneId = targetZoneId;
     },
 
     // Batch update workers (Mock)
     updateWorkers: async (workers: DB_Worker[]): Promise<void> => {
         await new Promise((resolve) => setTimeout(resolve, 500));
         console.log(`[Mock API] Batch updating ${workers.length} workers...`);
-        // In real backend, we would send the full list or diff
     },
 
     // Get Zone Layout (Mock)

@@ -87,7 +87,7 @@ export default function ProfileEdit() {
       return;
     }
     if (token && !user) {
-      fetchMe().catch(() => {});
+      fetchMe().catch(() => { });
     }
   }, [token, user, fetchMe, navigate]);
 
@@ -370,7 +370,7 @@ export default function ProfileEdit() {
         <LabeledInput
           label="전화번호"
           value={formatPhone(init.phoneNumber)}
-          onChange={() => {}}
+          onChange={() => { }}
           disabled
         />
 
@@ -395,19 +395,18 @@ export default function ProfileEdit() {
               type="button"
               onClick={handleEmailSendCode}
               disabled={!emailChanged || emailStep === "verified" || isCooldown}
-              className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
-                emailStep === "verified"
-                  ? "bg-blue-50 text-blue-600"
-                  : !emailChanged || isCooldown
+              className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${emailStep === "verified"
+                ? "bg-blue-50 text-blue-600"
+                : !emailChanged || isCooldown
                   ? "bg-gray-100 text-gray-400"
                   : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-              }`}
+                }`}
             >
               {emailStep === "verified"
                 ? "인증완료"
                 : isCooldown
-                ? formatSec(cooldownLeftSec)
-                : "인증하기"}
+                  ? formatSec(cooldownLeftSec)
+                  : "인증하기"}
             </button>
           </div>
 
@@ -426,11 +425,10 @@ export default function ProfileEdit() {
                   type="button"
                   onClick={handleEmailConfirmCode}
                   disabled={isEmailExpired}
-                  className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
-                    isEmailExpired
-                      ? "bg-gray-100 text-gray-400"
-                      : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                  }`}
+                  className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${isEmailExpired
+                    ? "bg-gray-100 text-gray-400"
+                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    }`}
                 >
                   확인
                 </button>
@@ -492,9 +490,8 @@ export default function ProfileEdit() {
             type="button"
             onClick={handleSave}
             disabled={!canSave}
-            className={`flex-1 h-11 rounded-full font-semibold shadow-sm active:scale-[0.99] transition ${
-              canSave ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"
-            }`}
+            className={`flex-1 h-11 rounded-full font-semibold shadow-sm active:scale-[0.99] transition ${canSave ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"
+              }`}
           >
             {saving ? "저장 중..." : "저장"}
           </button>
@@ -589,9 +586,8 @@ function LabeledInput({
         type={type ?? "text"}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className={`h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 ${
-          disabled ? "bg-gray-50 text-gray-500" : ""
-        }`}
+        className={`h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 ${disabled ? "bg-gray-50 text-gray-500" : ""
+          }`}
       />
     </div>
   );

@@ -12,10 +12,10 @@ export default function IssueList({ issues, selectedId, onSelect }: IssueListPro
         <div className="space-y-1">
             {issues.map((issue) => (
                 <IssueListItem
-                    key={issue.issue_id}
+                    key={issue.issueId}
                     issue={issue}
-                    selected={selectedId === issue.issue_id}
-                    onClick={() => onSelect && onSelect(issue.issue_id)}
+                    selected={selectedId === issue.issueId}
+                    onClick={() => onSelect && onSelect(issue.issueId)}
                 />
             ))}
         </div>

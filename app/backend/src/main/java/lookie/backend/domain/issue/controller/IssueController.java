@@ -11,6 +11,9 @@ import lookie.backend.domain.issue.dto.AdminConfirmRequest;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
 import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueResponse;
+import lookie.backend.domain.issue.dto.AdminIssueListRequest;
+import lookie.backend.domain.issue.dto.AdminIssueListResponse;
+import jakarta.validation.Valid;
 import lookie.backend.domain.issue.service.IssueService;
 import lookie.backend.global.response.ApiResponse;
 import lookie.backend.global.security.SecurityUtil;
@@ -119,5 +122,21 @@ public class IssueController {
                 return ResponseEntity.ok(ApiResponse.success(
                                 "이슈가 확정 처리되었습니다.",
                                 null));
+        }
+
+        /**
+         * 관리자 관제 이슈 목록 조회
+         * - 관리자 담당 Zone의 이슈 목록을 조회합니다.
+         */
+        @Operation(summary = "관리자 관제 이슈 목록 조회", description = "관리자 담당 Zone의 이슈 목록을 조회합니다.")
+        @GetMapping
+        @PreAuthorize("hasRole('ADMIN')")
+        public ResponseEntity<ApiResponse<AdminIssueListResponse>> getIssues(
+                        @Parameter(description = "검색 조건") @ModelAttribute @Valid AdminIssueListRequest request) {
+
+                Long adminId = SecurityUtil.getCurrentUserId();
+                AdminIssueListResponse response = issueService.getAdminIssueList(adminId, request);
+
+                return ResponseEntity.ok(ApiResponse.success("이슈 목록 조회 성공", response));
         }
 }

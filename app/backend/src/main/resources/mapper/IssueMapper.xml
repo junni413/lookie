@@ -106,4 +106,56 @@
         LIMIT 1
     </select>
 
+
+    <!-- 관리자 관제 리스트 조회 -->
+    <select id="findAdminIssues" resultType="lookie.backend.domain.issue.dto.AdminIssueSummary">
+        SELECT DISTINCT
+            i.issue_id AS issueId,
+            i.issue_type AS issueType,
+            i.status,
+            COALESCE(i.urgency, 5) AS urgency,
+            i.worker_id AS workerId,
+            u.name AS workerName,
+            p.product_name AS productName,
+            zl.location_code AS locationCode,
+            i.created_at AS createdAt,
+            i.resolved_at AS resolvedAt,
+            i.admin_decision AS adminDecision,
+            (
+                SELECT aj.ai_decision
+                FROM ai_judgments aj
+                WHERE aj.issue_id = i.issue_id
+                ORDER BY aj.created_at DESC
+                LIMIT 1
+            ) AS aiDecision
+        FROM issues i
+        JOIN zone_locations zl ON i.zone_location_id = zl.location_id
+        JOIN zones z ON zl.zone_id = z.zone_id
+        JOIN admin_assignments aa ON z.zone_id = aa.zone_id
+        LEFT JOIN users u ON i.worker_id = u.user_id
+        LEFT JOIN batch_task_items bti ON i.batch_task_item_id = bti.batch_task_item_id
+        LEFT JOIN products p ON bti.product_id = p.product_id
+        WHERE aa.admin_id = #{adminId}
+          AND i.status = #{req.status}
+        <choose>
+            <when test="req.status.name() == 'OPEN'">
+                ORDER BY COALESCE(i.urgency, 5) ASC, i.created_at DESC
+            </when>
+            <otherwise>
+                ORDER BY i.resolved_at DESC
+            </otherwise>
+        </choose>
+        LIMIT #{req.size} OFFSET #{req.offset}
+    </select>
+
+    <!-- 관리자 관제 리스트 카운트 -->
+    <select id="countAdminIssues" resultType="long">
+        SELECT count(DISTINCT i.issue_id)
+        FROM issues i
+        JOIN zone_locations zl ON i.zone_location_id = zl.location_id
+        JOIN zones z ON zl.zone_id = z.zone_id
+        JOIN admin_assignments aa ON z.zone_id = aa.zone_id
+        WHERE aa.admin_id = #{adminId}
+          AND i.status = #{req.status}
+    </select>
 </mapper>

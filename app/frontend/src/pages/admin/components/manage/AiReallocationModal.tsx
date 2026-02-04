@@ -31,7 +31,7 @@ export default function AiReallocationModal({
             // In real app, fetch "AI proposed" state from API
             const scrambled = currentWorkers.map(w => ({
                 ...w,
-                current_zone_id: (Math.floor(Math.random() * 4) + 1)
+                currentZoneId: (Math.floor(Math.random() * 4) + 1)
             }));
             setSimulatedWorkers(scrambled);
         }
@@ -39,8 +39,8 @@ export default function AiReallocationModal({
 
     const handleDrop = (workerId: number, targetZoneId: number) => {
         setSimulatedWorkers(prev => prev.map(w => {
-            if (w.worker_id === workerId) {
-                return { ...w, current_zone_id: targetZoneId };
+            if (w.userId === workerId) {
+                return { ...w, currentZoneId: targetZoneId };
             }
             return w;
         }));
@@ -54,7 +54,7 @@ export default function AiReallocationModal({
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 bg-white border-b shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                        <div className="p-2 bg-primary/10 rounded-lg text-primary">
                             <Wand2 size={24} />
                         </div>
                         <div>
@@ -72,19 +72,19 @@ export default function AiReallocationModal({
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-full min-w-[1000px] lg:min-w-0">
                         {zoneStats.map(stat => (
                             <ManageZoneColumn
-                                key={stat.zone_id}
-                                zoneId={stat.zone_id}
+                                key={stat.zoneId}
+                                zoneId={stat.zoneId}
                                 zoneName={stat.name}
                                 // Pass specific subset of simulated workers
-                                workers={simulatedWorkers.filter(w => w.current_zone_id === stat.zone_id)}
+                                workers={simulatedWorkers.filter(w => w.currentZoneId === stat.zoneId)}
                                 onDrop={handleDrop}
                                 highlightWorkerIds={simulatedWorkers
                                     .filter(sim => {
-                                        const orig = currentWorkers.find(c => c.worker_id === sim.worker_id);
+                                        const orig = currentWorkers.find(c => c.userId === sim.userId);
                                         // Highlight if zone changed AND not unassigned (optional check)
-                                        return orig && orig.current_zone_id !== sim.current_zone_id;
+                                        return orig && orig.currentZoneId !== sim.currentZoneId;
                                     })
-                                    .map(w => w.worker_id)
+                                    .map(w => w.userId)
                                 }
                             />
                         ))}
@@ -97,7 +97,7 @@ export default function AiReallocationModal({
                         취소
                     </Button>
                     <Button
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 px-6"
+                        className="bg-primary hover:bg-primary/90 text-white gap-2 px-6"
                         onClick={() => onApply(simulatedWorkers)}
                     >
                         <Wand2 size={16} />

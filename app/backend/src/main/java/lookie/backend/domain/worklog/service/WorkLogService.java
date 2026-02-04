@@ -11,6 +11,7 @@ import lookie.backend.domain.worklog.vo.WorkLogEvent;
 import lookie.backend.domain.worklog.vo.WorkLogEventType;
 import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
+import lookie.backend.global.util.WorkerNameFormatter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -88,7 +89,7 @@ public class WorkLogService {
      * 3. 작업 중단/휴식 (PAUSE) 상태 기록
      *
      * @param workerId 작업자 고유 식별자
-     * @param request 중단 사유를 포함한 DTO
+     * @param request  중단 사유를 포함한 DTO
      * @return 변경된 상태 정보 DTO
      */
     @Transactional
@@ -131,7 +132,9 @@ public class WorkLogService {
     @Transactional(readOnly = true)
     public List<WorkLogResponseDto> getActiveWorkers() {
         // workerId = null -> 전체 조회 (Dynamic SQL)
-        return workLogMapper.findActiveWorkLogs(null);
+        List<WorkLogResponseDto> logs = workLogMapper.findActiveWorkLogs(null);
+        logs.forEach(log -> log.setWorkerName(WorkerNameFormatter.format(log.getName(), log.getPhoneNumber())));
+        return logs;
     }
 
     /**
@@ -140,7 +143,7 @@ public class WorkLogService {
      * - 관리자 웹: 특정 작업자의 실시간 상태 모니터링
      * - 특징: 근무 기록이 없으면 예외 대신 'END/OFF_WORK' 상태 DTO 반환
      *
-     * @param loginId 로그인한 사용자 ID
+     * @param loginId        로그인한 사용자 ID
      * @param targetWorkerId (Optional) 조회 대상 작업자 ID. 관리자가 사용.
      */
     /**
@@ -156,6 +159,8 @@ public class WorkLogService {
         List<WorkLogResponseDto> activeLogs = workLogMapper.findActiveWorkLogs(finalWorkerId);
 
         if (!activeLogs.isEmpty()) {
+            activeLogs
+                    .forEach(log -> log.setWorkerName(WorkerNameFormatter.format(log.getName(), log.getPhoneNumber())));
             return activeLogs.get(0);
         }
 
@@ -164,6 +169,8 @@ public class WorkLogService {
         List<WorkLogResponseDto> historyLogs = workLogMapper.findWorkHistories(finalWorkerId);
 
         if (!historyLogs.isEmpty()) {
+            historyLogs
+                    .forEach(log -> log.setWorkerName(WorkerNameFormatter.format(log.getName(), log.getPhoneNumber())));
             // 퇴근한 기록을 반환 (이름, ZoneId, EndedAt 등이 다 들어있음)
             return historyLogs.get(0);
         }
@@ -181,11 +188,12 @@ public class WorkLogService {
      * - 작업자: 본인 이력 조회
      * - 관리자: 특정 작업자 이력 조회
      */
-    @Transactional(readOnly = true)
     public List<WorkLogResponseDto> getWorkHistories(Long loginId, Long targetWorkerId) {
         Long finalWorkerId = (targetWorkerId != null) ? targetWorkerId : loginId;
         // 이력 조회 전용 최적화 쿼리 사용
-        return workLogMapper.findWorkHistories(finalWorkerId);
+        List<WorkLogResponseDto> logs = workLogMapper.findWorkHistories(finalWorkerId);
+        logs.forEach(log -> log.setWorkerName(WorkerNameFormatter.format(log.getName(), log.getPhoneNumber())));
+        return logs;
     }
 
     /**
@@ -201,12 +209,11 @@ public class WorkLogService {
         Map<LocalDate, Long> dailyMinutesMap = logs.stream()
                 .collect(Collectors.groupingBy(
                         log -> log.getStartedAt().toLocalDate(), // Key: 날짜
-                        Collectors.summingLong(log -> {          // Value: 근무 분 합계
+                        Collectors.summingLong(log -> { // Value: 근무 분 합계
                             // 퇴근 안 찍힌 경우 현재 시간 기준으로 계산
                             LocalDateTime end = log.getEndedAt() != null ? log.getEndedAt() : LocalDateTime.now();
                             return Duration.between(log.getStartedAt(), end).toMinutes();
-                        })
-                ));
+                        })));
 
         // 3. DTO 변환 및 최신 날짜순 정렬
         return dailyMinutesMap.entrySet().stream()
@@ -222,7 +229,6 @@ public class WorkLogService {
                 .sorted(Comparator.comparing(DailyWorkLogStats::getDate).reversed())
                 .collect(Collectors.toList());
     }
-
 
     // ================= Helpers =================
 

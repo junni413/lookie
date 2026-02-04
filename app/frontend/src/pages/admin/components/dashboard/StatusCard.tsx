@@ -19,10 +19,10 @@ export default function StatusCard({
 
   return (
     <Card className="border-0 shadow-sm hover:shadow-md transition-all duration-300 rounded-xl bg-white cursor-pointer h-full group ring-1 ring-slate-100/80 relative overflow-hidden">
-      <div className="p-8 flex items-center h-full">
+      <div className="px-8 py-12 flex items-center h-full">
 
         {/* Left: Circular Icon */}
-        <div className="shrink-0 w-14 h-14 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#4F46E5] transition-transform group-hover:scale-110">
+        <div className="shrink-0 w-14 h-14 rounded-full bg-[#EEF2FF] flex items-center justify-center text-primary transition-transform group-hover:scale-110">
           <Icon size={26} strokeWidth={2} />
         </div>
 

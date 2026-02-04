@@ -824,11 +824,16 @@ class IssueServiceTest {
         });
 
         assertEquals(ErrorCode.ISSUE_ALREADY_RESOLVED, exception.getErrorCode());
+        // verify TaskItem update if FIXED
+        verify(taskItemService, never()).markAsIssue(any()); // Assuming markAsIssue is not called or needed for FIXED?
+                                                             // Actually it might be handled by frontend flow or
+                                                             // separate logic.
+        // For OUT_OF_STOCK FIXED, usually means admin solved it.
     }
 
     @Test
-    @DisplayName("관리자 확정 실패 - 유효하지 않은 Decision (DAMAGED에 FIXED)")
-    void confirmIssue_InvalidDecision() {
+    @DisplayName("관리자 확정 실패 - 유효하지 않은 결정 (DAMAGED에 FIXED 적용 불가)")
+    void confirmIssue_Fail_InvalidDecision() {
         // given
         Long issueId = 1L;
         IssueVO issue = new IssueVO();
@@ -838,11 +843,52 @@ class IssueServiceTest {
 
         when(issueMapper.findById(issueId)).thenReturn(issue);
 
-        // when, then
+        // when & then
         ApiException exception = assertThrows(ApiException.class, () -> {
-            issueService.confirmIssue(issueId, AdminDecision.FIXED);
+            issueService.confirmIssue(issueId, AdminDecision.FIXED); // DAMAGED에는 FIXED 불가
         });
 
         assertEquals(ErrorCode.INVALID_ADMIN_DECISION, exception.getErrorCode());
+        verify(issueMapper, never()).updateIssueStatus(any());
+    }
+
+    @Test
+    @DisplayName("관리자 관제 리스트 조회 - 성공")
+    void getAdminIssueList_Success() {
+        // given
+        Long adminId = 1L;
+        lookie.backend.domain.issue.dto.AdminIssueListRequest request = new lookie.backend.domain.issue.dto.AdminIssueListRequest();
+        request.setStatus(lookie.backend.domain.issue.dto.IssueStatus.OPEN);
+        request.setPage(1);
+        request.setSize(10);
+
+        lookie.backend.domain.issue.dto.AdminIssueSummary issue1 = lookie.backend.domain.issue.dto.AdminIssueSummary
+                .builder()
+                .issueId(101L)
+                .issueType("DAMAGED")
+                .status("OPEN")
+                .urgency(1)
+                .workerName("홍길동")
+                .productName("티셔츠")
+                .build();
+
+        java.util.List<lookie.backend.domain.issue.dto.AdminIssueSummary> mockIssues = java.util.List.of(issue1);
+
+        when(issueMapper.findAdminIssues(adminId, request)).thenReturn(mockIssues);
+        when(issueMapper.countAdminIssues(adminId, request)).thenReturn(1L);
+
+        // when
+        lookie.backend.domain.issue.dto.AdminIssueListResponse response = issueService.getAdminIssueList(adminId,
+                request);
+
+        // then
+        assertNotNull(response);
+        assertEquals(1, response.getIssues().size());
+        assertEquals("홍길동", response.getIssues().get(0).getWorkerName());
+        assertEquals(1, response.getPaging().getTotalCount());
+        assertEquals(1, response.getPaging().getTotalPages());
+
+        verify(issueMapper).findAdminIssues(adminId, request);
+        verify(issueMapper).countAdminIssues(adminId, request);
     }
 }
