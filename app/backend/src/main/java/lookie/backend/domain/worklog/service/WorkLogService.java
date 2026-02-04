@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.worklog.dto.DailyWorkLogStats;
 import lookie.backend.domain.worklog.dto.WorkLogRequestDto;
 import lookie.backend.domain.worklog.dto.WorkLogResponseDto;
+import lookie.backend.domain.control.mapper.ControlMapper;
 import lookie.backend.domain.worklog.mapper.WorkLogMapper;
 import lookie.backend.domain.worklog.vo.WorkLog;
 import lookie.backend.domain.worklog.vo.WorkLogEvent;
@@ -34,6 +35,7 @@ import java.util.stream.Collectors;
 public class WorkLogService {
 
     private final WorkLogMapper workLogMapper;
+    private final ControlMapper controlMapper;
 
     /**
      * 1. 출근 처리 (START) 수행
@@ -57,7 +59,11 @@ public class WorkLogService {
                 .plannedEndAt(LocalDateTime.now().plusMinutes(5)) // 시연용 5분
                 .build();
 
-        // 1-3. 시작(START) 이벤트 기록
+        // 1-3. 자동 구역 배정 (Load Balancing)
+        // 가장 한가한 구역 조회 -> 배정 업데이트 -> 이력 기록
+        assignZoneToWorker(workerId);
+
+        // 1-4. 시작(START) 이벤트 기록
         workLogMapper.insertWorkLog(workLog);
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.START, "출근");
 
@@ -262,5 +268,26 @@ public class WorkLogService {
                 .build();
         workLogMapper.insertWorkLogEvent(event);
         return event;
+    }
+
+    /**
+     * 4. 작업자 구역 자동 배정 (Load Balancing)
+     * - 가장 한가한(작업자 수가 적은) 구역을 조회
+     * - 사용자의 배정 구역(assigned_zone_id)을 업데이트
+     */
+    private void assignZoneToWorker(Long workerId) {
+        // 1. 가장 적은 수의 작업자가 있는 구역 조회
+        Long recommendedZoneId = controlMapper.selectZoneIdWithFewestWorkers();
+
+        if (recommendedZoneId != null) {
+            // 2. 사용자 배정 정보 업데이트
+            controlMapper.updateUserAssignedZone(workerId, recommendedZoneId);
+
+            // 3. 기존 활성 배정 종료 (혹시 모를 정합성 유지)
+            controlMapper.closeActiveAssignment(workerId);
+
+            // 4. 배정 이력 생성 (Source: AI)
+            controlMapper.insertAssignmentHistory(workerId, recommendedZoneId, "출근 시 자동 구역 배정");
+        }
     }
 }
