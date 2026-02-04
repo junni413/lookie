@@ -868,8 +868,7 @@ class IssueServiceTest {
                 .issueType("DAMAGED")
                 .status("OPEN")
                 .urgency(1)
-                .workerName("홍길동")
-                .phoneNumber("01012345678") // Added phone number
+                .workerName("홍길동5678") // Mapper에서 이미 포맷팅되어 나온다고 가정 (Mocking 시 이렇게 설정)
                 .productName("티셔츠")
                 .build();
 
@@ -885,7 +884,7 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
         assertEquals(1, response.getIssues().size());
-        assertEquals("홍길동5678", response.getIssues().get(0).getWorkerName()); // Expect formatted name
+        assertEquals("홍길동5678", response.getIssues().get(0).getWorkerName()); // Formatted name check
         assertEquals(1, response.getPaging().getTotalCount());
         assertEquals(1, response.getPaging().getTotalPages());
 

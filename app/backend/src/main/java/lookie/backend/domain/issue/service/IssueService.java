@@ -25,7 +25,6 @@ import lookie.backend.global.error.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import lookie.backend.global.util.WorkerNameFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -749,11 +748,6 @@ public class IssueService {
                 adminId, request.getStatus(), request.getPage());
 
         List<lookie.backend.domain.issue.dto.AdminIssueSummary> issues = issueMapper.findAdminIssues(adminId, request);
-
-        // Format worker name
-        for (lookie.backend.domain.issue.dto.AdminIssueSummary issue : issues) {
-            issue.setWorkerName(WorkerNameFormatter.format(issue.getWorkerName(), issue.getPhoneNumber()));
-        }
 
         long totalCount = issueMapper.countAdminIssues(adminId, request);
 

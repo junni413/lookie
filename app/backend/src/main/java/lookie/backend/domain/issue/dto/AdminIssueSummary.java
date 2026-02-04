@@ -24,7 +24,6 @@ public class AdminIssueSummary {
     // Worker Info
     private Long workerId;
     private String workerName;
-    private String phoneNumber;
 
     // Product Info
     private String productName;
