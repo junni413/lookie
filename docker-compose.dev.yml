@@ -91,6 +91,8 @@ services:
       - .env
     ports:
       - "8080:8080"
+    volumes:
+      - ./data/images:/data/images
     networks:
       - lookie
     depends_on:

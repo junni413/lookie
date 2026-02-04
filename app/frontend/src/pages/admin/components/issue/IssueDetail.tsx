@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { issueService } from "@/services/issueService";
+import { adminService } from "@/services/adminService";
 import type { IssueDetailData } from "@/types/issue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,7 +23,7 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
         const fetchDetail = async () => {
             setLoading(true);
             try {
-                const data = await issueService.getIssueDetail(issueId);
+                const data = await adminService.getIssueDetail(issueId);
                 if (!ignore) {
                     setIssue(data);
                 }
@@ -46,7 +46,7 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
         if (confirm("확정 하시겠습니까?")) {
             setProcessing(true);
             try {
-                await issueService.confirmIssue(issue.issueId, { adminDecision: decision });
+                await adminService.confirmIssue(issue.issueId, decision);
                 onUpdate(); // 목록 갱신 요청
             } catch (e) {
                 console.error(e);

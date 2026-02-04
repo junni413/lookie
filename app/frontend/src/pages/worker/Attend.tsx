@@ -1,36 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { workLogApi } from "@/services/attend.api";
+import type { ApiResponse, WorkLogData, WorkLogStatus } from "@/services/attend.api";
 
 type Ctx = { setTitle: (t: string) => void };
 
-// ✅ 백 응답(스웨거 기준)
-type WorkLogStatus = "START" | "PAUSE" | "RESUME" | "END";
-type ApiResponse<T> = {
-  success: boolean;
-  message: string;
-  errorCode: string | null;
-  data: T;
-};
-type WorkLogData = {
-  workLogId: number;
-  workerId: number;
-  workerName: string;
-  zoneId: number | null;
-  currentStatus: WorkLogStatus;
-  startedAt: string; // ISO string (Z 포함 가능)
-  endedAt?: string | null;
-  plannedEndAt?: string | null;
-  lastStatusChangedAt?: string | null;
-  lineId?: number | null;
-  locationCode?: string | null;
-  workCount?: number;
-  workRate?: number;
-};
-
 // ✅ 시간은 무조건 이 함수로만 포맷 (UTC(Z) -> 브라우저 로컬(KST) 표시)
 function formatHHmmKST(isoLike: string) {
-  // 타임존 정보가 없으면 UTC로 간주해서 Z를 붙임
   const hasTZ = /Z$|[+\-]\d{2}:\d{2}$/.test(isoLike);
   const safeIso = hasTZ ? isoLike : `${isoLike}Z`;
 
@@ -42,6 +18,7 @@ function formatHHmmKST(isoLike: string) {
     hour12: false,
   });
 }
+
 function isWorking(status?: WorkLogStatus) {
   return status === "START" || status === "PAUSE" || status === "RESUME";
 }
