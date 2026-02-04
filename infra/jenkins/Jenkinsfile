@@ -362,8 +362,7 @@ docker compose -f "${COMPOSE_PROD_FILE}" run --rm \
 
 # (7) core 서비스 기동(airflow도 compose에 있으면 같이 올라감)
 echo "[INFO] Up core services (remove orphans)"
-docker compose -f "${COMPOSE_PROD_FILE}" up -d --remove-orphans
-
+docker compose -f "${COMPOSE_PROD_FILE}" up -d --remove-orphans --force-recreate --pull always
 # (8) AI는 이미지가 존재할 때만 profile로 배포
 if docker manifest inspect "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" >/dev/null 2>&1; then
   echo "[INFO] AI image found -> deploying ai-server"
