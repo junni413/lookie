@@ -75,9 +75,6 @@ public interface ControlMapper {
         /**
          * 사용자 테이블(Users)의 배정 구역(assigned_zone_id) 업데이트
          */
-        /**
-         * 사용자 테이블(Users)의 배정 구역(assigned_zone_id) 업데이트
-         */
         void updateUserAssignedZone(@Param("workerId") Long workerId, @Param("zoneId") Long zoneId);
 
         /**

@@ -199,7 +199,7 @@
         -- 현재 진행 중인 근무 로그 확인 (없으면 퇴근 상태)
         LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
         
-        -- 최신 이벤트 조인 (ROW_NUMBER 사용)
+        -- 최신 이벤트 조인 (ROW_NUMBER 사용, idx_work_log_events_log_time 인덱스 활용)
         LEFT JOIN (
             SELECT work_log_id, event_type,
                    ROW_NUMBER() OVER(PARTITION BY work_log_id ORDER BY occurred_at DESC) as rn
