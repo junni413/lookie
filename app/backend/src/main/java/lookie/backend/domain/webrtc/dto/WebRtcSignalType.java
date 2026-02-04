@@ -4,5 +4,6 @@ public enum WebRtcSignalType {
     ACCEPTED,
     REJECTED,
     CANCELED,
-    ENDED
+    ENDED,
+    REQUESTED
 }

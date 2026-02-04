@@ -32,7 +32,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         // 기존 코드의 구독 경로 유지 (/topic)
         // 예: /topic/control, /topic/zones/{zoneId}
-        registry.enableSimpleBroker("/topic");
+        registry.enableSimpleBroker("/topic", "/queue");
 
         // 기존 코드의 발행 경로 유지 (/app)
         // 클라이언트가 메시지를 보낼 때: /app/메시지경로

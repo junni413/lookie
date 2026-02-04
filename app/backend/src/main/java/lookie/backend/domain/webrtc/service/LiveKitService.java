@@ -72,6 +72,10 @@ public class LiveKitService {
         // 5. 거는 사람(Caller)용 LiveKit 토큰 발급
         String token = generateToken(request.getCallerId().toString(), roomName);
 
+        // 6. [WebSocket] Callee에게 요청 알림 전송 (개인 큐 + Topic Fallback)
+        sendSignalToUser(request.getCalleeId(), WebRtcSignalType.REQUESTED, call.getId(), null, request.getCallerId());
+        sendSignalToUserTopic(request.getCalleeId(), WebRtcSignalType.REQUESTED, call.getId(), null, request.getCallerId());
+
         return new WebRtcDto.CallResponse(call.getId(), roomName, token);
     }
 
@@ -212,7 +216,9 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [WebSocket] Callee에게 취소 알림 전송 (벨소리 중단용)
-        sendSignal(call.getId(), WebRtcSignalType.CANCELED, null, call.getCallerId());
+        // sendSignal(call.getId(), WebRtcSignalType.CANCELED, null, call.getCallerId());
+        sendSignalToUser(call.getCalleeId(), WebRtcSignalType.CANCELED, call.getId(), null, call.getCallerId());
+        sendSignalToUserTopic(call.getCalleeId(), WebRtcSignalType.CANCELED, call.getId(), null, call.getCallerId());
     }
 
     // --- 내부 메서드 ---
@@ -304,6 +310,28 @@ public class LiveKitService {
 
         messagingTemplate.convertAndSend("/topic/video-calls/" + callId, payload);
         log.info("[WebSocket] Signal sent: callId={}, type={}, senderId={}", callId, type, senderId);
+    }
+
+    /**
+     * 특정 사용자에게 1:1 시그널 전송
+     * Destination: /user/{userId}/queue/calls
+     */
+    private void sendSignalToUser(Long userId, WebRtcSignalType type, Long callId, String roomName, Long senderId) {
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName, senderId);
+
+        // /user/{userId}/queue/calls 로 전송됨
+        messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/calls", payload);
+        log.info("[WebSocket] Private Signal sent to User {}: callId={}, type={}", userId, callId, type);
+    }
+
+    /**
+     * 특정 사용자에게 Topic으로 시그널 전송 (Fallback)
+     * Destination: /topic/calls/{userId}
+     */
+    private void sendSignalToUserTopic(Long userId, WebRtcSignalType type, Long callId, String roomName, Long senderId) {
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(type, callId, roomName, senderId);
+        messagingTemplate.convertAndSend("/topic/calls/" + userId, payload);
+        log.info("[WebSocket] Public Topic Signal sent to User {}: callId={}, type={}", userId, callId, type);
     }
 
     /**

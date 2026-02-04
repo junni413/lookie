@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { CallState } from "@/types/webrtc";
 import { webrtcService } from "@/services/webrtcService";
-import { subscribeCallStatus } from "@/services/stompService";
+import { subscribeCallStatus, subscribeIncomingCalls } from "@/services/stompService";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/components/ui/toast";
 
@@ -20,6 +20,7 @@ interface CallStore extends CallState {
     endCall: () => Promise<void>;
     reset: () => void;
     handleError: (error: unknown) => void;
+    listenForIncomingCalls: () => void;
 }
 
 const initialState: CallState = {
@@ -277,4 +278,37 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
         get().reset();
     },
+
+    listenForIncomingCalls: () => {
+        const { token, user } = useAuthStore.getState();
+        if (!token || !user) return;
+
+        // Cleanup previous subscription if any
+        const prevCleanup = (get() as any).incomingCleanup;
+        if (prevCleanup) prevCleanup();
+
+        console.log(`👂 [CallStore] 수신 대기 시작 (User: ${user.userId})`);
+
+        const cleanup = subscribeIncomingCalls(token, user.userId, (event) => {
+            console.log("📨 [CallStore] 수신 이벤트:", event);
+            if (event.type === 'REQUESTED') { // Assuming 'REQUESTED' is the type for incoming call
+                set({
+                    status: "INCOMING",
+                    callId: event.callId,
+                    sessionId: undefined, // Will be set on accept
+                    token: undefined, // Will be set on accept
+                    remoteUserId: undefined, // ID might need to be resolved or sent in event
+                    remoteUserName: event.reason || "관리자", // Using reason field for name temporarily
+                    issueId: null,
+                });
+                // Optional: Play ringtone here
+            } else if (event.type === 'CANCELED') {
+                console.warn("🚫 [CallStore] 'CANCELED' event received. Resetting state.");
+                toast.info("상대방이 통화를 취소했습니다.");
+                set((state) => ({ ...initialState }));
+            }
+        });
+
+        (get() as any).incomingCleanup = cleanup;
+    }
 }));

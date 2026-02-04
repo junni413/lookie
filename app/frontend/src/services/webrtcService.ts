@@ -19,10 +19,12 @@ export const webrtcService = {
     makeCall: async (request: CallRequest): Promise<CallResponse> => {
         console.log("📞 [WebRTC] 통화 요청:", request);
 
+        const token = localStorage.getItem("accessToken");
         const response = await fetch(API_BASE, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify(request),
         });
@@ -46,8 +48,12 @@ export const webrtcService = {
      * GET /api/webrtc/{callId}
      */
     checkCallStatus: async (callId: number): Promise<string> => {
+        const token = localStorage.getItem("accessToken");
         const response = await fetch(`${API_BASE}/${callId}`, {
             method: "GET",
+            headers: {
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
         });
 
         if (!response.ok) {
@@ -63,8 +69,12 @@ export const webrtcService = {
      * POST /api/webrtc/{callId}/accept
      */
     acceptCall: async (callId: number): Promise<string> => {
+        const token = localStorage.getItem("accessToken");
         const response = await fetch(`${API_BASE}/${callId}/accept`, {
             method: "POST",
+            headers: {
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
         });
 
         if (!response.ok) {
@@ -80,8 +90,12 @@ export const webrtcService = {
      * POST /api/webrtc/{callId}/reject
      */
     rejectCall: async (callId: number): Promise<void> => {
+        const token = localStorage.getItem("accessToken");
         const response = await fetch(`${API_BASE}/${callId}/reject`, {
             method: "POST",
+            headers: {
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
         });
 
         if (!response.ok) {
@@ -94,8 +108,12 @@ export const webrtcService = {
      * POST /api/webrtc/{callId}/end
      */
     endCall: async (callId: number): Promise<void> => {
+        const token = localStorage.getItem("accessToken");
         const response = await fetch(`${API_BASE}/${callId}/end`, {
             method: "POST",
+            headers: {
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
         });
 
         if (!response.ok) {
@@ -113,10 +131,12 @@ export const webrtcService = {
     ): Promise<void> => {
         console.log(`🚫 [WebRTC] 통화 취소 (callId: ${callId}):`, request);
 
+        const token = localStorage.getItem("accessToken");
         const response = await fetch(`${API_BASE}/${callId}/cancel`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify(request),
         });
