@@ -106,6 +106,28 @@ class OOSService:
             response_format={"type": "json_object"} # JSON 강제 출력
         )
 
-        return json.loads(response.choices[0].message.content)
+        try:
+            content = response.choices[0].message.content
+            parsed = json.loads(content)
+            
+            # 자료형 체크 (dict)
+            if not isinstance(parsed, dict):
+                raise ValueError("LLM response is not a JSON object")
+                
+            # 필수 키 체크
+            required_keys = ["worker_message", "admin_summary"]
+            for key in required_keys:
+                if key not in parsed:
+                    raise ValueError(f"Missing required key: {key}")
+            
+            return parsed
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"LLM Response Parse Error: {e}")
+            # 파싱 실패 시 기본값 리턴 (서비스 중단 방지)
+            return {
+                "worker_message": f"[시스템] 응답 형식이 올바르지 않습니다. (원인: {reason})",
+                "admin_summary": f"LLM 파싱 에러: {str(e)}"
+            }
 
 oos_service = OOSService()

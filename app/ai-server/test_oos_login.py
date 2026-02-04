@@ -41,26 +41,26 @@ class MockOOSRepository(OOSRepository):
 
 # 2. 테스트 실행 함수
 def run_test():
-    print("🕵️‍♂️ [OOS AI 수사관] 모의 테스트 시작...\n")
+    print("[OOS AI 수사관] 모의 테스트 시작...\n")
     
     # 서비스에 가짜 리포지토리 바꿔치기 (Dependency Injection)
     service = OOSService()
     service.repo = MockOOSRepository() 
 
     # CASE 1: 지번 변경 테스트
-    print("🔹 CASE 1: 작업자가 옛날 지번(A-01)을 스캔함")
+    print("CASE 1: 작업자가 옛날 지번(A-01)을 스캔함")
     result = service.investigate(item_id=101, scanned_location="A-01")
     print(f"   => 결과: {result['decision']}")
     print(f"   => 멘트: {result['worker_message']}\n")
 
     # CASE 2: 품절 테스트
-    print("🔹 CASE 2: 재고 없다고 신고함 (전산 재고 0)")
+    print("CASE 2: 재고 없다고 신고함 (전산 재고 0)")
     result = service.investigate(item_id=102, scanned_location="B-02")
     print(f"   => 결과: {result['decision']}")
     print(f"   => 멘트: {result['worker_message']}\n")
 
     # CASE 4: 유령 재고 테스트
-    print("🔹 CASE 4: 재고 없다고 신고함 (전산 재고 5)")
+    print("CASE 4: 재고 없다고 신고함 (전산 재고 5)")
     result = service.investigate(item_id=104, scanned_location="D-04")
     print(f"   => 결과: {result['decision']}")
     print(f"   => 멘트: {result['worker_message']}\n")
