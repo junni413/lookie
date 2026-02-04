@@ -120,6 +120,119 @@ class VisionService:
         
         return labels, detections, max_conf, elapsed
 
+    async def _download_image_from_url(self, image_url: str) -> bytes:
+        """URL에서 이미지를 다운로드하여 bytes로 반환"""
+        try:
+            response = await self.client.get(image_url, timeout=10.0)
+            response.raise_for_status()
+            logger.info(f"📥 Image downloaded: {image_url}")
+            return response.content
+        except Exception as e:
+            raise ValueError(f"IMAGE_DOWNLOAD_ERROR: {str(e)}")
+
+    async def run_inference_from_url(
+        self, 
+        image_url: str, 
+        product_id: int, 
+        issue_id: int,
+        issue_type: str = "DAMAGED"
+    ):
+        """URL 기반 추론 진입점"""
+        if not self.is_loaded or self.gate_model is None:
+            logger.error("❌ Inference blocked: Not loaded.")
+            return
+
+        logger.info(f"🔍 Inference started: issueId={issue_id}, productId={product_id}, issueType={issue_type}")
+
+        try:
+            # 1. 이미지 다운로드
+            image_bytes = await self._download_image_from_url(image_url)
+            
+            # 2. issueType에 따라 분기
+            if issue_type == "DAMAGED":
+                await self._handle_damaged(image_bytes, product_id, issue_id)
+            elif issue_type == "OUT_OF_STOCK":
+                await self._handle_out_of_stock(image_bytes, product_id, issue_id)
+            else:
+                logger.warning(f"⚠️ Unknown issueType: {issue_type}, using DAMAGED logic")
+                await self._handle_damaged(image_bytes, product_id, issue_id)
+                
+        except Exception as e:
+            logger.error(f"🔥 Error in run_inference_from_url: {e}")
+            await self._send_error_webhook(issue_id, str(e))
+
+    async def _handle_damaged(self, image_bytes: bytes, product_id: int, issue_id: int):
+        """DAMAGED 케이스: 기존 로직 (Gatekeeper → Expert)"""
+        # 기존 run_inference 로직을 그대로 사용
+        await self.run_inference(image_bytes, product_id, issue_id)
+
+    async def _handle_out_of_stock(self, image_bytes: bytes, product_id: int, issue_id: int):
+        """OUT_OF_STOCK 케이스: Gatekeeper만 실행"""
+        start_time = time.perf_counter()
+        webhook_payload = {
+            "issueId": issue_id, 
+            "aiDecision": "UNKNOWN", 
+            "confidence": 0.0, 
+            "summary": "", 
+            "aiResult": ""
+        }
+        detail_data = {"detections": [], "time_info": {}, "error_log": None}
+
+        try:
+            # 1. 이미지 로드
+            img = self._load_image(image_bytes)
+
+            # 2. 설정 확인
+            if product_id not in PRODUCT_CONFIG:
+                raise ValueError(f"Unsupported Product ID: {product_id}")
+            
+            config = PRODUCT_CONFIG[product_id]
+            
+            # 3. Gatekeeper만 실행
+            is_pass, gate_conf, gate_names, gate_time = self._run_gatekeeper(img, config)
+            detail_data["time_info"]["gate"] = gate_time
+            
+            if is_pass:
+                # 상품이 인식됨 → 재고 있음 → FAIL
+                logger.info(f"🚪 OOS Check: FAIL (상품 발견) {gate_names}")
+                webhook_payload.update({
+                    "aiDecision": "FAIL",
+                    "confidence": round(gate_conf, 2),
+                    "summary": f"재고 없다고 했는데 상품이 있습니다. (감지: {', '.join(gate_names)})",
+                    "reasonCode": "STOCK_EXISTS"
+                })
+            else:
+                # 상품이 인식 안됨 → 재고 없음 확인 → PASS
+                logger.info(f"✅ OOS Check: PASS (상품 없음 확인)")
+                webhook_payload.update({
+                    "aiDecision": "PASS",
+                    "confidence": 0.0,
+                    "summary": "재고 없음이 확인되었습니다."
+                })
+
+        except Exception as e:
+            logger.error(f"🔥 Error in _handle_out_of_stock: {e}")
+            webhook_payload["summary"] = str(e)
+            detail_data["error_log"] = str(e)
+
+        # 4. 결과 전송
+        total_time = round(time.perf_counter() - start_time, 4)
+        detail_data["time_info"]["total"] = total_time
+        webhook_payload["aiResult"] = json.dumps(detail_data, ensure_ascii=False)
+        
+        await self._send_webhook(issue_id, webhook_payload)
+
+    async def _send_error_webhook(self, issue_id: int, error_message: str):
+        """에러 발생 시 웹훅 전송"""
+        payload = {
+            "issueId": issue_id,
+            "aiDecision": "UNKNOWN",
+            "confidence": 0.0,
+            "summary": error_message,
+            "aiResult": json.dumps({"error_log": error_message}, ensure_ascii=False)
+        }
+        await self._send_webhook(issue_id, payload)
+
     async def run_inference(self, image_bytes: bytes, product_id: int, issue_id: int):
         """메인 추론 오케스트레이터"""
         if not self.is_loaded or self.gate_model is None:
