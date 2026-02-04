@@ -46,7 +46,6 @@ function formatHHmmKST(isoLike: string) {
   });
 }
 
-
 // zoneId -> A/B/C...
 function zoneLabelFromId(zoneId: number | null | undefined) {
   if (zoneId === null || zoneId === undefined) return "—";
@@ -106,6 +105,10 @@ export default function Home() {
   const [zoneLabel, setZoneLabel] = useState<string>("—");
   const [zoneStatusText, setZoneStatusText] = useState<string>("근무중");
 
+  // ✅ 진행중 작업(있으면 이어하기)
+  const [isTaskChecking, setIsTaskChecking] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
+
   useEffect(() => {
     setTitle("홈");
 
@@ -113,9 +116,6 @@ export default function Home() {
     (async () => {
       try {
         const res = await workLogApi.current();
-        console.log("[current raw]", res.data);
-        console.log("[startedAt raw]", res.data?.data?.startedAt);
-        console.log("[zoneId raw]", res.data?.data?.zoneId);
         const body = res.data as ApiResponse<WorkLogData>;
         const cur = body?.data;
 
@@ -141,6 +141,24 @@ export default function Home() {
 
         // 구역
         setZoneLabel(zoneLabelFromId(cur.zoneId));
+
+        // ✅ 1-2) 출근 상태가 정상일 때만 "진행중 작업" 조회
+        setIsTaskChecking(true);
+        try {
+          const active = await taskService.getMyActiveTask();
+          const payload = active?.data?.payload;
+
+          if (active.success && payload && typeof payload.batchTaskId === "number" && payload.batchTaskId > 0) {
+            setActiveTaskId(payload.batchTaskId);
+          } else {
+            setActiveTaskId(null);
+          }
+        } catch {
+          // active task 조회 실패/없음(404 등) => 없음 처리
+          setActiveTaskId(null);
+        } finally {
+          setIsTaskChecking(false);
+        }
       } catch (e: any) {
         const status = e.response?.status;
         if (status === 403) {
@@ -173,7 +191,12 @@ export default function Home() {
     [stats]
   );
 
-  const onStartNewTask = () => navigate("/worker/task/loading");
+  // ✅ 새 작업/이어하기 버튼 클릭
+  const onTaskButtonClick = () => {
+    // loading 페이지에서 getMyActiveTask 먼저 보고 이어가도록 만들어뒀으니
+    // 여기서는 그냥 loading으로 보내면 됨.
+    navigate("/worker/task/loading");
+  };
 
   // ✅ 중단/재개는 백 반영
   const onPause = async () => {
@@ -229,10 +252,12 @@ export default function Home() {
 
       localStorage.removeItem("worker_attend_time");
       localStorage.removeItem("work_stats");
-      localStorage.removeItem("my_issues");
 
       setSavedTime("— —");
       setStats({ done: 0, issue: 0, waiting: 0 });
+
+      // ✅ 퇴근하면 "진행중 작업"도 의미 없으니 리셋
+      setActiveTaskId(null);
 
       alert("퇴근 처리가 완료되었습니다.");
       navigate("/worker/attend", { replace: true });
@@ -255,6 +280,23 @@ export default function Home() {
     workStatus === "WORKING"
       ? "rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700"
       : "rounded-full bg-yellow-50 px-3 py-1 text-xs font-bold text-yellow-700";
+
+  const isPaused = workStatus === "PAUSED";
+  const hasActiveTask = typeof activeTaskId === "number" && activeTaskId > 0;
+
+  const taskBtnDisabled = isPaused || isProcessing || isTaskChecking;
+
+  const taskBtnLabel = isTaskChecking
+    ? "작업 확인 중..."
+    : hasActiveTask
+    ? "작업 이어서하기"
+    : "새로운 작업 시작";
+
+  const taskHelpText = isPaused
+    ? "근무가 중단된 상태에서는 작업을 진행할 수 없어요."
+    : !isTaskChecking && hasActiveTask
+    ? "진행 중인 작업이 있어요. 이어서 진행할 수 있어요."
+    : "";
 
   return (
     <div className="space-y-4">
@@ -329,26 +371,27 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 새로운 작업 시작 */}
+      {/* ✅ 작업 시작/이어하기 */}
       <div className="space-y-2">
         <button
           type="button"
-          onClick={onStartNewTask}
+          onClick={onTaskButtonClick}
           className="flex h-14 w-full items-center justify-between rounded-[22px] border border-slate-100 bg-white px-5 text-left shadow-sm active:scale-[0.99] transition disabled:opacity-60"
-          disabled={workStatus === "PAUSED" || isProcessing}
+          disabled={taskBtnDisabled}
         >
           <span
             className={`text-sm font-extrabold ${
-              workStatus === "PAUSED" ? "text-slate-400" : "text-slate-900"
+              taskBtnDisabled ? "text-slate-400" : "text-slate-900"
             }`}
           >
-            새로운 작업 시작
+            {taskBtnLabel}
           </span>
           <span className="text-[22px] text-slate-300">›</span>
         </button>
-        {workStatus === "PAUSED" && (
+
+        {taskHelpText && (
           <p className="px-1 text-[12px] font-semibold text-slate-400">
-            근무가 중단된 상태에서는 새로운 작업을 시작할 수 없어요.
+            {taskHelpText}
           </p>
         )}
       </div>

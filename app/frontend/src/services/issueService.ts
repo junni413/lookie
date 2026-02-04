@@ -1,84 +1,157 @@
-import {
-    db_issues,
-    db_issue_images,
-    db_ai_judgments,
-    workersMock,
-    zonesMock,
-    getDerivedWorker,
-} from "@/mocks/mockData";
-import type { IssueResponse } from "@/types/db";
+// app/frontend/src/services/issueService.ts
+import type { ApiResponse } from "../types/task";
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** -----------------------------
+ * HTTP Helper (Issue API 전용)
+ * ----------------------------- */
+const TOKEN_KEY = "accessToken";
 
-const getJoinedIssues = (): IssueResponse[] => {
-    return db_issues.map((issue) => {
-        // Join Worker Name
-        const workerName = workersMock[issue.worker_id] || "알 수 없음";
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
 
-        // Join Zone Name
-        // In mock, zone_id is number, but old mock used "A", "B".
-        // We map 1->"A 존", etc.
-        const zone = zonesMock.find((z) => z.id === issue.zone_location_id);
-        const zoneName = zone ? zone.name : "Unknown Zone";
+async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const token = getToken();
 
-        // Join Images
-        const images = db_issue_images.filter((img) => img.issue_id === issue.issue_id);
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> | undefined),
+  };
 
-        // Join AI Judgment (Assume 1:1 for simplicity or take latest)
-        const judgment = db_ai_judgments.find((j) => j.issue_id === issue.issue_id);
+  if (init.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
-        // Join Enhanced Worker Info
-        const worker = getDerivedWorker(issue.worker_id);
+  if (token && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
-        return {
-            ...issue,
-            workerName,
-            zoneName,
-            images,
-            judgment,
-            worker,
-        };
-    });
+  const res = await fetch(url, { ...init, headers });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
+
+  return data as T;
+}
+
+/** -----------------------------
+ * Swagger 기반 타입
+ * ----------------------------- */
+
+/** POST /api/issues - request */
+export type CreateIssueRequest = {
+  batchTaskId: number;
+  batchTaskItemId: number;
+  issueType: string; // enum이면 "DAMAGED" | "MISSING" | ... 로 좁힐 수 있음
+  imageUrl: string;
 };
 
+/** POST /api/issues - response.data */
+export type CreateIssueResponseData = {
+  issueId: number;
+  issueType: string;
+  status: string;
+  batchTaskId: number;
+  batchTaskItemId: number;
+  urgency: number;
+  issueHandling: string;
+};
+
+/** POST /api/issues/{issueId}/ai/retake - request */
+export type RetakeAiRequest = {
+  imageUrl: string;
+};
+
+/** POST /api/issues/{issueId}/ai/result - request */
+export type AiResultRequest = {
+  aiDecision: string;
+  reasonCode: string;
+  confidence: number;
+  summary: string;
+  aiResult: string;
+  newLocation: {
+    zoneLocationId: number;
+    locationCode: string;
+  };
+};
+
+/** POST /api/issues/{issueId}/ai/result - response.data */
+export type AiResultResponseData = {
+  issueId: number;
+  status: string;
+  urgency: number;
+  issueHandling: string;
+  adminRequired: boolean;
+  reasonCode: string;
+  resolvedAt: string; // ISO string
+  nextAction: string; // "NEXT_ITEM" 등
+};
+
+/** POST /api/issues/{issueId}/admin/confirm - request */
+export type AdminConfirmRequest = {
+  adminDecision: "NORMAL" | string; // enum 확실하면 "NORMAL" | "DAMAGED" ... 로 좁히기
+};
+
+/** GET /api/issues/{issueId} - response.data */
+export type IssueDetail = {
+  issueId: number;
+  type: string;
+  status: string;
+  priority: string;
+  issueHandling: string;
+  adminRequired: boolean;
+  reasonCode: string;
+  urgency: number;
+  adminDecision: string;
+  aiResult: string;
+  confidence: number;
+  summary: string;
+  workerNextAction: string;
+  issueNextAction: string;
+  adminNextAction: string;
+  availableActions: string[];
+};
+
+/** -----------------------------
+ * issueService (Issue API only)
+ * ----------------------------- */
 export const issueService = {
-    /**
-     * 이슈 목록 조회 (Simulate GET /api/admin/issues)
-     */
-    getIssues: async (): Promise<IssueResponse[]> => {
-        await delay(500);
-        return getJoinedIssues();
-    },
+  /** 이슈 신고 */
+  createIssue: async (body: CreateIssueRequest): Promise<ApiResponse<CreateIssueResponseData>> => {
+    return requestJSON(`/api/issues`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
 
-    /**
-     * 이슈 상세 조회 (Simulate GET /api/admin/issues/:id)
-     */
-    getIssueDetail: async (id: number): Promise<IssueResponse | null> => {
-        await delay(300);
-        const all = getJoinedIssues();
-        const issue = all.find((i) => i.issue_id === id);
-        return issue || null;
-    },
+  /** 이슈 재촬영 (AI 재분석 요청) */
+  retakeAi: async (issueId: number, body: RetakeAiRequest): Promise<ApiResponse<{}>> => {
+    return requestJSON(`/api/issues/${issueId}/ai/retake`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
 
-    /**
-     * 이슈 판정 (Simulate PATCH /api/admin/issues/:id)
-     * decision을 status 업데이트 또는 required_action 업데이트로 매핑
-     */
-    processIssue: async (id: number, decision: "APPROVED" | "REJECTED"): Promise<void> => {
-        await delay(800);
+  /**
+   * AI 판정 결과 수신 (Webhook)
+   * ⚠️ 원래는 AI 서버가 호출하는 용도라 프론트에서 직접 호출 안 할 수도 있음.
+   * 하지만 시연/테스트용으로는 프론트에서 붙여도 무방.
+   */
+  submitAiResult: async (issueId: number, body: AiResultRequest): Promise<ApiResponse<AiResultResponseData>> => {
+    return requestJSON(`/api/issues/${issueId}/ai/result`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
 
-        // In strict ERD terms, "APPROVED"(정상) -> status: RESOLVED, action: WORKER_CONTINUE
-        // "REJECTED"(폐기) -> status: RESOLVED, action: AUTO_RESOLVED (or similar legacy concept)
+  /** 관리자 확정 */
+  adminConfirm: async (issueId: number, body: AdminConfirmRequest): Promise<ApiResponse<{}>> => {
+    return requestJSON(`/api/issues/${issueId}/admin/confirm`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
 
-        const target = db_issues.find(i => i.issue_id === id);
-        if (target) {
-            target.status = "RESOLVED";
-            target.resolved_at = new Date().toISOString();
-            if (decision === "APPROVED") {
-                target.required_action = "WORKER_CONTINUE";
-            } else {
-                target.required_action = "AUTO_RESOLVED"; // 폐기완료
-            }
-        }
-    },
+  /** 이슈 상세 조회 */
+  getIssue: async (issueId: number): Promise<ApiResponse<IssueDetail>> => {
+    return requestJSON(`/api/issues/${issueId}`, { method: "GET" });
+  },
 };
