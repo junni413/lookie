@@ -30,6 +30,9 @@ import java.util.List;
 import java.util.Set;
 import lookie.backend.domain.issue.dto.AdminDecision;
 
+import lookie.backend.domain.issue.dto.IssueStatus;
+import lookie.backend.domain.issue.dto.MyIssueSummary;
+
 /**
  * Issue 도메인 비즈니스 로직 처리 서비스
  * - 이슈 생성 (AI 판정 요청 성공 시)
@@ -749,5 +752,16 @@ public class IssueService {
 
         return lookie.backend.domain.issue.dto.AdminIssueListResponse.of(issues, request.getPage(), request.getSize(),
                 totalCount);
+    }
+
+    /**
+     * 내 이슈 목록 조회
+     * - 작업자 본인의 이슈 목록 조회
+     * - status 필터링 지원 (OPEN/RESOLVED/null=ALL)
+     */
+    @Transactional(readOnly = true)
+    public List<MyIssueSummary> getMyIssueList(Long workerId, IssueStatus status) {
+        log.info("[IssueService] getMyIssueList started. workerId={}, status={}", workerId, status);
+        return issueMapper.findMyIssues(workerId, status);
     }
 }
