@@ -95,4 +95,9 @@ public interface ControlMapper {
          * @param name   이름 검색어 (Optional)
          */
         List<AdminQueryVo> selectAdmins(@Param("zoneId") Long zoneId, @Param("name") String name);
+
+        /**
+         * 가장 적은 수의 활성 작업자가 있는 구역 ID 조회 (자동 배정용)
+         */
+        Long selectZoneIdWithFewestWorkers();
 }
