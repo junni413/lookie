@@ -1,12 +1,12 @@
-import type { User } from "@/stores/authStore";
+import type { AdminContact } from "@/types/AdminContact";
 import { Phone } from "lucide-react";
 import { cn } from "@/utils/cn";
 
 interface AdminListItemProps {
-    admin: User;
+    admin: AdminContact;
     assignedZone?: string;
     isOnline?: boolean;
-    onCallClick: (admin: User) => void;
+    onCallClick: (admin: AdminContact) => void;
 }
 
 export default function AdminListItem({

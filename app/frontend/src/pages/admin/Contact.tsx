@@ -1,16 +1,15 @@
 import { useState, useEffect } from "react";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import AdminListItem from "./components/contact/AdminListItem";
-import VideoCallModal from "@/components/webrtc/VideoCallModal";
 import { adminService } from "@/services/adminService";
 import { useAuthStore } from "@/stores/authStore";
 import { useCallStore } from "@/stores/callStore";
-import type { User } from "@/stores/authStore";
+import type { AdminContact } from "@/types/AdminContact";
 import { cn } from "@/utils/cn";
 import { Search, Users, Video, Sparkles } from "lucide-react";
 
 export default function Contact() {
-    const [admins, setAdmins] = useState<User[]>([]);
+    const [admins, setAdmins] = useState<AdminContact[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedZone, setSelectedZone] = useState<string | "all">("all");
     const [searchQuery, setSearchQuery] = useState("");
@@ -18,41 +17,58 @@ export default function Contact() {
     const token = useAuthStore((state) => state.token);
     const currentUser = useAuthStore((state) => state.user);
     const startCall = useCallStore((state) => state.startCall);
-    const callStatus = useCallStore((state) => state.status);
 
-    // 구역 목록
+    // 구역 목록 (ID는 백엔드 zoneId와 매핑 추정: A=1, B=2...)
     const ZONES = [
         { id: "all", name: "전체" },
-        { id: "A", name: "ZONE A" },
-        { id: "B", name: "ZONE B" },
-        { id: "C", name: "ZONE C" },
-        { id: "D", name: "ZONE D" },
+        { id: "1", name: "ZONE A" },
+        { id: "2", name: "ZONE B" },
+        { id: "3", name: "ZONE C" },
+        { id: "4", name: "ZONE D" },
     ];
 
-    // 관리자 목록 로드
+    // 관리자 목록 로드 (서버 사이드 필터링)
     useEffect(() => {
         if (!token) return;
 
-        const loadAdmins = async () => {
+        let ignore = false;
+
+        // 검색어 디바운싱 (300ms)
+        const timerId = setTimeout(async () => {
             setLoading(true);
             try {
-                const data = await adminService.getAdmins(token);
-                const filteredAdmins = data.filter(
-                    (admin) => admin.userId !== currentUser?.userId
-                );
-                setAdmins(filteredAdmins);
-            } catch (error) {
-                console.error("관리자 목록 로드 실패:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+                const params: any = {};
+                if (searchQuery) params.name = searchQuery;
+                if (selectedZone !== "all") params.zoneId = selectedZone;
 
-        loadAdmins();
-    }, [token, currentUser]);
+                const data = await adminService.getAdmins(token, params);
+                if (ignore) return;
+
+                if (!currentUser?.userId) {
+                    setAdmins(data);
+                    return;
+                }
+
+                // 본인 제외 및 중복 제거 (필수는 아니지만 안전장치)
+                const filtered = data.filter((admin) => String(admin.userId) !== String(currentUser.userId));
+                // const unique = ... (service handles mapping, list likely unique from DB)
+
+                setAdmins(filtered);
+            } catch (error) {
+                if (!ignore) console.error("관리자 목록 로드 실패:", error);
+            } finally {
+                if (!ignore) setLoading(false);
+            }
+        }, 300);
+
+        return () => {
+            ignore = true;
+            clearTimeout(timerId);
+        };
+    }, [token, currentUser, selectedZone, searchQuery]);
 
     // 통화 시작 핸들러
-    const handleCallClick = (admin: User) => {
+    const handleCallClick = (admin: AdminContact) => {
         if (!currentUser) {
             alert("로그인이 필요합니다.");
             return;
@@ -60,21 +76,7 @@ export default function Contact() {
         startCall(currentUser.userId, admin.userId, null, admin.name);
     };
 
-    // 구역별 필터링
-    const filteredAdmins = selectedZone === "all"
-        ? admins
-        : admins.filter((admin) => {
-            const zones = ["A", "B", "C", "D"];
-            const assignedZone = zones[admin.userId % zones.length];
-            return assignedZone === selectedZone;
-        });
 
-    // 검색 필터링
-    const searchedAdmins = searchQuery
-        ? filteredAdmins.filter((admin) =>
-            admin.name.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-        : filteredAdmins;
 
     return (
         <div className="flex flex-col h-full bg-[#f8f9fc]">
@@ -95,7 +97,7 @@ export default function Contact() {
                             <div className="flex-1">
                                 <h3 className="text-lg font-bold text-slate-800">관리자 목록</h3>
                                 <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                                    {searchedAdmins.length}명 {selectedZone !== "all" && `· Zone ${selectedZone}`}
+                                    {admins.length}명 {selectedZone !== "all" && `· ${ZONES.find(z => z.id === selectedZone)?.name || selectedZone}`}
                                 </p>
                             </div>
                         </div>
@@ -143,7 +145,7 @@ export default function Contact() {
                                     <p className="text-sm">로딩 중...</p>
                                 </div>
                             </div>
-                        ) : searchedAdmins.length === 0 ? (
+                        ) : admins.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-40 text-slate-400 px-4">
                                 <Search className="w-12 h-12 mb-3 text-slate-300" />
                                 <p className="text-sm font-medium text-slate-600">
@@ -157,21 +159,15 @@ export default function Contact() {
                             </div>
                         ) : (
                             <div className="divide-y divide-slate-100">
-                                {searchedAdmins.map((admin) => {
-                                    const zones = ["A", "B", "C", "D"];
-                                    const assignedZone = `Zone ${zones[admin.userId % zones.length]}`;
-                                    const isOnline = admin.userId % 2 === 0;
-
-                                    return (
-                                        <AdminListItem
-                                            key={admin.userId}
-                                            admin={admin}
-                                            assignedZone={assignedZone}
-                                            isOnline={isOnline}
-                                            onCallClick={handleCallClick}
-                                        />
-                                    );
-                                })}
+                                {admins.map((admin) => (
+                                    <AdminListItem
+                                        key={admin.userId}
+                                        admin={admin}
+                                        assignedZone={admin.assignedZone || "미배정"}
+                                        isOnline={admin.isOnline || false}
+                                        onCallClick={handleCallClick}
+                                    />
+                                ))}
                             </div>
                         )}
                     </div>
@@ -179,45 +175,41 @@ export default function Contact() {
 
                 {/* 오른쪽: WebRTC 화면 */}
                 <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-                    {callStatus === "IDLE" ? (
-                        <div className="flex-1 flex flex-col items-center justify-center text-center p-12 relative overflow-hidden">
-                            {/* 배경 장식 */}
-                            <div className="absolute inset-0 bg-gradient-to-br from-primary/3 via-transparent to-purple-500/3" />
-                            <div className="absolute top-10 right-10 w-32 h-32 bg-primary/3 rounded-full blur-3xl" />
-                            <div className="absolute bottom-10 left-10 w-40 h-40 bg-purple-500/3 rounded-full blur-3xl" />
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-12 relative overflow-hidden">
+                        {/* 배경 장식 */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-primary/3 via-transparent to-purple-500/3" />
+                        <div className="absolute top-10 right-10 w-32 h-32 bg-primary/3 rounded-full blur-3xl" />
+                        <div className="absolute bottom-10 left-10 w-40 h-40 bg-purple-500/3 rounded-full blur-3xl" />
 
-                            {/* 콘텐츠 */}
-                            <div className="relative z-10">
-                                {/* 아이콘 */}
-                                <div className="relative mb-8 inline-block">
-                                    <div className="w-28 h-28 bg-gradient-to-br from-primary/8 to-indigo-500/8 rounded-[2rem] flex items-center justify-center shadow-sm border border-primary/10">
-                                        <Video className="w-14 h-14 text-primary" strokeWidth={1.5} />
-                                    </div>
-                                    {/* 반짝이는 효과 */}
-                                    <div className="absolute -top-1 -right-1 w-7 h-7 bg-gradient-to-br from-primary/15 to-indigo-500/15 rounded-full flex items-center justify-center border border-white shadow-sm">
-                                        <Sparkles className="w-3.5 h-3.5 text-primary" />
-                                    </div>
+                        {/* 콘텐츠 */}
+                        <div className="relative z-10">
+                            {/* 아이콘 */}
+                            <div className="relative mb-8 inline-block">
+                                <div className="w-28 h-28 bg-gradient-to-br from-primary/8 to-indigo-500/8 rounded-[2rem] flex items-center justify-center shadow-sm border border-primary/10">
+                                    <Video className="w-14 h-14 text-primary" strokeWidth={1.5} />
                                 </div>
-
-                                {/* 텍스트 */}
-                                <h2 className="text-2xl font-bold text-slate-800 mb-3">
-                                    통화 대기 중
-                                </h2>
-                                <p className="text-slate-500 max-w-md leading-relaxed mb-6">
-                                    왼쪽 목록에서 온라인 상태인 관리자를 선택하여<br />
-                                    실시간 화상 통화를 시작하세요
-                                </p>
-
-                                {/* 안내 카드 */}
-                                <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/5 border border-primary/10 rounded-full text-xs text-primary font-medium">
-                                    <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                                    온라인 상태 확인 가능
+                                {/* 반짝이는 효과 */}
+                                <div className="absolute -top-1 -right-1 w-7 h-7 bg-gradient-to-br from-primary/15 to-indigo-500/15 rounded-full flex items-center justify-center border border-white shadow-sm">
+                                    <Sparkles className="w-3.5 h-3.5 text-primary" />
                                 </div>
                             </div>
+
+                            {/* 텍스트 */}
+                            <h2 className="text-2xl font-bold text-slate-800 mb-3">
+                                통화 대기 중
+                            </h2>
+                            <p className="text-slate-500 max-w-md leading-relaxed mb-6">
+                                왼쪽 목록에서 온라인 상태인 관리자를 선택하여<br />
+                                실시간 화상 통화를 시작하세요
+                            </p>
+
+                            {/* 안내 카드 */}
+                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/5 border border-primary/10 rounded-full text-xs text-primary font-medium">
+                                <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                                온라인 상태 확인 가능
+                            </div>
                         </div>
-                    ) : (
-                        <VideoCallModal />
-                    )}
+                    </div>
                 </div>
             </div>
 

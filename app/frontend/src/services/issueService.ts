@@ -1,14 +1,10 @@
 // app/frontend/src/services/issueService.ts
 import type { ApiResponse } from "../types/task";
-import {
-  db_issues,
-  db_issue_images,
-  db_ai_judgments,
-  db_users,
-  zoneNames,
-} from "@/mocks/mockData";
-import { getDerivedWorker } from "@/mocks/mockData";
-import type { IssueResponse } from "@/types/db";
+import type {
+  AdminIssueListRequest,
+  AdminIssueListResponse,
+  IssueDetailData
+} from "../types/issue";
 
 /** -----------------------------
  * HTTP Helper (Issue API 전용)
@@ -41,43 +37,7 @@ async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-/** -----------------------------
- * Mock helpers (Admin Issue 화면용)
- * ----------------------------- */
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const getJoinedIssues = (): IssueResponse[] => {
-  return db_issues.map((issue) => {
-    const workerUser = db_users.find((u) => u.userId === issue.workerId);
-    const workerName = workerUser ? workerUser.name : "알 수 없음";
-
-    const zoneName = zoneNames[issue.zoneLocationId || 1] || "Unknown Zone";
-    const images = db_issue_images.filter((img) => img.issueId === issue.issueId);
-    const judgment = db_ai_judgments.find((j) => j.issueId === issue.issueId);
-
-    const worker = getDerivedWorker(issue.workerId);
-
-    if (!worker) {
-      return {
-        ...issue,
-        workerName,
-        zoneName,
-        images,
-        judgment: judgment!,
-        worker: workerUser as any,
-      } as IssueResponse;
-    }
-
-    return {
-      ...issue,
-      workerName,
-      zoneName,
-      images,
-      judgment: judgment!,
-      worker,
-    };
-  });
-};
 
 /** -----------------------------
  * Swagger 기반 타입
@@ -137,25 +97,7 @@ export type AdminConfirmRequest = {
   adminDecision: "NORMAL" | string; // enum이면 "NORMAL" | "DAMAGED" ...
 };
 
-/** GET /api/issues/{issueId} - response.data */
-export type IssueDetail = {
-  issueId: number;
-  type: string;
-  status: string;
-  priority: string;
-  issueHandling: string;
-  adminRequired: boolean;
-  reasonCode: string;
-  urgency: number;
-  adminDecision: string;
-  aiResult: string;
-  confidence: number;
-  summary: string;
-  workerNextAction: string;
-  issueNextAction: string;
-  adminNextAction: string;
-  availableActions: string[];
-};
+
 
 /** -----------------------------
  * issueService (Issue API only)
@@ -198,81 +140,74 @@ export const issueService = {
   },
 
   /** 이슈 상세 조회 */
-  getIssue: async (issueId: number): Promise<ApiResponse<IssueDetail>> => {
+  getIssue: async (issueId: number): Promise<ApiResponse<IssueDetailData>> => {
     return requestJSON(`/api/issues/${issueId}`, { method: "GET" });
   },
 
   /**
-   * 이슈 목록 조회 (Mock: GET /api/admin/issues)
+   * 관리자 관제 이슈 목록 조회 (GET /api/issues)
    */
-  getIssues: async (params?: {
-    page?: number;
-    size?: number;
-    status?: "OPEN" | "RESOLVED";
-    sort?: "TIME" | "PRIORITY";
-  }): Promise<{ data: IssueResponse[]; total: number }> => {
-    await delay(500);
-    let all = getJoinedIssues();
+  getIssues: async (params?: AdminIssueListRequest): Promise<AdminIssueListResponse> => {
+    // [MOCK MODE] Real API call commented out
+    /*
+    const query = new URLSearchParams();
+    if (params?.status) query.append("status", params.status);
+    if (params?.page) query.append("page", params.page.toString());
+    if (params?.size) query.append("size", params.size.toString());
 
-    if (params?.status) {
-      all = all.filter((i) => i.status === params.status);
-    }
+    const response = await requestJSON<ApiResponse<AdminIssueListResponse>>(`/api/issues?${query.toString()}`, {
+      method: "GET",
+    });
 
-    if (params?.sort) {
-      if (params.sort === "PRIORITY") {
-        const priorityMap = { HIGH: 3, MEDIUM: 2, LOW: 1 };
-        all.sort((a, b) => priorityMap[b.priority] - priorityMap[a.priority]);
-      } else {
-        if (params.status === "RESOLVED") {
-          all.sort((a, b) => {
-            const timeA = a.resolvedAt ? new Date(a.resolvedAt).getTime() : new Date(a.createdAt).getTime();
-            const timeB = b.resolvedAt ? new Date(b.resolvedAt).getTime() : new Date(b.createdAt).getTime();
-            return timeB - timeA;
-          });
-        } else {
-          all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        }
-      }
-    }
+    return response.data;
+    */
 
-    const page = params?.page || 1;
-    const size = params?.size || 10;
-    const start = (page - 1) * size;
-    const end = start + size;
+    const { mockIssueSummaries } = await import("@/mocks/issueMocks");
 
-    const paginated = all.slice(start, end);
+    // params가 없거나 status가 없으면 전체 반환
+    const filtered = params?.status
+      ? mockIssueSummaries.filter(i => i.status === params.status)
+      : mockIssueSummaries;
 
     return {
-      data: paginated,
-      total: all.length,
+      issues: filtered,
+      paging: {
+        page: params?.page || 1,
+        size: params?.size || 10,
+        totalCount: filtered.length,
+        totalPages: 1
+      }
     };
   },
 
   /**
-   * 이슈 상세 조회 (Mock: GET /api/admin/issues/:id)
+   * 이슈 상세 조회 (GET /api/issues/:id)
    */
-  getIssueDetail: async (id: number): Promise<IssueResponse | null> => {
-    await delay(300);
-    const all = getJoinedIssues();
-    const issue = all.find((i) => i.issueId === id);
-    return issue || null;
+  getIssueDetail: async (issueId: number): Promise<IssueDetailData> => {
+    // [MOCK MODE] Real API call commented out
+    /*
+    const response = await requestJSON<ApiResponse<IssueDetailData>>(`/api/issues/${issueId}`, {
+      method: "GET",
+    });
+    return response.data;
+    */
+
+    const { mockIssueDetails } = await import("@/mocks/issueMocks");
+    const detail = mockIssueDetails[issueId];
+    if (!detail) throw new Error("Mock issue not found");
+    return detail;
   },
 
   /**
-   * 이슈 확정 (Mock: PATCH /api/admin/issues/:id)
+   * 이슈 확정 (POST /api/issues/:id/admin/confirm)
    */
-  processIssue: async (id: number, decision: "APPROVED" | "REJECTED"): Promise<void> => {
-    await delay(800);
-
-    const target = db_issues.find((i) => i.issueId === id);
-    if (target) {
-      target.status = "RESOLVED";
-      target.resolvedAt = new Date().toISOString();
-      if (decision === "APPROVED") {
-        target.issueHandling = "NON_BLOCKING";
-      } else {
-        target.issueHandling = "BLOCKING";
-      }
-    }
+  confirmIssue: async (issueId: number, body: AdminConfirmRequest): Promise<void> => {
+    console.log(`[MOCK] Confirmed issue ${issueId}:`, body);
+    /*
+    await requestJSON(`/api/issues/${issueId}/admin/confirm`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    */
   },
 };

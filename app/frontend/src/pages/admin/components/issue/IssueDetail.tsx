@@ -1,47 +1,72 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { issueService } from "@/services/issueService";
-import { type IssueResponse } from "@/types/db";
+import type { IssueDetailData } from "@/types/issue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { timeAgo } from "@/utils/format";
 import { X } from "lucide-react";
 
 interface IssueDetailProps {
-    issue: IssueResponse | null;
+    issueId: number;
     onUpdate: () => void;
     onClose?: () => void;
 }
 
-export default function IssueDetail({ issue, onUpdate, onClose }: IssueDetailProps) {
+export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailProps) {
+    const [issue, setIssue] = useState<IssueDetailData | null>(null);
     const [loading, setLoading] = useState(false);
+    const [processing, setProcessing] = useState(false);
 
-    const handleDecision = async (decision: "APPROVED" | "REJECTED") => {
-        if (!issue) return;
-        if (confirm(decision === "APPROVED" ? "정상 처리 하시겠습니까?" : "폐기 처리 하시겠습니까?")) {
+    useEffect(() => {
+        let ignore = false;
+
+        const fetchDetail = async () => {
             setLoading(true);
             try {
-                await issueService.processIssue(issue.issueId, decision);
+                const data = await issueService.getIssueDetail(issueId);
+                if (!ignore) {
+                    setIssue(data);
+                }
+            } catch (err) {
+                if (!ignore) console.error(err);
+            } finally {
+                if (!ignore) setLoading(false);
+            }
+        };
+
+        if (issueId) fetchDetail();
+
+        return () => {
+            ignore = true;
+        };
+    }, [issueId]);
+
+    const handleDecision = async (decision: "NORMAL" | "DAMAGED" | "CALLED_OTHER_PROCESS" | "FIXED") => {
+        if (!issue) return;
+        if (confirm("확정 하시겠습니까?")) {
+            setProcessing(true);
+            try {
+                await issueService.confirmIssue(issue.issueId, { adminDecision: decision });
                 onUpdate(); // 목록 갱신 요청
             } catch (e) {
                 console.error(e);
                 alert("처리에 실패했습니다.");
             } finally {
-                setLoading(false);
+                setProcessing(false);
             }
         }
     };
 
+    if (loading) return <div className="text-center p-10 text-muted-foreground">로딩 중...</div>;
     if (!issue) return <div className="text-center text-muted-foreground p-10 h-full flex items-center justify-center border rounded-xl border-dashed">선택된 이슈가 없습니다.</div>;
 
     const isResolved = issue.status === "RESOLVED";
 
     // Image handling
-    const mainImage = issue.images && issue.images.length > 0 ? issue.images[0].imageUrl : null;
+    const mainImage = issue.imageUrls && issue.imageUrls.length > 0 ? issue.imageUrls[0] : null;
 
     const getResolvedText = () => {
-        if (issue.requiredAction === "WORKER_CONTINUE") return "✅ 정상 처리됨";
-        if (issue.requiredAction === "AUTO_RESOLVED") return "🗑️ 폐기 처리됨";
+        if (issue.adminDecision) return `✅ ${issue.adminDecision}`;
         return "✔️ 처리 완료됨";
     };
 
@@ -52,16 +77,16 @@ export default function IssueDetail({ issue, onUpdate, onClose }: IssueDetailPro
                 <div className="flex items-start justify-between p-6 border-b bg-card z-10">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
-                            <h2 className="text-2xl font-bold">{issue.zoneName} 이슈</h2>
+                            <h2 className="text-2xl font-bold">이슈 상세</h2>
                             {isResolved && <Badge variant="secondary">완료</Badge>}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                            작업자: <span className="font-medium text-foreground">{issue.workerName}</span> • {timeAgo(issue.createdAt)}
+                            ID: {issue.issueId} • 유형: {issue.type}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Badge variant={issue.issueType === "OUT_OF_STOCK" ? "destructive" : "default"}>
-                            {issue.issueType === "OUT_OF_STOCK" ? "재고 부족" : "파손 감지"}
+                        <Badge variant={issue.type === "OUT_OF_STOCK" ? "destructive" : "default"}>
+                            {issue.type === "OUT_OF_STOCK" ? "재고 부족" : "파손 감지"}
                         </Badge>
                         {onClose && (
                             <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 ml-2">
@@ -77,21 +102,24 @@ export default function IssueDetail({ issue, onUpdate, onClose }: IssueDetailPro
                         {mainImage ? (
                             <img src={mainImage} alt="Issue Issue" className="w-full h-full object-cover" />
                         ) : (
-                            <div className="flex items-center justify-center h-full text-muted-foreground">이미지 없음</div>
+                            <div className="flex items-center justify-center h-full text-muted-foreground flex-col gap-2">
+                                <span>이미지 없음</span>
+                                <span className="text-xs text-gray-400">(백엔드 API 미지원)</span>
+                            </div>
                         )}
 
                         {/* Overlay info */}
                         <div className="absolute top-4 right-4 bg-black/60 text-white px-3 py-1 rounded-full text-xs backdrop-blur-sm font-medium">
-                            우선순위: {issue.priority}
+                            긴급도: {issue.urgency}
                         </div>
                     </div>
 
-                    {/* AI Analysis (Optional Placeholder) */}
-                    {issue.judgment && (
+                    {/* AI Analysis */}
+                    {issue.aiResult && (
                         <div className="mb-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                            <div className="text-sm font-semibold text-blue-800 mb-1">AI 분석 결과</div>
+                            <div className="text-sm font-semibold text-blue-800 mb-1">AI 분석 결과 ({issue.aiResult})</div>
                             <div className="text-sm text-blue-600">
-                                {issue.judgment.summary || "특이사항 없음"} (신뢰도: {(issue.judgment.confidence || 0) * 100}%)
+                                {issue.summary || "특이사항 없음"} (신뢰도: {(issue.confidence || 0) * 100}%)
                             </div>
                         </div>
                     )}
@@ -104,12 +132,12 @@ export default function IssueDetail({ issue, onUpdate, onClose }: IssueDetailPro
                                     {getResolvedText()}
                                 </div>
                                 <p className="text-sm text-muted-foreground">
-                                    처리 일시: {issue.resolvedAt ? new Date(issue.resolvedAt).toLocaleString() : "-"}
+                                    {/* Resolved Date can be added if available in detail data */}
                                 </p>
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {issue.issueType === "DAMAGED" && (
+                                {issue.type === "DAMAGED" && (
                                     <div className="flex items-center justify-center gap-2 p-3 bg-red-100 text-red-700 rounded-lg text-sm font-semibold">
                                         ⚠️ 상품 파손이 감지되었습니다
                                     </div>
@@ -119,20 +147,21 @@ export default function IssueDetail({ issue, onUpdate, onClose }: IssueDetailPro
                                     <Button
                                         size="lg"
                                         className="w-full bg-green-600 hover:bg-green-700 text-white shadow-sm"
-                                        onClick={() => handleDecision("APPROVED")}
-                                        disabled={loading}
+                                        onClick={() => handleDecision("NORMAL")}
+                                        disabled={processing}
                                     >
-                                        정상
+                                        정상 (Normal)
                                     </Button>
                                     <Button
                                         size="lg"
                                         variant="destructive"
                                         className="w-full shadow-sm"
-                                        onClick={() => handleDecision("REJECTED")}
-                                        disabled={loading}
+                                        onClick={() => handleDecision(issue.type === "DAMAGED" ? "DAMAGED" : "FIXED")}
+                                        disabled={processing}
                                     >
-                                        폐기
+                                        {issue.type === "DAMAGED" ? "파손 확정" : "조치 완료"}
                                     </Button>
+                                    {/* Action for CALLED_OTHER_PROCESS if needed */}
                                 </div>
                             </div>
                         )}
