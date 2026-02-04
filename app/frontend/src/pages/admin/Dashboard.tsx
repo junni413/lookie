@@ -5,16 +5,15 @@ import ZoneGrid from "./components/dashboard/ZoneGrid";
 import IssueList from "./components/issue/IssueList";
 import { manageService } from "@/services/manageService";
 import { issueService } from "@/services/issueService";
-import type { IssueResponse } from "@/types/db";
+import type { AdminIssueSummary } from "@/types/issue";
 import { Users, Package, CheckCircle2, History } from "lucide-react";
 import { cn } from "@/utils/cn";
 import type { ZoneItem } from "./components/dashboard/ZoneGrid";
 
 type SortKey = "TIME" | "PRIORITY";
-const priorityMap: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
 export default function Dashboard() {
-  const [issues, setIssues] = useState<IssueResponse[]>([]);
+  const [issues, setIssues] = useState<AdminIssueSummary[]>([]);
   const [zoneData, setZoneData] = useState<ZoneItem[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("TIME");
 
@@ -30,12 +29,12 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         const [fetchedIssuesResult, fetchedStats, fetchedWorkers] = await Promise.all([
-          issueService.getIssues(), // Now returns { data: [], total: number }
+          issueService.getIssues(),
           manageService.getZoneStats(),
           manageService.getAllWorkers(),
         ]);
 
-        const fetchedIssues = fetchedIssuesResult.data;
+        const fetchedIssues = fetchedIssuesResult.issues;
 
         // Issues
         const unresolved = fetchedIssues.filter((i) => i.status === "OPEN");
@@ -81,9 +80,8 @@ export default function Dashboard() {
     if (sortKey === "TIME") {
       arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } else {
-      // priority 큰 게 위로 (HIGH > MEDIUM > LOW)
-      // Note: If priority is undefined, fallback to 0
-      arr.sort((a, b) => (priorityMap[b.priority] || 0) - (priorityMap[a.priority] || 0));
+      // urgency Ascending (1 is High, so 1 comes first)
+      arr.sort((a, b) => (a.urgency || 99) - (b.urgency || 99));
     }
     return arr;
   }, [issues, sortKey]);

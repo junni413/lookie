@@ -1,4 +1,4 @@
-import type { AdminIssueSummary, AdminIssueListResponse, IssueDetailData } from "@/types/issue";
+import type { AdminIssueSummary, IssueDetailData } from "@/types/issue";
 
 export const mockIssueSummaries: AdminIssueSummary[] = [
     {
