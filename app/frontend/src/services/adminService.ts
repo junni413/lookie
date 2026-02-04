@@ -1,16 +1,42 @@
 import { request } from "@/api/http";
 import type { ApiResponse } from "@/api/type";
 import type { AdminContact } from "@/types/AdminContact";
+import type { AdminIssueSummary, IssueDetailData } from "@/types/issue";
+// import type { ZoneStat } from "./manageService"; // Reusing ZoneStat or defining new one
+// ZoneStat is not used, removing import
+
 
 // ========================================
-// 📡 API 함수
+// 📡 API Response Types
 // ========================================
 
-/**
- * 관리자 목록 조회
- * GET /api/control/admins
- */
-// API Response Item Type
+// Dashboard Summary Code
+export interface DashboardSummary {
+    working: number;
+    waiting: number;
+    done: number;
+    progress: number;
+}
+
+// Server DTO
+interface DashboardSummaryDto {
+    totalActiveWorkers: number;
+    pendingIssues: number;
+    completedIssues: number;
+    totalProgressRate: number;
+    zoneSummaries: any[];
+}
+
+// Zone List Response (Extension of ZoneStat maybe?)
+export interface AdminZoneResponse {
+    zoneId: number;
+    name: string;
+    status: "STABLE" | "NORMAL" | "CRITICAL";
+    workerCount: number;
+    workRate: number;
+}
+
+// Admin List Response
 interface AdminListResponseItem {
     adminId: number;
     name: string;
@@ -20,12 +46,56 @@ interface AdminListResponseItem {
 }
 
 // API Params
-// API Params
 interface AdminListParams {
     zoneId?: string;
     name?: string;
 }
 
+interface IssueListParams {
+    status?: "OPEN" | "RESOLVED"; // Literal type matches Backend Enum strings
+    page?: number;
+    size?: number;
+}
+
+// ========================================
+// 📡 API 함수
+// ========================================
+
+/**
+ * 대시보드 상단 요약 정보
+ * GET /api/control/summary
+ */
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+    const response = await request<ApiResponse<DashboardSummaryDto>>("/api/control/summary", {
+        method: "GET",
+    });
+
+    const dto = response.data;
+    if (!dto) return { working: 0, waiting: 0, done: 0, progress: 0 };
+
+    return {
+        working: dto.totalActiveWorkers || 0,
+        waiting: dto.pendingIssues || 0,
+        done: dto.completedIssues || 0,
+        progress: dto.totalProgressRate ? Math.floor(dto.totalProgressRate) : 0,
+    };
+}
+
+/**
+ * 대시보드 구역 현황
+ * GET /api/control/zones
+ */
+export async function getZones(): Promise<AdminZoneResponse[]> {
+    const response = await request<ApiResponse<AdminZoneResponse[]>>("/api/control/zones", {
+        method: "GET",
+    });
+    return response.data || [];
+}
+
+/**
+ * 관리자 목록 조회
+ * GET /api/control/admins
+ */
 export async function getAdmins(token: string, params?: AdminListParams): Promise<AdminContact[]> {
     const query = new URLSearchParams();
 
@@ -51,7 +121,6 @@ export async function getAdmins(token: string, params?: AdminListParams): Promis
     // API 응답(adminId)을 프론트엔드 모델(userId)로 맵핑
     return rawData.map(item => ({
         // User Base Fields
-        // User Base Fields
         userId: item.adminId,
         name: item.name,
         email: undefined, // Optional in User
@@ -70,6 +139,56 @@ export async function getAdmins(token: string, params?: AdminListParams): Promis
     })) as AdminContact[];
 }
 
+/**
+ * 이슈 목록 조회 (대시보드용)
+ * GET /api/control/issues
+ */
+export async function getDashboardIssues(params?: IssueListParams): Promise<AdminIssueSummary[]> {
+    const query = new URLSearchParams();
+    if (params?.status) query.append("status", params.status);
+    if (params?.page) query.append("page", params.page.toString());
+    if (params?.size) query.append("size", params.size.toString());
+
+    const queryString = query.toString();
+    const url = `/api/issues${queryString ? `?${queryString}` : ""}`;
+
+    const response = await request<ApiResponse<{ issues: AdminIssueSummary[] }>>(url, {
+        method: "GET",
+    });
+
+    // 백엔드 응답 구조에 따라 조정 필요 (페이징 포함 여부 등)
+    // 현재 구현 계획: Dashboard에서는 리스트만 필요
+    return response.data?.issues || [];
+}
+
+/**
+ * 이슈 상세 조회
+ * GET /api/issues/{id}
+ */
+export async function getIssueDetail(issueId: number): Promise<IssueDetailData> {
+    const response = await request<ApiResponse<IssueDetailData>>(`/api/issues/${issueId}`, {
+        method: "GET",
+    });
+    if (!response.data) throw new Error("Issue not found");
+    return response.data;
+}
+
+/**
+ * 이슈 확정 (Decision)
+ * POST /api/issues/{id}/admin/confirm
+ */
+export async function confirmIssue(issueId: number, decision: string): Promise<void> {
+    await request<ApiResponse<void>>(`/api/issues/${issueId}/admin/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ adminDecision: decision }),
+    });
+}
+
 export const adminService = {
+    getDashboardSummary,
+    getZones,
     getAdmins,
+    getDashboardIssues,
+    getIssueDetail,
+    confirmIssue,
 };

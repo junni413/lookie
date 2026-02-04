@@ -162,16 +162,18 @@ export const issueService = {
     if (params?.sort) qs.append("sort", params.sort);
 
     const queryString = qs.toString();
-    const url = `/api/admin/issues${queryString ? `?${queryString}` : ""}`;
+    const url = `/api/issues${queryString ? `?${queryString}` : ""}`;
 
-    return requestJSON(url, { method: "GET" });
+    const response = await requestJSON<ApiResponse<AdminIssueListResponse>>(url, { method: "GET" });
+    // Default fallback if data is missing, though generic ApiResponse implies data exists
+    return response.data || { issues: [], paging: { total: 0, page: 1, size: 10 } };
   },
 
   /** ✅ Admin: 이슈 상세 조회 */
   getIssueDetail: async (issueId: number): Promise<IssueDetailData | null> => {
     try {
       const response = await requestJSON<ApiResponse<IssueDetailData>>(
-        `/api/admin/issues/${issueId}`,
+        `/api/issues/${issueId}`,
         { method: "GET" }
       );
       return response.data || null;
@@ -185,8 +187,8 @@ export const issueService = {
     issueId: number,
     body: { adminDecision: string }
   ): Promise<void> => {
-    await requestJSON(`/api/admin/issues/${issueId}`, {
-      method: "PATCH",
+    await requestJSON(`/api/issues/${issueId}/admin/confirm`, {
+      method: "POST",
       body: JSON.stringify(body),
     });
   },

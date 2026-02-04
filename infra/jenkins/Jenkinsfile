@@ -297,13 +297,16 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
 
           docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${TEST_TAG}" "${AI_CONTEXT}"
 
-          docker run --rm \
-            -e DB_PASSWORD=dummy \
-            -e DB_USERNAME=dummy \
-            -e DB_HOST=dummy \
-            -e DB_PORT=3306 \
-            -e DB_NAME=dummy \
-            "${REGISTRY_IMAGE_AI}:${TEST_TAG}" pytest /app/test_main.py
+            # ✅ import 단계에서 env 없어서 죽는 문제 방지: 최소 더미값
+            docker run --rm \
+              -e DB_PASSWORD=dummy \
+              -e DB_USERNAME=dummy \
+              -e DB_HOST=dummy \
+              -e DB_PORT=3306 \
+              -e DB_NAME=dummy \
+              -e GMS_API_KEY=dummy \
+              -e GMS_BASE_URL=https://example.com \
+              "${REGISTRY_IMAGE_AI}:${TEST_TAG}" pytest /app/test_main.py
 
           echo "[INFO] MR Test Passed! (Ready to Merge)"
         '''
