@@ -11,9 +11,13 @@ onnxruntime
 
 # http
 httpx
+python-dotenv
 
 # 테스트 도구 추가 (이미지에 포함시켜서 테스트 속도 향상)
 pytest
 
 # 3. Ultralytics (맨 마지막에)
 ultralytics
+
+# 4. 환경변수 관리를 위한 라이브러리
+python-dotenv

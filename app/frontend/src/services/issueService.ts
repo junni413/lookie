@@ -1,5 +1,10 @@
 // app/frontend/src/services/issueService.ts
 import type { ApiResponse } from "../types/task";
+import type {
+  AdminIssueListRequest,
+  AdminIssueListResponse,
+  IssueDetailData
+} from "../types/issue";
 
 /** -----------------------------
  * HTTP Helper

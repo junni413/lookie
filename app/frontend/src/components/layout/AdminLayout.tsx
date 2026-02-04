@@ -1,7 +1,16 @@
+import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import AdminSidebar from "./AdminSidebar";
+import { useCallStore } from "@/stores/callStore";
+import VideoCallModal from "@/components/webrtc/VideoCallModal";
 
 export default function AdminLayout() {
+  const listenForIncomingCalls = useCallStore((state) => state.listenForIncomingCalls);
+
+  useEffect(() => {
+    listenForIncomingCalls();
+  }, [listenForIncomingCalls]);
+
   // 🔒 LOCKED LAYOUT: This structure (h-screen, overflow-hidden) is fixed.
   // DO NOT remove 'h-screen' or 'overflow-hidden'. The user requires the app to strictly fit the viewport.
   return (
@@ -21,6 +30,9 @@ export default function AdminLayout() {
           </main>
         </div>
       </div>
+
+      {/* Global Call Modal */}
+      <VideoCallModal />
     </div>
   );
 }
