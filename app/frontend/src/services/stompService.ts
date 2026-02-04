@@ -223,3 +223,61 @@ export function subscribeIncomingCalls(
         subscriptions.forEach(sub => sub.unsubscribe());
     };
 }
+
+/**
+ * AI 판정 결과 구독 (Issue Result)
+ * /topic/issues/{issueId}
+ */
+export function subscribeIssueResult(
+    issueId: number,
+    token: string,
+    onResult: (event: any) => void
+): () => void {
+    if (!client) {
+        client = new Client({
+            brokerURL,
+            reconnectDelay: 5000,
+            heartbeatIncoming: 4000,
+            heartbeatOutgoing: 4000,
+        });
+    }
+
+    client.connectHeaders = {
+        Authorization: `Bearer ${token}`,
+    };
+
+    const topic = `/topic/issues/${issueId}`;
+    let issueSubscription: StompSubscription | null = null;
+
+    const subscribeAction = () => {
+        console.log(`📡 [STOMP] Subscribing to ${topic}`);
+        issueSubscription = client!.subscribe(topic, (message) => {
+            try {
+                const body = JSON.parse(message.body);
+                console.log(`📨 [STOMP] Issue Result Received:`, body);
+                onResult(body);
+            } catch (e) {
+                console.error('❌ [STOMP] Issue Result Parse error:', e);
+            }
+        });
+    };
+
+    if (client.connected) {
+        subscribeAction();
+    } else {
+        client.onConnect = () => {
+            console.log('✅ [STOMP] Connected (Issue Result)');
+            subscribeAction();
+        };
+        if (!client.active) {
+            client.activate();
+        }
+    }
+
+    return () => {
+        console.log(`🔌 [STOMP] Unsubscribing from ${topic}`);
+        if (issueSubscription) {
+            issueSubscription.unsubscribe();
+        }
+    };
+}
