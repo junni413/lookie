@@ -67,23 +67,29 @@ public class ControlCacheInvalidationListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async
     public void handleWorkStatusChanged(WorkStatusChangedEvent event) {
-        log.info("[Cache Invalidation] 근무 상태 변경 감지: userId={}, type={}",
-                event.getUserId(), event.getEventType());
+        log.info("[Cache Invalidation] 근무 상태 변경 감지: userId={}, type={}, zoneId={}",
+                event.getUserId(), event.getEventType(), event.getZoneId());
 
         try {
             // 1. 작업자 캐시 삭제
             redisRepository.deleteWorkerCache(event.getUserId());
 
-            // 2. 대시보드 캐시 삭제
+            // 2. 구역 캐시 삭제 (실시간 정합성 확보)
+            if (event.getZoneId() != null) {
+                // 특정 구역 캐시만 삭제 (효율적)
+                redisRepository.deleteZoneCache(event.getZoneId());
+                log.info("[Cache Invalidation] Zone 캐시 삭제: zoneId={}", event.getZoneId());
+            } else {
+                // zoneId가 없는 경우 모든 구역 캐시 삭제 (안전장치)
+                // 관리자(ADMIN)의 경우 구역 배정이 없을 수 있음
+                log.warn("[Cache Invalidation] zoneId 없음 - 모든 Zone 캐시 삭제 (안전장치)");
+                for (long zoneId = 1; zoneId <= 4; zoneId++) {
+                    redisRepository.deleteZoneCache(zoneId);
+                }
+            }
+
+            // 3. 대시보드 캐시 삭제
             redisRepository.deleteDashboardCache();
-
-            // Note: Zone ID를 이벤트를 통해 알 수 있다면 Zone 캐시도 삭제하는 것이 좋음.
-            // 하지만 WorkStatusChangedEvent에 Zone ID가 없다면,
-            // WorkerCache가 다시 생성될 때 정합성이 맞춰지거나,
-            // ZoneOverview의 TTL(60초)에 의해 결국 갱신됨.
-            // 즉각적인 갱신을 위해서는 Event에 ZoneId가 포함되어야 함.
-
-            // 현재 구조상 Zone 캐시는 TTL 만료 혹은 ZoneAssignmentEvent에 의존
 
         } catch (Exception e) {
             log.error("[Cache Invalidation] 근무 상태 캐시 삭제 실패", e);
