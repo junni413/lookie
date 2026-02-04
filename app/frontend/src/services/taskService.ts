@@ -108,6 +108,23 @@ export type ActiveTaskData = {
 };
 
 /** -----------------------------
+ * Issue types (Worker Issue 화면용)
+ * ----------------------------- */
+export type Issue = {
+  id: string;
+  title: string;
+  productName: string;
+  location: string;
+  status: "DONE" | "WAIT";
+  createdAt: string;
+  imageUrl?: string;
+  type?: string;
+  sku?: string;
+  aiResult?: string;
+  verdict?: string;
+};
+
+/** -----------------------------
  * taskService (Task API only)
  * ----------------------------- */
 export const taskService = {
@@ -169,6 +186,54 @@ export const taskService = {
   /** 작업 아이템 목록 조회 */
   getTaskItems: async (taskId: number): Promise<ApiResponse<TaskItemVO[]>> => {
     return requestJSON(`/api/tasks/${taskId}/items`, { method: "GET" });
+  },
+
+  /** -----------------------------
+   * Issue 관련 기능
+   * ----------------------------- */
+
+  /** 이슈 신고 */
+  reportIssue: async (_data?: {
+    taskId?: number;
+    itemId?: number;
+    type?: string;
+    description?: string;
+    productName?: string;
+    location?: string;
+    sku?: string;
+  }): Promise<string> => {
+    // Mock: 실제로는 POST /api/issues 호출
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return `ISSUE-${Date.now()}`;
+  },
+
+  /** 내 이슈 목록 조회 */
+  getMyIssues: async (): Promise<Issue[]> => {
+    // Mock: 실제로는 GET /api/issues/me 호출
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return [];
+  },
+
+  /** 이슈 이미지 업로드 */
+  uploadIssueImage: async (issueId: string, file: File): Promise<void> => {
+    // Mock: 실제로는 POST /api/issues/{issueId}/images 호출
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    console.log("Uploaded image for issue:", issueId, file.name);
+  },
+
+  /** 이슈 결과 업데이트 */
+  updateIssueResult: async (issueId: string, result: {
+    decision?: string;
+    notes?: string;
+    aiResult?: string;
+    verdict?: string;
+    confidence?: number;
+    status?: string;
+    imageUrl?: string;
+  }): Promise<void> => {
+    // Mock: 실제로는 PATCH /api/issues/{issueId} 호출
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    console.log("Updated issue result:", issueId, result);
   },
 
   /** -----------------------------
