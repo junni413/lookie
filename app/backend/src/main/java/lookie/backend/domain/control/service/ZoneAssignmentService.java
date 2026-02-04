@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class ZoneAssignmentService {
 
     private final ControlMapper controlMapper;
+    private final lookie.backend.domain.user.mapper.UserMapper userMapper;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     /**
      * 작업자 구역 자동 배정 (Load Balancing)
@@ -26,6 +28,11 @@ public class ZoneAssignmentService {
      */
     @Transactional
     public void assignZoneToWorker(Long workerId) {
+        // [이전 구역 조회] 캐시 무효화를 위해 변경 전 구역 확인
+        Long previousZoneId = userMapper.findById(workerId)
+                .map(lookie.backend.domain.user.vo.UserVO::getAssignedZoneId)
+                .orElse(null);
+
         // 1. 가장 적은 수의 작업자가 있는 구역 조회 (Concurrency Control: FOR UPDATE)
         Long recommendedZoneId = controlMapper.selectZoneIdWithFewestWorkers();
 
@@ -47,6 +54,10 @@ public class ZoneAssignmentService {
         controlMapper.insertAssignmentHistory(workerId, recommendedZoneId, "출근 시 자동 구역 배정");
 
         log.info("작업자 자동 구역 배정 완료. WorkerID: {}, ZoneID: {}", workerId, recommendedZoneId);
+
+        // 5. 이벤트 발행 (캐시 무효화)
+        eventPublisher.publishEvent(lookie.backend.domain.control.event.ZoneAssignmentEvent.create(
+                workerId, recommendedZoneId, previousZoneId));
     }
 
     /**
@@ -56,6 +67,11 @@ public class ZoneAssignmentService {
      */
     @Transactional
     public void unassignZoneFromWorker(Long workerId) {
+        // [이전 구역 조회] 캐시 무효화를 위해 변경 전 구역 확인
+        Long previousZoneId = userMapper.findById(workerId)
+                .map(lookie.backend.domain.user.vo.UserVO::getAssignedZoneId)
+                .orElse(null);
+
         // 1. 사용자 배정 정보 초기화 (assigned_zone_id = NULL)
         controlMapper.updateUserAssignedZone(workerId, null);
 
@@ -63,5 +79,10 @@ public class ZoneAssignmentService {
         controlMapper.closeActiveAssignment(workerId);
 
         log.info("작업자 구역 배정 해제 완료. WorkerID: {}", workerId);
+
+        // 3. 이벤트 발행 (캐시 무효화)
+        // newZoneId는 null
+        eventPublisher.publishEvent(lookie.backend.domain.control.event.ZoneAssignmentEvent.create(
+                workerId, null, previousZoneId));
     }
 }
