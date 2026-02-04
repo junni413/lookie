@@ -7,6 +7,8 @@ import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
+import lookie.backend.domain.control.repository.vo.AdminQueryVo;
+import lookie.backend.domain.control.dto.AdminResponseDto;
 import lookie.backend.domain.control.mapper.ControlMapper;
 import lookie.backend.global.common.type.ZoneType;
 import org.springframework.stereotype.Service;
@@ -151,5 +153,28 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
 
         // 4. Update User Master Table (사용자 정보 업데이트)
         controlMapper.updateUserAssignedZone(workerId, zoneId);
+
+    }
+
+    /**
+     * 관리자 목록 조회 구현
+     * 1. DB 조회 (VO)
+     * 2. VO -> DTO 매핑 (순수 데이터와 전송 객체 분리)
+     */
+    @Override
+    public List<AdminResponseDto> getAdmins(Long zoneId, String name) {
+        // 1. Fetch raw data as VO
+        List<AdminQueryVo> adminVos = controlMapper.selectAdmins(zoneId, name);
+
+        // 2. Map VO to DTO
+        return adminVos.stream()
+                .map(vo -> AdminResponseDto.builder()
+                        .adminId(vo.getAdminId())
+                        .name(vo.getRawName()) // 정책: 관리자는 원본 이름 사용
+                        .assignedZoneId(vo.getAssignedZoneId())
+                        .zoneName(ZoneType.getNameById(vo.getAssignedZoneId())) // Enum 매핑
+                        .currentStatus(vo.getCurrentStatus())
+                        .build())
+                .toList();
     }
 }

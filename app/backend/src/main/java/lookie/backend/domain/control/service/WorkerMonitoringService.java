@@ -8,6 +8,7 @@ import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
 
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
+import lookie.backend.domain.control.dto.AdminResponseDto;
 
 /**
  * 현장 관제(Control Map) 모니터링을 위한 서비스 인터페이스
@@ -52,4 +53,13 @@ public interface WorkerMonitoringService {
      * @param request 배정 요청 정보 (작업자 ID, 구역 ID, 사유)
      */
     void assignWorkerToZone(AdminZoneAssignmentRequest request);
+
+    /**
+     * 관리자 목록 조회 (검색 및 필터링)
+     *
+     * @param zoneId 구역 필터링 (선택)
+     * @param name   이름 검색 (선택)
+     * @return 관리자 목록 DTO
+     */
+    List<AdminResponseDto> getAdmins(Long zoneId, String name);
 }
