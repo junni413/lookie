@@ -1,12 +1,14 @@
 import { create } from "zustand";
 import type { CallState } from "@/types/webrtc";
 import { webrtcService } from "@/services/webrtcService";
-import { subscribeCallStatus } from "@/services/stompService";
+import { subscribeCallStatus, subscribeIncomingCalls } from "@/services/stompService";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/components/ui/toast";
 
 interface CallStore extends CallState {
     timeoutId: number | null;
+    wsCleanup: (() => void) | null;
+    incomingCleanup: (() => void) | null;
 
     startCall: (
         callerId: number,
@@ -20,9 +22,10 @@ interface CallStore extends CallState {
     endCall: () => Promise<void>;
     reset: () => void;
     handleError: (error: unknown) => void;
+    listenForIncomingCalls: () => void;
 }
 
-const initialState: CallState = {
+const initialState: CallState & { wsCleanup: null; incomingCleanup: null } = {
     status: "IDLE",
     callId: null,
     sessionId: null,
@@ -30,6 +33,8 @@ const initialState: CallState = {
     remoteUserId: null,
     remoteUserName: null,
     issueId: null,
+    wsCleanup: null,
+    incomingCleanup: null,
 };
 
 // 폴링 interval 저장
@@ -84,6 +89,8 @@ function stopPolling() {
 export const useCallStore = create<CallStore>((set, get) => ({
     ...initialState,
     timeoutId: null,
+    wsCleanup: null,
+    incomingCleanup: null,
 
     startCall: async (callerId, calleeId, issueId, calleeName) => {
         try {
@@ -166,11 +173,13 @@ export const useCallStore = create<CallStore>((set, get) => ({
                 }
             );
 
-            // Cleanup 함수 저장
-            (get() as any).wsCleanup = () => {
-                unsubscribe();
-                stopPolling();
-            };
+            // Cleanup 함수 저장 (Type Safe)
+            set({
+                wsCleanup: () => {
+                    unsubscribe();
+                    stopPolling();
+                }
+            });
 
             set({
                 status: "WAITING",
@@ -195,10 +204,10 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
         try {
             await webrtcService.cancelCall(callId, { reason });
-            set({ ...initialState, timeoutId: null });
+            set({ ...initialState, timeoutId: null, wsCleanup: null });
         } catch (error) {
             console.error("통화 취소 실패:", error);
-            set({ ...initialState, timeoutId: null });
+            set({ ...initialState, timeoutId: null, wsCleanup: null });
         }
     },
 
@@ -224,10 +233,10 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
         try {
             await webrtcService.rejectCall(callId);
-            set({ ...initialState, timeoutId: null });
+            set({ ...initialState, timeoutId: null, wsCleanup: null });
         } catch (error) {
             console.error("통화 거절 실패:", error);
-            set({ ...initialState, timeoutId: null });
+            set({ ...initialState, timeoutId: null, wsCleanup: null });
         }
     },
 
@@ -237,25 +246,23 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
         try {
             await webrtcService.endCall(callId);
-            set({ ...initialState, timeoutId: null });
+            set({ ...initialState, timeoutId: null, wsCleanup: null });
         } catch (error) {
             console.error("통화 종료 실패:", error);
-            set({ ...initialState, timeoutId: null });
+            set({ ...initialState, timeoutId: null, wsCleanup: null });
         }
     },
 
     reset: () => {
-        const { timeoutId } = get();
+        const { timeoutId, wsCleanup } = get();
         if (timeoutId) clearTimeout(timeoutId);
 
-        set({ ...initialState, timeoutId: null });
-
         // WebSocket & Polling Cleanup
-        const wsCleanup = (get() as any).wsCleanup;
         if (wsCleanup) {
             wsCleanup();
-            (get() as any).wsCleanup = null;
         }
+
+        set({ ...initialState, timeoutId: null, wsCleanup: null });
     },
 
     handleError: (error: unknown) => {
@@ -277,4 +284,40 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
         get().reset();
     },
+
+    listenForIncomingCalls: () => {
+        const authStore = useAuthStore.getState();
+        if (!authStore.token || !authStore.user) return;
+
+        // Cleanup previous subscription if any
+        const { incomingCleanup: prevCleanup } = get();
+        if (prevCleanup) prevCleanup();
+
+        console.log(`👂 [CallStore] 수신 대기 시작 (User: ${authStore.user.userId})`);
+
+        const cleanup = subscribeIncomingCalls(authStore.token, authStore.user.userId, (event) => {
+            console.log("📨 [CallStore] 수신 이벤트:", event);
+            if (event.type === 'REQUESTED') {
+                set({
+                    status: "INCOMING",
+                    callId: event.callId,
+                    sessionId: undefined,
+                    token: undefined,
+                    remoteUserId: undefined,
+                    remoteUserName: event.reason || "관리자",
+                    issueId: null,
+                });
+            } else if (event.type === 'CANCELED') {
+                console.warn("🚫 [CallStore] 'CANCELED' event received. Resetting state.");
+                toast.info("상대방이 통화를 취소했습니다.");
+                set((state) => ({ ...initialState }));
+            } else if (event.type === 'ENDED') {
+                console.warn("🚫 [CallStore] 'ENDED' event received via global listener. Resetting state.");
+                toast.info("통화가 종료되었습니다.");
+                set((state) => ({ ...initialState }));
+            }
+        });
+
+        set({ incomingCleanup: cleanup });
+    }
 }));

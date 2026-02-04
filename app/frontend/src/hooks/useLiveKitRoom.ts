@@ -104,11 +104,18 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions): UseLiveKitRoomRe
                     setRemoteTrack(track as RemoteVideoTrack);
                     setRemoteParticipant(participant);
                 }
+                if (track.kind === Track.Kind.Audio) {
+                    // Audio track must be attached to play
+                    track.attach();
+                }
             })
             .on(RoomEvent.TrackUnsubscribed, (track) => {
                 console.log('❌ [LiveKit] Track Unsubscribed:', track.kind);
                 if (track.kind === Track.Kind.Video) {
                     setRemoteTrack(undefined);
+                }
+                if (track.kind === Track.Kind.Audio) {
+                    track.detach();
                 }
             })
             .on(RoomEvent.LocalTrackPublished, (publication) => {
