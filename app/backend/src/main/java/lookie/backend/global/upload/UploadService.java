@@ -22,6 +22,7 @@ public class UploadService {
 
     private final UploadProperties uploadProperties;
     private static final List<String> ALLOWED_EXTENSIONS = List.of("jpg", "jpeg", "png");
+    private static final List<String> ALLOWED_MIME_TYPES = List.of("image/jpeg", "image/png");
 
     public String uploadImage(MultipartFile file) {
         if (file.isEmpty()) {
@@ -31,7 +32,14 @@ public class UploadService {
         String originalFilename = file.getOriginalFilename();
         String extension = getExtension(originalFilename);
 
+        // 1. 확장자 체크
         if (!ALLOWED_EXTENSIONS.contains(extension.toLowerCase())) {
+            throw new ApiException(ErrorCode.UPLOAD_INVALID_EXTENSION);
+        }
+
+        // 2. MIME Type 체크 (보안 강화)
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType.toLowerCase())) {
             throw new ApiException(ErrorCode.UPLOAD_INVALID_EXTENSION);
         }
 

@@ -21,8 +21,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         String uploadDir = uploadProperties.getUploadDir();
 
-        // file:///C:/Users/... 또는 file:///data/images/ 형태로 변환
-        String resourcePath = "file:///" + uploadDir + "/";
+        // OS 호환성을 위해 Path API 사용 (file:/// 하드코딩 제거)
+        String resourcePath = java.nio.file.Paths.get(uploadDir).toAbsolutePath().toUri().toString();
 
         registry.addResourceHandler("/images/**")
                 .addResourceLocations(resourcePath);
