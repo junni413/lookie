@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { Lock, Phone } from "lucide-react";
@@ -51,7 +51,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const canSubmit = useMemo(
-    () => id.trim() && pw.trim() && !loading,
+    () => Boolean(id.trim()) && Boolean(pw.trim()) && !loading,
     [id, pw, loading]
   );
 
@@ -109,48 +109,61 @@ export default function Login() {
           아이디와 비밀번호를 입력해 주세요
         </p>
 
-        {/* Login Card */}
-        <div className="overflow-hidden rounded-[22px] border border-slate-100 bg-white shadow-sm text-left">
-          <FieldRow
-            icon={<Phone size={18} />}
-            placeholder="아이디(전화번호)"
-            value={id}
-            onChange={setId}
-            type="tel"
-          />
-          <Divider />
-          <FieldRow
-            icon={<Lock size={18} />}
-            placeholder="비밀번호"
-            value={pw}
-            onChange={setPw}
-            type="password"
-          />
-        </div>
-
-        {/* Forgot password */}
-        <div className="mt-4 text-right">
-          <button
-            onClick={() => navigate("/auth/password/forgot")}
-            className="text-sm font-bold text-blue-600"
-          >
-            비밀번호 찾기
-          </button>
-        </div>
-
-        {/* Login Button */}
-        <button
-          onClick={handleLogin}
-          disabled={!canSubmit}
-          className="mt-8 flex h-14 w-full items-center justify-center rounded-[18px]
-            bg-blue-600 text-[16px] font-black text-white
-            disabled:bg-blue-200 transition active:scale-[0.99]"
+        {/* ✅ ENTER 제출을 위해 form 사용 */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleLogin();
+          }}
         >
-          {loading ? "로그인 중..." : "로그인"}
-        </button>
+          {/* Login Card */}
+          <div className="overflow-hidden rounded-[22px] border border-slate-100 bg-white shadow-sm text-left">
+            <FieldRow
+              icon={<Phone size={18} />}
+              placeholder="아이디(전화번호)"
+              value={id}
+              onChange={setId}
+              type="tel"
+              autoComplete="username"
+              inputMode="numeric"
+            />
+            <Divider />
+            <FieldRow
+              icon={<Lock size={18} />}
+              placeholder="비밀번호"
+              value={pw}
+              onChange={setPw}
+              type="password"
+              autoComplete="current-password"
+            />
+          </div>
+
+          {/* Forgot password */}
+          <div className="mt-4 text-right">
+            <button
+              type="button"
+              onClick={() => navigate("/auth/password/forgot")}
+              className="text-sm font-bold text-blue-600"
+            >
+              비밀번호 찾기
+            </button>
+          </div>
+
+          {/* Login Button */}
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="mt-8 flex h-14 w-full items-center justify-center rounded-[18px]
+              bg-blue-600 text-[16px] font-black text-white
+              disabled:bg-blue-200 transition active:scale-[0.99]"
+          >
+            {loading ? "로그인 중..." : "로그인"}
+          </button>
+        </form>
 
         {/* Signup */}
         <button
+          type="button"
           onClick={() => navigate("/signup")}
           className="mt-6 text-sm font-bold text-slate-500"
         >
@@ -171,12 +184,16 @@ function FieldRow({
   value,
   onChange,
   type,
+  autoComplete,
+  inputMode,
 }: {
   icon: React.ReactNode;
   placeholder: string;
   value: string;
   onChange: (v: string) => void;
   type: string;
+  autoComplete?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-4">
@@ -186,6 +203,8 @@ function FieldRow({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
         className="w-full bg-transparent text-[15px] font-bold
           text-slate-900 placeholder:text-slate-400 focus:outline-none"
       />

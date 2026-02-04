@@ -11,7 +11,7 @@ type Stats = { done: number; issue: number; waiting: number };
 
 // ✅ 시간 포맷 통일 (UTC(Z) -> 브라우저 로컬(KST) 표시)
 function formatHHmmKST(isoLike: string) {
-  const hasTZ = /Z$|[+\-]\d{2}:\d{2}$/.test(isoLike);
+  const hasTZ = /$|[+\-]\d{2}:\d{2}$/.test(isoLike);
   const safeIso = hasTZ ? isoLike : `${isoLike}Z`;
 
   const d = new Date(safeIso);
@@ -23,7 +23,7 @@ function formatHHmmKST(isoLike: string) {
   });
 }
 
-// ✅ assignedZoneId -> "ZONE-<id>"로 고정 표시
+
 function zoneLabelFromId(zoneId: number | null | undefined) {
   if (zoneId === null || zoneId === undefined) return "ZONE-?";
   return `ZONE-${zoneId}`;
@@ -35,7 +35,7 @@ function mapBackendStatusToUi(status: WorkLogStatus): WorkStatus {
 }
 
 // 구역 카드
-function ZoneCard({ zone, status }: { zone: string; status: string }) {
+function ZoneCard({ zone }: { zone: string; }) {
   return (
     <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between">
@@ -283,46 +283,76 @@ export default function Home() {
         </p>
       </div>
 
-      {/* 출근 카드 */}
-      <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
+      <section
+        className="
+          rounded-[28px]
+          bg-blue-600
+          p-5
+          shadow-[0_20px_40px_rgba(37,99,235,0.35)]
+        "
+        >
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-slate-50 text-lg">
+            <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-white/20 text-lg">
               ⏱️
             </div>
             <div>
-              <p className="text-sm font-extrabold text-slate-900">오늘의 출근 시간</p>
-              <p className="mt-1 text-[28px] font-black leading-none tracking-tight text-slate-900">
+              <p className="text-sm font-extrabold text-blue-100">오늘의 출근 시간</p>
+              <p className="mt-1 text-[28px] font-black leading-none tracking-tight text-white">
                 {savedTime}
               </p>
             </div>
           </div>
-          <span className={statusChipClass}>{zoneStatusText}</span>
+
+          <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold text-white">
+            {zoneStatusText}
+          </span>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            className="h-11 rounded-[18px] border border-slate-200 bg-white text-sm font-extrabold text-slate-700 active:scale-[0.99] transition disabled:opacity-50"
-            onClick={workStatus === "WORKING" ? onPause : onResume}
-            disabled={isProcessing}
-          >
-            {workStatus === "WORKING" ? "중단" : "재개"}
-          </button>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          className="
+            h-11
+            rounded-[18px]
+            bg-white
+            text-sm
+            font-black
+            text-blue-700
+            active:scale-[0.99]
+            transition
+            disabled:opacity-50
+          "
+          onClick={workStatus === "WORKING" ? onPause : onResume}
+          disabled={isProcessing}
+        >
+          {workStatus === "WORKING" ? "중단" : "재개"}
+        </button>
 
-          <button
-            type="button"
-            className="h-11 rounded-[18px] border border-red-200 bg-red-50 text-sm font-extrabold text-red-600 active:scale-[0.99] transition disabled:opacity-50"
-            onClick={onCheckout}
-            disabled={isProcessing}
-          >
-            {isProcessing ? "처리 중..." : "퇴근"}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="
+            h-11
+            rounded-[18px]
+            bg-white/20
+            text-sm
+            font-black
+            text-white
+            active:scale-[0.99]
+            transition
+            disabled:opacity-50
+          "
+          onClick={onCheckout}
+          disabled={isProcessing}
+        >
+          퇴근
+        </button>
+      </div>
       </section>
 
+
       {/* 근무 구역 */}
-      <ZoneCard zone={zoneLabel} status={zoneStatusText} />
+      <ZoneCard zone={zoneLabel}/>
 
       {/* 작업 통계 */}
       <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
