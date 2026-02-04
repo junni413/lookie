@@ -69,13 +69,16 @@ pipeline {
     COMPOSE_DOCKER_CLI_BUILD = '1'
 
     // ============================================================
-    // ✅ [AI FLAG]
-    // [FIX] null/unset 방지용 기본값을 "빈 문자열" 대신 sentinel로 둠
-    // - Jenkins env가 상황에 따라 빈/널로 굴러가는 케이스가 있어 set -u에서 터짐 방지
+    // ✅ [TAG/FLAG - SENTINEL]
+    //
+    // [FIX 핵심]
+    // - sh 내부에서 export/대입한 변수는 "그 sh 프로세스"에서만 유효합니다.
+    // - stage 간 공유하려면 반드시 Groovy에서 env.* 로 저장해야 합니다.
+    // - 그래서 기본값은 UNSET으로 두고, Set IMAGE_TAG stage에서 env.IMAGE_TAG를 확정합니다.
     // ============================================================
     AI_BUILT     = 'false'
-    AI_IMAGE_TAG = 'UNSET'     // [FIX]
-    IMAGE_TAG    = 'UNSET'     // [FIX]
+    AI_IMAGE_TAG = 'UNSET'
+    IMAGE_TAG    = 'UNSET'
   }
 
   stages {
@@ -83,6 +86,7 @@ pipeline {
     stage('Detect Context') {
       steps {
         script {
+          // 여러 GitLab 플러그인/웹훅 변수명 차이를 흡수하기 위한 pick 헬퍼
           def pick = { List<String> keys ->
             for (k in keys) {
               def v = env."${k}"
@@ -140,7 +144,7 @@ pipeline {
             env.CHECKOUT_BRANCH = env.PUSH_BRANCH
           }
 
-          // [FIX] 매 빌드마다 초기화하되 UNSET 유지(빈/널 회피)
+          // [FIX] 매 빌드마다 sentinel로 초기화해서 "이전 빌드 값"이 새 빌드에 섞이지 않게 함
           env.AI_BUILT     = "false"
           env.AI_IMAGE_TAG = "UNSET"
           env.IMAGE_TAG    = "UNSET"
@@ -168,11 +172,13 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         }
       }
       steps {
+        // Jenkinsfile 로딩에 사용된 scm을 동일하게 체크아웃
         checkout scm
 
         sh '''#!/usr/bin/env bash
           set -euo pipefail
 
+          # [FIX] CHECKOUT_BRANCH 지정 시 origin 브랜치 존재 확인 후 checkout
           if [[ -n "${CHECKOUT_BRANCH:-}" ]]; then
             git rev-parse --verify "refs/remotes/origin/${CHECKOUT_BRANCH}" >/dev/null 2>&1 || {
               echo "[ERROR] origin/${CHECKOUT_BRANCH} not found"
@@ -192,7 +198,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
         script {
-          // [FIX] Git 출력이 비는(=null) 이상 케이스를 즉시 방어
+          // [FIX 핵심] stage 간 공유를 위해 env.IMAGE_TAG를 Groovy에서 확정
           def t = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           if (!t) {
             error("[ERROR] IMAGE_TAG 계산 실패: git rev-parse 결과가 비었습니다.")
@@ -360,6 +366,16 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
     stage('Build & Push: Backend & Nginx') {
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" } }
       steps {
+        script {
+          // [FIX] 여기서 sh 안에서 IMAGE_TAG를 "수정"하지 말고,
+          //       Set IMAGE_TAG stage에서 이미 env.IMAGE_TAG가 확정돼야 함.
+          //       혹시 누락되었으면 즉시 fail해서 UNSET pull 같은 사고를 차단.
+          def t = (env.IMAGE_TAG ?: '').trim()
+          if (!t || t == 'UNSET' || t == 'null') {
+            error("[ERROR] IMAGE_TAG is invalid before Build: '${env.IMAGE_TAG}' (Set IMAGE_TAG stage가 실행되었는지 확인)")
+          }
+        }
+
         withCredentials([usernamePassword(
           credentialsId: env.DOCKERHUB_CRED_ID,
           usernameVariable: 'DH_USER',
@@ -368,23 +384,13 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
           sh '''#!/usr/bin/env bash
             set -euo pipefail
 
-            # ======================================================
-            # [FIX] IMAGE_TAG가 비었거나 UNSET이면 여기서 강제 보정
-            # - Jenkins/Groovy env가 null/empty로 넘어와 set -u에서 터지는 케이스를 차단
-            # ======================================================
-            if [[ -z "${IMAGE_TAG:-}" || "${IMAGE_TAG}" == "UNSET" || "${IMAGE_TAG}" == "null" ]]; then
-              IMAGE_TAG="$(git rev-parse --short HEAD)"
-              export IMAGE_TAG
-              echo "[FIX] IMAGE_TAG corrected -> ${IMAGE_TAG}"
-            fi
-
             echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
-            echo "[INFO] Backend Build..."
+            echo "[INFO] Backend Build... TAG=${IMAGE_TAG}"
             docker build -f "${BACKEND_DOCKERFILE}" -t "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}" "${BACKEND_CONTEXT}"
             docker push "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}"
 
-            echo "[INFO] Nginx Build..."
+            echo "[INFO] Nginx Build... TAG=${IMAGE_TAG}"
             docker build -f "${NGINX_DOCKERFILE}" -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" "${NGINX_CONTEXT}"
             docker push "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}"
           '''
@@ -400,6 +406,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         allOf {
           expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_BUILDIMG == "true" }
           anyOf {
+            // [주의] changeset은 checkout 이후 changelog를 기반으로 평가됩니다.
             changeset "app/ai-server/**"
             changeset "app/ai-server/model/**"
             changeset "infra/jenkins/Jenkinsfile"
@@ -410,12 +417,12 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       steps {
         script {
           // ✅ AI는 공통 IMAGE_TAG를 그대로 사용 (추적/롤백 쉬움)
-          // [FIX] IMAGE_TAG가 비면 여기서도 보정
+          // [FIX] 여기서도 env 기반으로만 세팅 (sh 내부에서 export로 "고치지" 않음)
           def base = (env.IMAGE_TAG ?: '').trim()
           if (!base || base == 'UNSET' || base == 'null') {
-            base = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-            env.IMAGE_TAG = base
+            error("[ERROR] IMAGE_TAG is invalid before AI build: '${env.IMAGE_TAG}'")
           }
+
           env.AI_IMAGE_TAG = base
           env.AI_BUILT = "true"
 
@@ -427,20 +434,12 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
           usernameVariable: 'DH_USER',
           passwordVariable: 'DH_PASS'
         )]) {
-          // ✅ Groovy 보간 제거: sh ''' ... ''' 사용 -> $/ ${} 안전
           sh '''#!/usr/bin/env bash
             set -euo pipefail
 
-            # [FIX] AI_IMAGE_TAG 방어 (혹시라도 unset/UNSET이면 재계산)
-            if [[ -z "${AI_IMAGE_TAG:-}" || "${AI_IMAGE_TAG}" == "UNSET" || "${AI_IMAGE_TAG}" == "null" ]]; then
-              AI_IMAGE_TAG="$(git rev-parse --short HEAD)"
-              export AI_IMAGE_TAG
-              echo "[FIX] AI_IMAGE_TAG corrected -> ${AI_IMAGE_TAG}"
-            fi
-
             echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
-            echo "[INFO] AI Server Changed. Starting Build..."
+            echo "[INFO] AI Server Changed. Starting Build... TAG=${AI_IMAGE_TAG}"
             docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${AI_IMAGE_TAG}" "${AI_CONTEXT}"
 
             echo "[INFO] AI Server Test Running..."
@@ -468,12 +467,14 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
       when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'develop' && env.RUN_DEPLOY == "true" } }
       steps {
         script {
-          // [FIX] deploy 전에 IMAGE_TAG는 무조건 유효해야 함
+          // [FIX] deploy 전에 태그 sanity check (UNSET pull 방지)
           def t = (env.IMAGE_TAG ?: '').trim()
           if (!t || t == 'UNSET' || t == 'null') {
-            t = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-            env.IMAGE_TAG = t
+            error("[ERROR] Deploy aborted: IMAGE_TAG is invalid ('${env.IMAGE_TAG}')")
           }
+
+          // AI가 빌드되지 않았다면 AI_IMAGE_TAG는 UNSET일 수 있음
+          // (원격에서 운영 태그 파일로 유지하도록 되어있음)
           echo "Deploy IMAGE_TAG=${env.IMAGE_TAG}, AI_BUILT=${env.AI_BUILT}, AI_IMAGE_TAG=${env.AI_IMAGE_TAG}"
         }
 
@@ -484,6 +485,7 @@ plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG
         )]) {
           sshagent(credentials: [env.SSH_CRED_ID]) {
             // ✅ 반드시 ''' 사용: Groovy $ 파싱 충돌 방지
+            // ✅ 변수들은 "로컬 쉘에서 확정된 값"이 SSH 커맨드에 주입되어 원격 env로 전달됨
             sh '''#!/usr/bin/env bash
               set -euo pipefail
               : > "${DEPLOY_LOG}"
@@ -518,7 +520,7 @@ git checkout -B develop origin/develop
 
 echo "${DH_PASS}" | docker login -u "${DH_USER}" --password-stdin >/dev/null
 
-# ✅ 운영 AI 태그 유지 파일
+# ✅ 운영 AI 태그 유지 파일 (AI가 변경되지 않으면 기존 운영 태그로 계속 실행)
 AI_TAG_FILE=".deploy_ai_tag"
 
 # (1) 현재 운영 중인 AI 태그 읽기(없으면 latest)
@@ -564,6 +566,7 @@ else
   echo "[INFO] Keep ai-server container (no change)"
 fi
 
+# 나머지 서비스 (DB/redis 등)도 compose 상태 보장
 docker compose -f "${COMPOSE_PROD_FILE}" up -d
 
 docker image prune -f >/dev/null 2>&1 || true
@@ -583,6 +586,7 @@ EOSSH
         def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
         def title = ok ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패"
 
+        // [FIX] 멀티브랜치/폴더형 Job 대응 URL 생성
         def jobName = (env.JOB_NAME ?: '').trim()
         def buildNo = (env.BUILD_NUMBER ?: '').trim()
         def jobPath = jobName ? jobName.split('/').collect { "job/${it}" }.join('/') : ''
