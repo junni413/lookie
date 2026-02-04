@@ -1,48 +1,20 @@
 // app/frontend/src/services/issueService.ts
 import type { ApiResponse } from "../types/task";
+import type { IssueResponse } from "@/types/db";
 import {
   db_issues,
   db_issue_images,
   db_ai_judgments,
   db_users,
   zoneNames,
+  getDerivedWorker,
 } from "@/mocks/mockData";
-import { getDerivedWorker } from "@/mocks/mockData";
-import type { IssueResponse } from "@/types/db";
 
 /** -----------------------------
- * HTTP Helper (Issue API 전용)
+ * HTTP Helper
  * ----------------------------- */
-const TOKEN_KEY = "accessToken";
-
-function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken();
-
-  const headers: Record<string, string> = {
-    ...(init.headers as Record<string, string> | undefined),
-  };
-
-  if (init.body && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  if (token && !headers["Authorization"]) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const res = await fetch(url, { ...init, headers });
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
-
-  return data as T;
-}
-
 /** -----------------------------
- * Mock helpers (Admin Issue 화면용)
+ * Helpers for Mock
  * ----------------------------- */
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -80,18 +52,47 @@ const getJoinedIssues = (): IssueResponse[] => {
 };
 
 /** -----------------------------
- * Swagger 기반 타입
+ * HTTP Helper
  * ----------------------------- */
 
-/** POST /api/issues - request */
+const TOKEN_KEY = "accessToken";
+
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const token = getToken();
+
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> | undefined),
+  };
+
+  // ❗ FormData일 때는 Content-Type을 직접 지정하면 안 됨 (boundary 자동 설정)
+  if (init.body && !(init.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (token && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, { ...init, headers });
+  const text = await res.text();
+  return (text ? JSON.parse(text) : {}) as T;
+}
+
+/** -----------------------------
+ * Types (Swagger 기준)
+ * ----------------------------- */
+
 export type CreateIssueRequest = {
   batchTaskId: number;
   batchTaskItemId: number;
-  issueType: string; // enum이면 "DAMAGED" | "MISSING" | ...
+  issueType: string; // "DAMAGED" | "MISSING" | "OTHER"
   imageUrl: string;
 };
 
-/** POST /api/issues - response.data */
 export type CreateIssueResponseData = {
   issueId: number;
   issueType: string;
@@ -102,42 +103,6 @@ export type CreateIssueResponseData = {
   issueHandling: string;
 };
 
-/** POST /api/issues/{issueId}/ai/retake - request */
-export type RetakeAiRequest = {
-  imageUrl: string;
-};
-
-/** POST /api/issues/{issueId}/ai/result - request */
-export type AiResultRequest = {
-  aiDecision: string;
-  reasonCode: string;
-  confidence: number;
-  summary: string;
-  aiResult: string;
-  newLocation: {
-    zoneLocationId: number;
-    locationCode: string;
-  };
-};
-
-/** POST /api/issues/{issueId}/ai/result - response.data */
-export type AiResultResponseData = {
-  issueId: number;
-  status: string;
-  urgency: number;
-  issueHandling: string;
-  adminRequired: boolean;
-  reasonCode: string;
-  resolvedAt: string; // ISO string
-  nextAction: string; // "NEXT_ITEM" 등
-};
-
-/** POST /api/issues/{issueId}/admin/confirm - request */
-export type AdminConfirmRequest = {
-  adminDecision: "NORMAL" | string; // enum이면 "NORMAL" | "DAMAGED" ...
-};
-
-/** GET /api/issues/{issueId} - response.data */
 export type IssueDetail = {
   issueId: number;
   type: string;
@@ -155,13 +120,43 @@ export type IssueDetail = {
   issueNextAction: string;
   adminNextAction: string;
   availableActions: string[];
+  // Extra fields for UI
+  productName?: string;
+  issueType?: string; // Add this line
+  locationCode?: string;
+  imageUrl?: string;
+  createdAt?: string;
+  verdict?: string; // AI Verdict
+  sku?: string;
+};
+
+export type MyIssueResponse = {
+  issueId: number;
+  issueType: string;
+  status: string; // "OPEN" | "RESOLVED"
+  productName: string;
+  locationCode: string;
+  aiDecision: string;
+  adminRequired: boolean;
+  createdAt: string;
 };
 
 /** -----------------------------
- * issueService (Issue API only)
+ * issueService
  * ----------------------------- */
 export const issueService = {
-  /** 이슈 등록 */
+  /** ✅ 이미지 업로드 → imageUrl(string) 반환 */
+  uploadImage: async (file: File): Promise<ApiResponse<string>> => {
+    const form = new FormData();
+    form.append("file", file);
+
+    return requestJSON(`/api/uploads/images`, {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  /** ✅ 이슈 생성 */
   createIssue: async (body: CreateIssueRequest): Promise<ApiResponse<CreateIssueResponseData>> => {
     return requestJSON(`/api/issues`, {
       method: "POST",
@@ -169,37 +164,15 @@ export const issueService = {
     });
   },
 
-  /** 이슈 재촬영(AI 판단 재요청) */
-  retakeAi: async (issueId: number, body: RetakeAiRequest): Promise<ApiResponse<{}>> => {
-    return requestJSON(`/api/issues/${issueId}/ai/retake`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  },
-
-  /**
-   * AI 판정 결과 수신 (Webhook)
-   * 현재 백엔드가 호출하는 용도지만,
-   * 개발/테스트용으로 프론트에서 직접 호출할 수도 있음.
-   */
-  submitAiResult: async (issueId: number, body: AiResultRequest): Promise<ApiResponse<AiResultResponseData>> => {
-    return requestJSON(`/api/issues/${issueId}/ai/result`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  },
-
-  /** 관리자 확정 */
-  adminConfirm: async (issueId: number, body: AdminConfirmRequest): Promise<ApiResponse<{}>> => {
-    return requestJSON(`/api/issues/${issueId}/admin/confirm`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  },
-
-  /** 이슈 상세 조회 */
+  /** ✅ 이슈 상세 조회 */
   getIssue: async (issueId: number): Promise<ApiResponse<IssueDetail>> => {
     return requestJSON(`/api/issues/${issueId}`, { method: "GET" });
+  },
+
+  /** ✅ 내 이슈 목록 조회 */
+  getMyIssues: async (status?: "OPEN" | "RESOLVED"): Promise<ApiResponse<MyIssueResponse[]>> => {
+    const qs = status ? `?status=${status}` : "";
+    return requestJSON(`/api/issues/my${qs}`, { method: "GET" });
   },
 
   /**
@@ -220,8 +193,8 @@ export const issueService = {
 
     if (params?.sort) {
       if (params.sort === "PRIORITY") {
-        const priorityMap = { HIGH: 3, MEDIUM: 2, LOW: 1 };
-        all.sort((a, b) => priorityMap[b.priority] - priorityMap[a.priority]);
+        const priorityMap: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+        all.sort((a, b) => (priorityMap[b.priority] || 0) - (priorityMap[a.priority] || 0));
       } else {
         if (params.status === "RESOLVED") {
           all.sort((a, b) => {
