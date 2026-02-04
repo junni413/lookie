@@ -3,7 +3,6 @@ package lookie.backend.domain.webrtc.event;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.worklog.event.WorkStatusChangedEvent;
-import lookie.backend.domain.worklog.vo.WorkLogEventType;
 import lookie.backend.global.constant.RedisKeyConstants;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
