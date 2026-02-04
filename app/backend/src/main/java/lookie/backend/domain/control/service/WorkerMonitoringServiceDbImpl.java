@@ -11,6 +11,7 @@ import lookie.backend.domain.control.mapper.ControlMapper;
 import lookie.backend.global.common.type.ZoneType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import lookie.backend.global.util.WorkerNameFormatter;
 
 /**
  * WorkerMonitoringService의 DB 기반 구현체
@@ -54,14 +55,7 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
 
         for (ZoneWorkerDto worker : workers) {
             // Format name: "Name 1234"
-            // 동명이인 구분을 위해 이름 뒤에 전화번호 뒷자리를 붙입니다.
-            String originalName = worker.getName();
-            String phoneNumber = worker.getPhoneNumber();
-
-            if (originalName != null && phoneNumber != null && phoneNumber.length() >= 4) {
-                String last4Digits = phoneNumber.substring(phoneNumber.length() - 4);
-                worker.setName(originalName + last4Digits);
-            }
+            worker.setName(WorkerNameFormatter.format(worker.getName(), worker.getPhoneNumber()));
         }
 
         return workers;
@@ -113,13 +107,7 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
         }
 
         // Business Logic 1: Name Formatting (Name + Last 4 digits)
-        String originalName = dto.getName();
-        String phoneNumber = dto.getPhoneNumber();
-
-        if (originalName != null && phoneNumber != null && phoneNumber.length() >= 4) {
-            String last4Digits = phoneNumber.substring(phoneNumber.length() - 4);
-            dto.setName(originalName + last4Digits);
-        }
+        dto.setName(WorkerNameFormatter.format(dto.getName(), dto.getPhoneNumber()));
 
         // Business Logic 2: Zone Mapping (ZoneId -> ZoneName)
         if (dto.getZoneId() != null) {

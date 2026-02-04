@@ -9,6 +9,8 @@ import lookie.backend.domain.control.mapper.ControlMapper;
 import lookie.backend.global.common.type.ZoneType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import lookie.backend.global.util.WorkerNameFormatter;
 
 /**
  * WorkerLocationService의 DB 기반 구현체
@@ -21,8 +23,9 @@ public class WorkerLocationServiceDbImpl implements WorkerLocationService {
 
     private final ControlMapper controlMapper;
 
-    // 병목 현상 판단 임계값 (초 단위) - 설정 파일로 분리 가능
-    private static final int BOTTLENECK_THRESHOLD_SECONDS = 120;
+    // 병목 현상 판단 임계값 (설정 파일에서 주입)
+    @Value("${control.bottleneck-threshold:120}")
+    private int bottleneckThresholdSeconds;
 
     /**
      * 구역 맵 데이터 조회 구현
@@ -43,17 +46,11 @@ public class WorkerLocationServiceDbImpl implements WorkerLocationService {
 
         // 3. Fetch Worker Locations with Bottleneck Check
         List<ZoneWorkerLocationDto> workers = controlMapper
-                .selectWorkerLocationsByZoneId(zoneId, BOTTLENECK_THRESHOLD_SECONDS);
+                .selectWorkerLocationsByZoneId(zoneId, bottleneckThresholdSeconds);
 
         // 4. Format Worker Names
         for (ZoneWorkerLocationDto worker : workers) {
-            String originalName = worker.getName();
-            String phoneNumber = worker.getPhoneNumber();
-
-            if (originalName != null && phoneNumber != null && phoneNumber.length() >= 4) {
-                String last4Digits = phoneNumber.substring(phoneNumber.length() - 4);
-                worker.setName(originalName + last4Digits);
-            }
+            worker.setName(WorkerNameFormatter.format(worker.getName(), worker.getPhoneNumber()));
         }
 
         // 5. Build Response

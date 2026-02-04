@@ -30,24 +30,32 @@
         - WorkLogs: 현재 활동 중인 작업자만 조회 (Inner Join)
         - workCount: 금일(CURDATE) 처리한 작업 건수(batch_task_items) 서브쿼리로 계산
     -->
+    <!-- 
+        구역별 작업자 상세 조회 
+        - Users 테이블 기준, 해당 구역에 배정된 작업자 필터링
+        - WorkLogs: 현재 활동 중인 작업자만 조회 (Inner Join)
+        - workCount: 금일(CURDATE) 처리한 작업 건수(batch_task_items) LEFT JOIN 최적화 (N+1 문제 해결)
+    -->
     <select id="selectWorkersByZoneId" resultType="lookie.backend.domain.control.dto.ZoneWorkerDto">
-        SELECT DISTINCT  u.user_id AS workerId,
+        SELECT DISTINCT u.user_id AS workerId,
             u.name AS name,
             u.phone_number AS phoneNumber,
-            (
-                SELECT COUNT(bti.batch_task_item_id)
-                FROM batch_tasks bt
-                JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
-                WHERE bt.worker_id = u.user_id
-                  AND bti.status != 'PENDING'
-                  AND DATE(bti.last_scanned_at) = CURDATE()
-            ) AS workCount,
+            COALESCE(wc.daily_count, 0) AS workCount,
             0.0 AS processingSpeed,
             0.0 AS currentTaskProgress,
             'WORKING' AS status,
             'AVAILABLE' AS webrtcStatus
         FROM users u
         INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        -- (최적화) 서브쿼리 대신 Derived Table 조인 사용
+        LEFT JOIN (
+            SELECT bt.worker_id, COUNT(bti.batch_task_item_id) AS daily_count
+            FROM batch_tasks bt
+            JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
+            WHERE bti.status != 'PENDING'
+              AND DATE(bti.last_scanned_at) = CURDATE()
+            GROUP BY bt.worker_id
+        ) wc ON wc.worker_id = u.user_id
         WHERE u.assigned_zone_id = #{zoneId}
     </select>
 
