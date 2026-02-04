@@ -11,6 +11,9 @@ import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueNextAction;
 import lookie.backend.domain.issue.dto.WorkerNextAction;
 import lookie.backend.domain.issue.dto.AdminNextAction;
+import lookie.backend.domain.issue.dto.AdminIssueListRequest;
+import lookie.backend.domain.issue.dto.AdminIssueListResponse;
+import lookie.backend.domain.issue.dto.AdminIssueSummary;
 import lookie.backend.domain.issue.dto.IssueResponse;
 import lookie.backend.domain.issue.mapper.IssueMapper;
 import lookie.backend.domain.issue.vo.AiJudgmentVO;
@@ -742,16 +745,15 @@ public class IssueService {
      * 관리자 관제 이슈 목록 조회
      */
     @Transactional(readOnly = true)
-    public lookie.backend.domain.issue.dto.AdminIssueListResponse getAdminIssueList(Long adminId,
-            lookie.backend.domain.issue.dto.AdminIssueListRequest request) {
+    public AdminIssueListResponse getAdminIssueList(Long adminId, AdminIssueListRequest request) {
         log.info("[IssueService] getAdminIssueList started. adminId={}, status={}, page={}",
                 adminId, request.getStatus(), request.getPage());
 
-        List<lookie.backend.domain.issue.dto.AdminIssueSummary> issues = issueMapper.findAdminIssues(adminId, request);
+        List<AdminIssueSummary> issues = issueMapper.findAdminIssues(adminId, request);
 
         long totalCount = issueMapper.countAdminIssues(adminId, request);
 
-        return lookie.backend.domain.issue.dto.AdminIssueListResponse.of(issues, request.getPage(), request.getSize(),
+        return AdminIssueListResponse.of(issues, request.getPage(), request.getSize(),
                 totalCount);
     }
 

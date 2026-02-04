@@ -6,6 +6,9 @@ import lookie.backend.domain.issue.dto.AdminDecision;
 import lookie.backend.domain.issue.dto.CreateIssueRequest;
 import lookie.backend.domain.issue.dto.IssueDetailResponse;
 import lookie.backend.domain.issue.dto.IssueResponse;
+import lookie.backend.domain.issue.dto.AdminIssueListRequest;
+import lookie.backend.domain.issue.dto.AdminIssueListResponse;
+import lookie.backend.domain.issue.dto.AdminIssueSummary;
 import lookie.backend.domain.issue.mapper.IssueMapper;
 import lookie.backend.domain.issue.vo.AiJudgmentVO;
 import lookie.backend.domain.issue.vo.IssueImageVO;
@@ -857,12 +860,12 @@ class IssueServiceTest {
     void getAdminIssueList_Success() {
         // given
         Long adminId = 1L;
-        lookie.backend.domain.issue.dto.AdminIssueListRequest request = new lookie.backend.domain.issue.dto.AdminIssueListRequest();
+        AdminIssueListRequest request = new AdminIssueListRequest();
         request.setStatus(lookie.backend.domain.issue.dto.IssueStatus.OPEN);
         request.setPage(1);
         request.setSize(10);
 
-        lookie.backend.domain.issue.dto.AdminIssueSummary issue1 = lookie.backend.domain.issue.dto.AdminIssueSummary
+        AdminIssueSummary issue1 = AdminIssueSummary
                 .builder()
                 .issueId(101L)
                 .issueType("DAMAGED")
@@ -872,13 +875,13 @@ class IssueServiceTest {
                 .productName("티셔츠")
                 .build();
 
-        java.util.List<lookie.backend.domain.issue.dto.AdminIssueSummary> mockIssues = java.util.List.of(issue1);
+        java.util.List<AdminIssueSummary> mockIssues = java.util.List.of(issue1);
 
         when(issueMapper.findAdminIssues(adminId, request)).thenReturn(mockIssues);
         when(issueMapper.countAdminIssues(adminId, request)).thenReturn(1L);
 
         // when
-        lookie.backend.domain.issue.dto.AdminIssueListResponse response = issueService.getAdminIssueList(adminId,
+        AdminIssueListResponse response = issueService.getAdminIssueList(adminId,
                 request);
 
         // then
