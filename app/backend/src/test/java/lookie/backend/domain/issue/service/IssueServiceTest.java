@@ -489,6 +489,7 @@ class IssueServiceTest {
         judgment.setAiDecision("PASS");
         judgment.setConfidence(0.95f);
         judgment.setSummary("정상 상품으로 판정됨");
+        judgment.setImageUrl("https://example.com/image.jpg");
 
         when(issueMapper.findById(issueId)).thenReturn(issue);
         when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
@@ -504,6 +505,7 @@ class IssueServiceTest {
         assertEquals("PASS", response.getAiResult());
         assertEquals(0.95f, response.getConfidence());
         assertEquals("정상 상품으로 판정됨", response.getSummary());
+        assertEquals("https://example.com/image.jpg", response.getImageUrl());
         assertEquals("AUTO_RESOLVED", response.getIssueNextAction());
         assertTrue(response.getAvailableActions().isEmpty());
     }
@@ -527,6 +529,7 @@ class IssueServiceTest {
         AiJudgmentVO judgment = new AiJudgmentVO();
         judgment.setAiDecision("NEED_CHECK");
         judgment.setConfidence(0.55f);
+        judgment.setImageUrl("https://example.com/check-image.jpg");
 
         when(issueMapper.findById(issueId)).thenReturn(issue);
         when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
@@ -537,6 +540,7 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
         assertEquals("NEED_CHECK", response.getAiResult());
+        assertEquals("https://example.com/check-image.jpg", response.getImageUrl());
         assertEquals("WAIT_ADMIN", response.getIssueNextAction());
         assertEquals(1, response.getAvailableActions().size());
         assertTrue(response.getAvailableActions().contains("CONNECT_ADMIN"));
