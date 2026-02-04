@@ -82,6 +82,11 @@ public enum ErrorCode {
 	SYSTEM_TEMPORARY_LOCK_FAILED("SYS_001", HttpStatus.TOO_MANY_REQUESTS, "요청이 많아 잠시 후 다시 시도해주세요"),
 
 	// ===== WORKLOG ===== (기존 Enum 하단에 추가)
+	// ===== UPLOAD =====
+	UPLOAD_FILE_EMPTY("UPLOAD_001", HttpStatus.BAD_REQUEST, "빈 파일은 업로드할 수 없습니다"),
+	UPLOAD_INVALID_EXTENSION("UPLOAD_002", HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다 (jpg, jpeg, png 만 가능)"),
+	UPLOAD_FAILED("UPLOAD_003", HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다"),
+
 	// ===== WORKLOG =====
 	WORK_ALREADY_STARTED("WORK_001", HttpStatus.CONFLICT, "이미 출근 처리된 상태입니다"),
 	WORK_SESSION_NOT_FOUND("WORK_002", HttpStatus.NOT_FOUND, "활성화된 근무 기록을 찾을 수 없습니다"),
