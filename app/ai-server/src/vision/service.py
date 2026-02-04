@@ -120,6 +120,31 @@ class VisionService:
         
         return labels, detections, max_conf, elapsed
 
+    def _validate_image_url(self, image_url: str) -> None:
+        """SSRF 방어: 이미지 URL의 도메인이 허용 목록에 있는지 검증"""
+        from urllib.parse import urlparse
+        from src.core.config import ALLOWED_IMAGE_DOMAINS
+        
+        try:
+            parsed = urlparse(image_url)
+            hostname = parsed.hostname or parsed.netloc.split(':')[0]
+            
+            if not hostname:
+                raise ValueError("Invalid URL: no hostname")
+            
+            # 허용된 도메인인지 확인
+            if hostname not in ALLOWED_IMAGE_DOMAINS:
+                raise ValueError(
+                    f"SSRF_BLOCKED: Domain '{hostname}' is not in allowed list. "
+                    f"Allowed domains: {ALLOWED_IMAGE_DOMAINS}"
+                )
+            
+            logger.info(f"✅ URL validation passed: {hostname}")
+            
+        except Exception as e:
+            logger.error(f"❌ URL validation failed: {e}")
+            raise
+    
     async def _download_image_from_url(self, image_url: str) -> bytes:
         """URL에서 이미지를 다운로드하여 bytes로 반환"""
         try:
@@ -145,10 +170,20 @@ class VisionService:
         logger.info(f"🔍 Inference started: issueId={issue_id}, productId={product_id}, issueType={issue_type}")
 
         try:
-            # 1. 이미지 다운로드
+            # 1. 상품 검증 (이미지 다운로드 전에 먼저 체크)
+            if issue_type == "DAMAGED" and product_id not in PRODUCT_CONFIG:
+                error_msg = f"PRODUCT_NOT_SUPPORTED: productId={product_id}"
+                logger.error(f"❌ {error_msg}")
+                await self._send_error_webhook(issue_id, error_msg)
+                return
+            
+            # 2. URL 검증 (SSRF 방어)
+            self._validate_image_url(image_url)
+            
+            # 3. 이미지 다운로드
             image_bytes = await self._download_image_from_url(image_url)
             
-            # 2. issueType에 따라 분기
+            # 4. issueType에 따라 분기
             if issue_type == "DAMAGED":
                 await self._handle_damaged(image_bytes, product_id, issue_id)
             elif issue_type == "OUT_OF_STOCK":

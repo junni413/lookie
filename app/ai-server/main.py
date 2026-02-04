@@ -30,7 +30,7 @@ app.include_router(vision_router)
 
 # 백엔드 호환성을 위한 레거시 엔드포인트
 from fastapi import BackgroundTasks
-from src.vision.router import PredictRequest, predict
+from src.vision.router import PredictRequest
 
 @app.post("/predict")
 async def predict_legacy(
@@ -41,8 +41,15 @@ async def predict_legacy(
     레거시 엔드포인트 (백엔드 호환성)
     /api/vision/predict 사용 권장
     """
-    # 라우터의 predict 함수 재사용
-    return await predict(background_tasks, request)
+    # 서비스 레이어를 직접 호출 (라우터와 동일한 로직)
+    background_tasks.add_task(
+        vision_service.run_inference_from_url,
+        request.imageUrl,
+        request.productId,
+        request.issueId,
+        request.issueType
+    )
+    return {"status": "processing", "issue_id": request.issueId}
 
 # 헬스 체크
 @app.get("/health")
