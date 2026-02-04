@@ -24,8 +24,14 @@ import lookie.backend.domain.webrtc.event.CallEndedEvent;
 import lookie.backend.domain.webrtc.event.CallRejectedEvent;
 import lookie.backend.domain.webrtc.dto.WebRtcSignalType;
 import lookie.backend.domain.webrtc.dto.WebRtcSignalResponse;
+import lookie.backend.domain.user.mapper.UserMapper;
+import lookie.backend.domain.user.vo.UserVO;
+import lookie.backend.global.constant.RedisKeyConstants;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
+import java.util.List;
+import java.util.Collections;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -40,8 +46,8 @@ public class LiveKitService {
     private final ApplicationEventPublisher eventPublisher;
     private final io.livekit.server.RoomServiceClient roomServiceClient;
     private final SimpMessagingTemplate messagingTemplate;
+    private final UserMapper userMapper;
 
-    private static final String USER_STATUS_KEY = "user:status:";
     private static final String STATUS_BUSY = "BUSY";
 
     /**
@@ -68,27 +74,38 @@ public class LiveKitService {
      */
     @Transactional
     public WebRtcDto.CallResponse makeCall(WebRtcDto.CallRequest request) {
-        // ... (validation and DB logic) ...
-        validateUserAvailable(request.getCalleeId());
-        String roomName = generateRoomName(request.getCallerId(), request.getCalleeId());
+        // [NEW] calleeId 자동 선택 로직
+        Long calleeId = request.getCalleeId();
+        if (calleeId == null) {
+            calleeId = selectAvailableManagerWithRetry(request.getCallerId());
+            log.info("[자동선택] Worker {} → Manager {} 자동 배정 완료", request.getCallerId(), calleeId);
+        }
+
+        // Lambda에서 사용하기 위한 final 변수
+        final Long resolvedCalleeId = calleeId;
+
+        // 기존 로직 (resolvedCalleeId 사용)
+        validateUserAvailable(resolvedCalleeId);
+        String roomName = generateRoomName(request.getCallerId(), resolvedCalleeId);
 
         CallHistoryVO call = CallHistoryVO.builder()
                 .roomName(roomName)
                 .callerId(request.getCallerId())
-                .calleeId(request.getCalleeId())
+                .calleeId(resolvedCalleeId) // 자동 선택된 ID 사용
                 .issueId(request.getIssueId())
                 .status("WAITING")
                 .createdAt(LocalDateTime.now())
                 .build();
 
         callHistoryMapper.save(call);
-        setUserBusy(request.getCalleeId());
+        setUserBusy(resolvedCalleeId);
         String token = generateToken(request.getCallerId().toString(), roomName);
 
         // [Refactored] Single Payload Generation
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REQUESTED, call.getId(), null, request.getCallerId());
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REQUESTED, call.getId(), null,
+                request.getCallerId());
 
-        runAfterCommit(() -> sendDualPathSignal(request.getCalleeId(), payload));
+        runAfterCommit(() -> sendDualPathSignal(resolvedCalleeId, payload));
 
         return new WebRtcDto.CallResponse(call.getId(), roomName, token);
     }
@@ -121,7 +138,8 @@ public class LiveKitService {
         String token = generateToken(call.getCalleeId().toString(), call.getRoomName());
 
         // [Refactored] Single Payload Generation
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ACCEPTED, call.getId(), call.getRoomName(), call.getCalleeId());
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ACCEPTED, call.getId(),
+                call.getRoomName(), call.getCalleeId());
 
         runAfterCommit(() -> sendSignal(payload));
 
@@ -152,12 +170,13 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [Refactored] Single Payload Generation (Shared UUID)
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REJECTED, call.getId(), call.getRoomName(), call.getCalleeId());
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REJECTED, call.getId(),
+                call.getRoomName(), call.getCalleeId());
 
         runAfterCommit(() -> {
             // 1. Waiting 중인 Caller가 보고 있는 Call Topic
             sendSignal(payload);
-            
+
             // 2. 확실한 전달을 위한 User Queue (Dual-Path)
             sendDualPathSignal(call.getCallerId(), payload);
         });
@@ -180,7 +199,7 @@ public class LiveKitService {
                     call.getId(), call.getIssueId(), call.getCallerId(), call.getCalleeId()));
         }
 
-        Long senderId = getCurrentUserId(); 
+        Long senderId = getCurrentUserId();
 
         try {
             clearUserStatus(call.getCalleeId());
@@ -189,12 +208,13 @@ public class LiveKitService {
             log.error("[endCall] 리소스 정리 중 오류 발생: {}", e.getMessage());
         } finally {
             // [Refactored] Single Payload Generation (Shared UUID)
-            WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ENDED, call.getId(), null, senderId);
+            WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ENDED, call.getId(), null,
+                    senderId);
 
             runAfterCommit(() -> {
                 // To Call Topic
                 sendSignal(payload);
-                
+
                 // To User Queue (Dual-Path)
                 Long targetId = call.getCallerId().equals(senderId) ? call.getCalleeId() : call.getCallerId();
                 sendDualPathSignal(targetId, payload);
@@ -230,12 +250,94 @@ public class LiveKitService {
         closeLiveKitRoom(call.getRoomName());
 
         // [Refactored] Single Payload Generation
-        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.CANCELED, call.getId(), null, call.getCallerId());
+        WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.CANCELED, call.getId(), null,
+                call.getCallerId());
 
         runAfterCommit(() -> sendDualPathSignal(call.getCalleeId(), payload));
     }
-    
+
     // --- 내부 메서드 ---
+
+    /**
+     * 가용한 관리자 자동 선택 (재시도 로직 포함)
+     * 
+     * @param workerId 작업자 ID
+     * @return 선택된 관리자 ID
+     * @throws ApiException 가용한 관리자가 없을 경우
+     */
+    private Long selectAvailableManagerWithRetry(Long workerId) {
+        // 동시성 이슈 방지를 위한 재시도 로직 (3회)
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                Long managerId = selectAvailableManager(workerId);
+                validateUserAvailable(managerId); // 재검증
+                return managerId;
+            } catch (ApiException e) {
+                if (attempt == 2) {
+                    // 마지막 시도 실패 시 예외 발생
+                    throw e;
+                }
+                // 100ms 대기 후 재시도
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new ApiException(ErrorCode.WEBRTC_MANAGER_BUSY, "관리자 선택 중 인터럽트 발생");
+                }
+                log.warn("[재시도] 관리자 선택 실패, {}회 재시도 중... (Worker: {})", attempt + 1, workerId);
+            }
+        }
+        throw new ApiException(ErrorCode.WEBRTC_MANAGER_BUSY, "관리자 선택 실패");
+    }
+
+    /**
+     * 가용한 관리자 자동 선택 (1:1 제약 준수)
+     * 
+     * @param workerId 작업자 ID
+     * @return 선택된 관리자 ID
+     * @throws ApiException 가용한 관리자가 없을 경우
+     */
+    private Long selectAvailableManager(Long workerId) {
+        // 1. Worker의 구역 조회
+        UserVO worker = userMapper.findById(workerId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+
+        Long zoneId = worker.getAssignedZoneId();
+        if (zoneId == null) {
+            throw new ApiException(ErrorCode.WORKER_ZONE_NOT_ASSIGNED,
+                    "작업자에게 배정된 구역이 없습니다.");
+        }
+
+        // 2. 해당 구역의 관리자 목록 조회
+        List<UserVO> managers = userMapper.findAdminsByZone(zoneId);
+        if (managers.isEmpty()) {
+            throw new ApiException(ErrorCode.WEBRTC_MANAGER_BUSY,
+                    "해당 구역에 관리자가 배정되지 않았습니다.");
+        }
+
+        // 3. Redis에서 가용 상태 필터링
+        List<UserVO> availableManagers = managers.stream()
+                .filter(manager -> {
+                    String key = RedisKeyConstants.USER_STATUS_KEY + manager.getUserId();
+                    String status = redisTemplate.opsForValue().get(key);
+                    return status == null; // BUSY/AWAY/PAUSED가 아닌 경우만
+                })
+                .collect(Collectors.toList());
+
+        if (availableManagers.isEmpty()) {
+            throw new ApiException(ErrorCode.WEBRTC_MANAGER_BUSY,
+                    "현재 가용한 관리자가 없습니다. 잠시 후 다시 시도해주세요.");
+        }
+
+        // 4. Random 선택 (1:1 제약 준수)
+        Collections.shuffle(availableManagers);
+        Long selectedManagerId = availableManagers.get(0).getUserId();
+
+        log.info("[자동선택] Worker {} → Manager {} (Zone: {}, 가용: {}/{})",
+                workerId, selectedManagerId, zoneId, availableManagers.size(), managers.size());
+
+        return selectedManagerId;
+    }
 
     /**
      * LiveKit 토큰 생성
@@ -266,7 +368,7 @@ public class LiveKitService {
     // --- Redis 메서드 ---
 
     private void validateUserAvailable(Long userId) {
-        String key = USER_STATUS_KEY + userId;
+        String key = RedisKeyConstants.USER_STATUS_KEY + userId;
         String status = redisTemplate.opsForValue().get(key);
 
         if (status != null) {
@@ -284,12 +386,12 @@ public class LiveKitService {
     }
 
     private void setUserBusy(Long userId) {
-        String key = USER_STATUS_KEY + userId;
+        String key = RedisKeyConstants.USER_STATUS_KEY + userId;
         redisTemplate.opsForValue().set(key, STATUS_BUSY, 10, TimeUnit.MINUTES);
     }
 
     private void clearUserStatus(Long userId) {
-        String key = USER_STATUS_KEY + userId;
+        String key = RedisKeyConstants.USER_STATUS_KEY + userId;
         redisTemplate.delete(key);
     }
 
@@ -319,7 +421,7 @@ public class LiveKitService {
      */
     private void sendSignal(WebRtcSignalResponse payload) {
         messagingTemplate.convertAndSend("/topic/video-calls/" + payload.getCallId(), payload);
-        log.info("[WebSocket] Signal sent: callId={}, type={}, senderId={}, msgId={}", 
+        log.info("[WebSocket] Signal sent: callId={}, type={}, senderId={}, msgId={}",
                 payload.getCallId(), payload.getType(), payload.getSenderId(), payload.getMessageId());
     }
 
@@ -334,11 +436,11 @@ public class LiveKitService {
      * [Overloaded] 사용자에게 확실하게 알림 전송 (Direct Payload)
      */
     private void sendDualPathSignal(Long userId, WebRtcSignalResponse payload) {
-        if (userId == null) return;
+        if (userId == null)
+            return;
         sendSignalToUser(userId, payload);
         sendSignalToUserTopic(userId, payload);
     }
-
 
     /**
      * 특정 사용자에게 1:1 시그널 전송
@@ -346,7 +448,7 @@ public class LiveKitService {
      */
     private void sendSignalToUser(Long userId, WebRtcSignalResponse payload) {
         messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/calls", payload);
-        log.info("[WebSocket] Private Signal sent to User {}: callId={}, type={}, msgId={}", 
+        log.info("[WebSocket] Private Signal sent to User {}: callId={}, type={}, msgId={}",
                 userId, payload.getCallId(), payload.getType(), payload.getMessageId());
     }
 
@@ -356,7 +458,7 @@ public class LiveKitService {
      */
     private void sendSignalToUserTopic(Long userId, WebRtcSignalResponse payload) {
         messagingTemplate.convertAndSend("/topic/calls/" + userId, payload);
-        log.info("[WebSocket] Public Topic Signal sent to User {}: callId={}, type={}, msgId={}", 
+        log.info("[WebSocket] Public Topic Signal sent to User {}: callId={}, type={}, msgId={}",
                 userId, payload.getCallId(), payload.getType(), payload.getMessageId());
     }
 

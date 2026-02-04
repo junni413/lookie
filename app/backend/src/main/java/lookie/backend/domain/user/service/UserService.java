@@ -417,8 +417,13 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public UserVO getMyProfile(Long userId) {
-        return userMapper.findById(userId)
+        UserVO user = userMapper.findById(userId)
                 .orElseThrow(() -> new lookie.backend.domain.user.exception.UserNotFoundException());
+
+        // 실시간 상태 주입
+        populateUserStatus(user);
+
+        return user;
     }
 
     /**
@@ -564,5 +569,44 @@ public class UserService {
         }
 
         log.info("[회원 탈퇴] 탈퇴 처리가 정상적으로 완료되었습니다. userId={}", userId);
+    }
+
+    // ==================== 실시간 상태 주입 (Manual Call Selection) ====================
+
+    /**
+     * 사용자 목록에 실시간 Redis 상태 주입
+     * - ONLINE: Redis에 키가 없음 (가용 상태)
+     * - BUSY/PAUSED/AWAY: Redis에 해당 값이 저장됨
+     * 
+     * @param users 상태를 주입할 사용자 목록
+     */
+    public void populateUserStatus(java.util.List<UserVO> users) {
+        if (users == null || users.isEmpty()) {
+            return;
+        }
+
+        for (UserVO user : users) {
+            String key = lookie.backend.global.constant.RedisKeyConstants.USER_STATUS_KEY + user.getUserId();
+            String status = redisTemplate.opsForValue().get(key);
+
+            // Redis에 키가 없으면 ONLINE, 있으면 해당 값 설정
+            user.setStatus(status != null ? status : "ONLINE");
+        }
+    }
+
+    /**
+     * 단일 사용자에 대한 실시간 상태 주입
+     * 
+     * @param user 상태를 주입할 사용자
+     */
+    public void populateUserStatus(UserVO user) {
+        if (user == null) {
+            return;
+        }
+
+        String key = lookie.backend.global.constant.RedisKeyConstants.USER_STATUS_KEY + user.getUserId();
+        String status = redisTemplate.opsForValue().get(key);
+
+        user.setStatus(status != null ? status : "ONLINE");
     }
 }
