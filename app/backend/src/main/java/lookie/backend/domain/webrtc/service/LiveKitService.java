@@ -81,28 +81,31 @@ public class LiveKitService {
             log.info("[자동선택] Worker {} → Manager {} 자동 배정 완료", request.getCallerId(), calleeId);
         }
 
-        // 기존 로직 (calleeId 사용)
-        validateUserAvailable(calleeId);
-        String roomName = generateRoomName(request.getCallerId(), calleeId);
+        // Lambda에서 사용하기 위한 final 변수
+        final Long resolvedCalleeId = calleeId;
+
+        // 기존 로직 (resolvedCalleeId 사용)
+        validateUserAvailable(resolvedCalleeId);
+        String roomName = generateRoomName(request.getCallerId(), resolvedCalleeId);
 
         CallHistoryVO call = CallHistoryVO.builder()
                 .roomName(roomName)
                 .callerId(request.getCallerId())
-                .calleeId(calleeId) // 자동 선택된 ID 사용
+                .calleeId(resolvedCalleeId) // 자동 선택된 ID 사용
                 .issueId(request.getIssueId())
                 .status("WAITING")
                 .createdAt(LocalDateTime.now())
                 .build();
 
         callHistoryMapper.save(call);
-        setUserBusy(calleeId);
+        setUserBusy(resolvedCalleeId);
         String token = generateToken(request.getCallerId().toString(), roomName);
 
         // [Refactored] Single Payload Generation
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REQUESTED, call.getId(), null,
                 request.getCallerId());
 
-        runAfterCommit(() -> sendDualPathSignal(calleeId, payload));
+        runAfterCommit(() -> sendDualPathSignal(resolvedCalleeId, payload));
 
         return new WebRtcDto.CallResponse(call.getId(), roomName, token);
     }
