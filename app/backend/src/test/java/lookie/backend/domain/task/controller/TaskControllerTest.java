@@ -28,6 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(TaskController.class)
 @AutoConfigureMockMvc(addFilters = false) // Spring Security 필터 비활성화 (테스트 편의상)
+@org.springframework.boot.context.properties.EnableConfigurationProperties(lookie.backend.global.upload.UploadProperties.class)
 class TaskControllerTest {
 
         @Autowired
