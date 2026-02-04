@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.worklog.dto.DailyWorkLogStats;
 import lookie.backend.domain.worklog.dto.WorkLogRequestDto;
 import lookie.backend.domain.worklog.dto.WorkLogResponseDto;
+import lookie.backend.domain.control.service.ZoneAssignmentService;
 import lookie.backend.domain.worklog.mapper.WorkLogMapper;
 import lookie.backend.domain.worklog.vo.WorkLog;
 import lookie.backend.domain.worklog.vo.WorkLogEvent;
@@ -34,6 +35,7 @@ import java.util.stream.Collectors;
 public class WorkLogService {
 
     private final WorkLogMapper workLogMapper;
+    private final ZoneAssignmentService zoneAssignmentService;
 
     /**
      * 1. 출근 처리 (START) 수행
@@ -57,7 +59,11 @@ public class WorkLogService {
                 .plannedEndAt(LocalDateTime.now().plusMinutes(5)) // 시연용 5분
                 .build();
 
-        // 1-3. 시작(START) 이벤트 기록
+        // 1-3. 자동 구역 배정 (Load Balancing)
+        // ZoneAssignmentService에 위임
+        zoneAssignmentService.assignZoneToWorker(workerId);
+
+        // 1-4. 시작(START) 이벤트 기록
         workLogMapper.insertWorkLog(workLog);
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.START, "출근");
 
@@ -80,7 +86,10 @@ public class WorkLogService {
         workLog.setEndedAt(LocalDateTime.now());
         workLogMapper.updateWorkLogEnd(workLog);
 
-        // 2-2. 종료(END) 이벤트 기록
+        // 2-2. 구역 배정 해제 (Unassignment)
+        zoneAssignmentService.unassignZoneFromWorker(workerId);
+
+        // 2-3. 종료(END) 이벤트 기록
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.END, "퇴근");
         return WorkLogResponseDto.from(workLog, event);
     }
@@ -263,4 +272,9 @@ public class WorkLogService {
         workLogMapper.insertWorkLogEvent(event);
         return event;
     }
+
+    /**
+     * [Removed] assignZoneToWorker & unassignZoneFromWorker
+     * -> ZoneAssignmentService 로 이관됨 (Separation of Concerns)
+     */
 }

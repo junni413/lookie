@@ -220,4 +220,22 @@
         
         ORDER BY u.name ASC
     </select>
+
+
+    <!-- 
+        가장 적은 수의 활성 작업자가 있는 구역 ID 조회 (자동 배정용)
+        - 모든 구역(Zones)을 기준으로 Left Join
+        - 현재 출근 중(ended_at IS NULL)인 작업자 수 카운트
+        - 작업자 수가 가장 적은 순, 같다면 ID가 작은 순으로 정렬하여 1개 선택
+    -->
+    <select id="selectZoneIdWithFewestWorkers" resultType="long">
+        SELECT z.zone_id
+        FROM zones z
+        LEFT JOIN users u ON u.assigned_zone_id = z.zone_id AND u.role = 'WORKER'
+        LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        GROUP BY z.zone_id
+        ORDER BY COUNT(wl.work_log_id) ASC, z.zone_id ASC
+        LIMIT 1
+        FOR UPDATE
+    </select>
 </mapper>
