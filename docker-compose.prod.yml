@@ -113,7 +113,7 @@ services:
   #   docker compose --profile ai up -d ai-server
   # ============================
   ai-server:
-    image: ${REGISTRY_IMAGE_AI}:${IMAGE_TAG}
+    image: ${REGISTRY_IMAGE_AI}:${AI_IMAGE_TAG}
     container_name: ai-server
     profiles: ["ai"]
     restart: always
