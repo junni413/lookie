@@ -80,6 +80,8 @@ public class SecurityConfig {
 
                                                 // [공개 리소스] 소켓 통신 및 Swagger 문서
                                                 .requestMatchers("/api/realtime/**").permitAll()
+                                                .requestMatchers("/images/**").permitAll() // ✅ 이미지 정적 리소스는 누구나 조회 가능해야
+                                                                                           // 함
                                                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**",
                                                                 "/swagger-resources/**")
                                                 .permitAll()
