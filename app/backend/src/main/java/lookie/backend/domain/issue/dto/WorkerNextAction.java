@@ -20,11 +20,18 @@ public enum WorkerNextAction {
     WAIT_ADMIN,
 
     /**
-     * 이미지 재촬영
+     * 이미지 재촬영 (AI 재요청)
      * - AI 결과가 RETAKE인 경우
      * - 재촬영 후 AI 재요청
      */
     UPLOAD_IMAGE,
+
+    /**
+     * 보고용 이미지 업로드 (AI 요청 없음)
+     * - OUT_OF_STOCK 이슈 관리자 부재 시
+     * - 이미지 등록 후 NEXT_ITEM 진행
+     */
+    UPLOAD_REPORT_IMAGE,
 
     /**
      * 지번 이동
