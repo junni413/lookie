@@ -8,7 +8,9 @@ import lookie.backend.domain.control.dto.ZoneWorkerDto;
 import lookie.backend.domain.control.dto.map.ZoneWorkerLocationDto;
 import lookie.backend.global.constant.RedisKeyConstants;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
@@ -27,6 +29,12 @@ public class ControlRedisRepositoryImpl implements ControlRedisRepository {
 
     @Qualifier("controlRedisTemplate")
     private final RedisTemplate<String, Object> redisTemplate;
+
+    /**
+     * 시스템 고정 구역 ID 목록 (1~4번 구역)
+     * - DB 조회 없이 고정값 사용으로 성능 향상 및 NPE 방지
+     */
+    private static final List<Long> ACTIVE_ZONE_IDS = List.of(1L, 2L, 3L, 4L);
 
     // ==================== Zone 관련 ====================
 
@@ -84,8 +92,8 @@ public class ControlRedisRepositoryImpl implements ControlRedisRepository {
         List<ZoneOverviewDto> results = new ArrayList<>();
 
         try {
-            // 모든 Zone ID에 대해 조회 (1~5번 구역 가정)
-            for (long zoneId = 1; zoneId <= 5; zoneId++) {
+            // 고정된 구역 ID 목록 순회 (1~4번 구역)
+            for (Long zoneId : ACTIVE_ZONE_IDS) {
                 ZoneOverviewDto dto = getZoneOverview(zoneId);
                 if (dto != null) {
                     results.add(dto);
@@ -423,12 +431,29 @@ public class ControlRedisRepositoryImpl implements ControlRedisRepository {
     @Override
     public void deleteAllControlCache() {
         try {
-            // Control 도메인의 모든 Key 패턴 조회
-            Set<String> keys = redisTemplate.keys(RedisKeyConstants.CONTROL_PREFIX + "*");
+            // SCAN을 사용한 안전한 캐시 삭제 (keys() 대신 사용)
+            String pattern = RedisKeyConstants.CONTROL_PREFIX + "*";
+            ScanOptions scanOptions = ScanOptions.scanOptions()
+                    .match(pattern)
+                    .count(100)
+                    .build();
 
-            if (keys != null && !keys.isEmpty()) {
-                redisTemplate.delete(keys);
-                log.info("[Redis] Control 도메인 전체 캐시 삭제 완료: count={}", keys.size());
+            Set<String> keysToDelete = new HashSet<>();
+
+            // SCAN으로 키 수집
+            redisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
+                try (Cursor<byte[]> cursor = connection.scan(scanOptions)) {
+                    cursor.forEachRemaining(key -> {
+                        keysToDelete.add(new String(key));
+                    });
+                }
+                return null;
+            });
+
+            // 수집된 키 일괄 삭제
+            if (!keysToDelete.isEmpty()) {
+                redisTemplate.delete(keysToDelete);
+                log.info("[Redis] Control 도메인 전체 캐시 삭제 완료: count={}", keysToDelete.size());
             } else {
                 log.debug("[Redis] 삭제할 Control 캐시 없음");
             }

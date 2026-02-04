@@ -4,9 +4,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.control.repository.ControlRedisRepository;
 import lookie.backend.domain.worklog.event.WorkStatusChangedEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * Control 도메인 관제 데이터 캐시 무효화 리스너
@@ -26,8 +27,9 @@ public class ControlCacheInvalidationListener {
      * - 이전 구역 캐시 삭제
      * - 새 구역 캐시 삭제
      * - 대시보드 캐시 삭제
+     * - 트랜잭션 커밋 후 실행하여 데이터 일관성 보장
      */
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async
     public void handleZoneAssignmentChanged(ZoneAssignmentEvent event) {
         log.info("[Cache Invalidation] 구역 배정 변경 감지: workerId={}, prev={}, new={}",
@@ -60,8 +62,9 @@ public class ControlCacheInvalidationListener {
      * - 작업자 캐시 삭제 (Status 변경)
      * - Zone 캐시 삭제 (Worker Count 변경 가능성 - 출/퇴근 시)
      * - 대시보드 캐시 삭제 (Active Worker Count 변경)
+     * - 트랜잭션 커밋 후 실행하여 데이터 일관성 보장
      */
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async
     public void handleWorkStatusChanged(WorkStatusChangedEvent event) {
         log.info("[Cache Invalidation] 근무 상태 변경 감지: userId={}, type={}",
