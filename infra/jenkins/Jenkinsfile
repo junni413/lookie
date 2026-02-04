@@ -364,7 +364,6 @@ if docker manifest inspect "${REGISTRY_IMAGE_AI}:${IMAGE_TAG}" >/dev/null 2>&1; 
   docker compose -f "${COMPOSE_PROD_FILE}" --profile ai up -d \
     --no-deps \
     --force-recreate \
-    --pull always \
     ai-server
 else
   echo "[INFO] AI image not found -> skipping ai-server"
