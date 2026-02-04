@@ -356,7 +356,9 @@ docker compose -f "${COMPOSE_PROD_FILE}" pull
 # (6) ✅ DB migrate는 up 전에 강제로 1회 실행 (운영 안정성)
 #     - up -d에 맡기면 타이밍 꼬일 위험이 있으므로 run --rm 추천
 echo "[INFO] Run migrate (flyway) once"
-docker compose -f "${COMPOSE_PROD_FILE}" run --rm migrate
+docker compose -f "${COMPOSE_PROD_FILE}" run --rm \
+  -e FLYWAY_OUT_OF_ORDER=true \
+  migrate
 
 # (7) core 서비스 기동(airflow도 compose에 있으면 같이 올라감)
 echo "[INFO] Up core services (remove orphans)"
