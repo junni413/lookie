@@ -86,4 +86,13 @@
             updated_at = NOW()
         WHERE user_id = #{userId}
     </update>
+
+    <!-- 10. 구역별 관리자 조회 (WebRTC 자동 배정용) -->
+    <select id="findAdminsByZone" parameterType="Long" resultType="UserVO">
+        SELECT * FROM users
+        WHERE assigned_zone_id = #{zoneId}
+          AND role = 'ADMIN'
+          AND is_active = TRUE
+        ORDER BY user_id
+    </select>
 </mapper>

@@ -11,7 +11,7 @@ const getAuthConfig = () => {
   };
 };
 
-// ✅ 공통 응답 타입
+
 export type ApiResponse<T> = {
   success: boolean;
   message: string;
@@ -19,16 +19,16 @@ export type ApiResponse<T> = {
   data: T;
 };
 
-// ✅ WorkLog 타입(스웨거 기준)
+
 export type WorkLogStatus = "START" | "PAUSE" | "RESUME" | "END";
 
 export type WorkLogData = {
   workLogId: number;
   workerId: number;
   workerName: string;
-  zoneId: number | null;
+  assignedZoneId: number | null;
   currentStatus: WorkLogStatus;
-  startedAt: string; // ISO string
+  startedAt: string;
   endedAt?: string | null;
   plannedEndAt?: string | null;
   lastStatusChangedAt?: string | null;
