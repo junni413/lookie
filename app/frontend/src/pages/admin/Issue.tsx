@@ -43,7 +43,7 @@ export default function Issue() {
 
             if (isMountedRef.current) {
                 setIssues(result.issues);
-                setTotalCount(result.paging.totalCount);
+                setTotalCount(result.paging.total);
             }
         } catch (error) {
             console.error("Failed to fetch issues", error);
