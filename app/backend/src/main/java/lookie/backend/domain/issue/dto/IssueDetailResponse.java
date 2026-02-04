@@ -36,6 +36,7 @@ public class IssueDetailResponse {
     private String aiResult; // aiDecision → aiResult로 매핑
     private Float confidence; // AI 신뢰도 (0.0 ~ 1.0)
     private String summary; // AI 판정 요약
+    private String imageUrl; // 이슈 증빙 이미지 URL
 
     // 계산 필드 (DB 저장 X)
     private String workerNextAction; // 작업자 다음 행동
@@ -63,6 +64,7 @@ public class IssueDetailResponse {
                 .aiResult(judgment != null ? judgment.getAiDecision() : null)
                 .confidence(judgment != null ? judgment.getConfidence() : null)
                 .summary(judgment != null ? judgment.getSummary() : null)
+                .imageUrl(judgment != null ? judgment.getImageUrl() : null)
                 .workerNextAction(workerNextAction)
                 .issueNextAction(issueNextAction)
                 .adminNextAction(adminNextAction)
