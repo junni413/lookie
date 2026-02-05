@@ -188,9 +188,21 @@ export default function IssueResult() {
     fetchInitialDetail();
 
     // WebSocket 구독 시작
-    const unsubscribe = subscribeIssueResult(nav.issueId, token, () => {
+    const unsubscribe = subscribeIssueResult(nav.issueId, token, (body: any) => {
+      console.log("Updated via STOMP details:", body);
+      setDetail((prev) => {
+        return {
+          ...(prev || {}),
+          ...body,
+          // Support both new (issueNextAction) and old (nextAction) field names for robustness
+          issueNextAction: body.issueNextAction || body.nextAction,
+          imageUrl: prev?.imageUrl || nav.imageUrl,
+          productName: prev?.productName || nav.product.productName,
+          locationCode: prev?.locationCode || nav.product.locationCode,
+        } as IssueDetail;
+      });
       setAnalyzing(false);
-      fetchInitialDetail();
+      fetchInitialDetail(); // Check latest consistency
     });
 
     return () => unsubscribe();
