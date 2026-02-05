@@ -4,7 +4,7 @@ import type { MobileLayoutContext } from "../../../components/layout/MobileLayou
 import IssueSelectSheet, { type IssueType } from "./IssueSelectDrawer";
 import ScannerModal from "./ScannerModal";
 import { useToast } from "@/components/ui/use-toast";
-import { ChevronLeft, ChevronRight, MapPin, PackageSearch, Plus, Minus, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, MapPin, PackageSearch, Plus, Minus, Check, AlignJustify } from "lucide-react";
 import { taskService } from "@/services/taskService";
 import type { TaskVO, TaskItemVO, NextAction, TaskErrorCode } from "@/types/task";
 import { TASK_ERROR_MESSAGES } from "@/types/task";
@@ -400,14 +400,15 @@ export default function WorkDetail() {
             </p>
           </div>
           <button
-            onClick={() => navigate("/worker/task/list", { state: { task: safeTask, toteBarcode } })}
-            className="p-2 hover:bg-gray-50 rounded-lg transition-colors"
+            onClick={() => {
+              if (safeTask) {
+                navigate("/worker/task/list", { state: { task: safeTask, toteBarcode } });
+              }
+            }}
+            className="p-2 hover:bg-gray-50 rounded-lg transition-colors flex items-center justify-center"
+            aria-label="상품 목록 보기"
           >
-            <div className="flex flex-col gap-1.5 items-end justify-center w-8">
-              <div className="h-0.5 w-full bg-gray-400 rounded-full" />
-              <div className="h-0.5 w-2/3 bg-gray-400 rounded-full" />
-              <div className="h-0.5 w-full bg-gray-400 rounded-full" />
-            </div>
+            <AlignJustify className="w-6 h-6 text-gray-400" />
           </button>
         </section>
 

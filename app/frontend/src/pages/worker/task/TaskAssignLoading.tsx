@@ -23,7 +23,6 @@ export default function TaskAssignLoading() {
         batchTaskId: payload.batchTaskId,
         batchId: payload.batchId,
         zoneId: payload.zoneId,
-        assignedZoneId: payload.zoneId, // 필드명 통일
         workerId: payload.workerId,
         toteId: payload.toteId,
         toteBarcode: payload.toteBarcode,
@@ -31,13 +30,7 @@ export default function TaskAssignLoading() {
         startedAt: payload.startedAt,
         completedAt: payload.completedAt,
         currentLocationId: payload.currentLocationId,
-        toteScannedAt: payload.toteScannedAt,
-        toteReleasedAt: payload.toteReleasedAt,
         actionStatus: payload.actionStatus,
-        locationScannedAt: payload.locationScannedAt,
-        // UI 보조 필드 유지
-        displayZone: payload.displayZone,
-        itemCount: payload.itemCount,
       } as any;
     };
 
