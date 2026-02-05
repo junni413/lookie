@@ -2,24 +2,40 @@ import { useState, useEffect } from "react";
 import { useNavigate, useOutletContext, useLocation } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
 import { ChevronRight, MapPin, Loader2 } from "lucide-react";
-import { taskService } from "@/services/taskService";
+import { issueService } from "@/services/issueService";
+import { subscribeIssueResult } from "@/services/stompService";
+import { useToast } from "@/components/ui/use-toast";
+import type { TaskItemVO } from "@/types/task";
 
-type AnalysisResult = "OUT_OF_STOCK" | "WAIT" | "ADMIN" | "LOCATION_MOVE";
+type AnalysisResult = "OUT_OF_STOCK" | "WAIT" | "ADMIN" | "LOCATION_MOVE" | "ERROR";
 
 type NavState = {
-    product: { productName: string; barcode: string; locationCode: string };
+    task?: any;
+    toteBarcode?: string;
+    product: TaskItemVO; // TaskItemVO includes batchTaskId, batchTaskItemId
+};
+
+type AiResultData = {
+    aiDecision: string;
+    reasonCode?: string;
+    summary?: string;
+    newLocationCode?: string;
 };
 
 export default function AiStockAnalysis() {
     const { setTitle } = useOutletContext<MobileLayoutContext>();
     const nav = useLocation().state as NavState | undefined;
     const navigate = useNavigate();
+    const { toast } = useToast();
 
     const [step, setStep] = useState<"REQUEST" | "LOADING" | "RESULT">("REQUEST");
     const [result, setResult] = useState<AnalysisResult>("OUT_OF_STOCK");
+    const [aiData, setAiData] = useState<AiResultData | null>(null);
 
     useEffect(() => {
-        if (!nav) navigate("/worker/home", { replace: true });
+        if (!nav || !nav.product) {
+            navigate("/worker/home", { replace: true });
+        }
     }, [nav, navigate]);
 
     useEffect(() => {
@@ -27,35 +43,76 @@ export default function AiStockAnalysis() {
     }, [setTitle]);
 
     const handleAiRequest = async () => {
-        setStep("LOADING");
-
-        let issueId = "";
-        // 통계 업데이트 및 초기 이슈 생성
-        if (nav?.product) {
-            issueId = await taskService.reportIssue({
-                productName: nav.product.productName,
-                sku: nav.product.barcode,
-                location: nav.product.locationCode,
-                type: "재고없음"
-            });
-        } else {
-            issueId = await taskService.reportIssue();
+        if (!nav?.product) {
+            toast({ title: "작업 정보가 없습니다.", variant: "destructive" });
+            return;
         }
 
-        // Simulate AI Analysis delay
-        setTimeout(async () => {
-            const results: AnalysisResult[] = ["OUT_OF_STOCK", "WAIT", "ADMIN", "LOCATION_MOVE"];
-            const randomResult = results[Math.floor(Math.random() * results.length)];
+        setStep("LOADING");
 
-            // 결과 업데이트 (지번 이동 등이면 상태도 바뀔 수 있음)
-            await taskService.updateIssueResult(issueId, {
-                aiResult: randomResult,
-                status: randomResult === "OUT_OF_STOCK" ? "WAIT" : "DONE" // 예시 로직
+        try {
+            // 1. 이슈 생성 (OUT_OF_STOCK, 이미지 없이)
+            const issueRes = await issueService.createIssue({
+                batchTaskId: nav.product.batchTaskId,
+                batchTaskItemId: nav.product.batchTaskItemId,
+                issueType: "OUT_OF_STOCK",
+                // imageUrl는 생략 (Optional)
             });
 
-            setResult(randomResult);
-            setStep("RESULT");
-        }, 2000);
+            if (!issueRes.success) {
+                toast({ title: "이슈 접수 실패", description: issueRes.message, variant: "destructive" });
+                setStep("REQUEST");
+                return;
+            }
+
+            const issueId = issueRes.data.issueId;
+            console.log(`✅ [OOS] Issue created: issueId=${issueId}`);
+
+            // 2. WebSocket으로 AI 결과 구독
+            const token = localStorage.getItem("token") || "";
+            let timeoutId: number | null = null;
+
+            const unsubscribe = subscribeIssueResult(issueId, token, (event) => {
+                console.log(`📨 [OOS] AI Result received:`, event);
+
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+
+                // AI 결과 매핑
+                const aiResult: AiResultData = {
+                    aiDecision: event.aiDecision || "UNKNOWN",
+                    reasonCode: event.reasonCode,
+                    summary: event.summary,
+                    newLocationCode: event.newLocationCode,
+                };
+
+                setAiData(aiResult);
+                setResult(mapAiResultToUI(aiResult));
+                setStep("RESULT");
+
+                // 구독 해제
+                unsubscribe();
+            });
+
+            // 3. 타임아웃 설정 (30초)
+            timeoutId = setTimeout(() => {
+                console.warn("⏰ [OOS] AI Result timeout");
+                unsubscribe();
+                setResult("ERROR");
+                setStep("RESULT");
+                toast({
+                    title: "AI 분석 타임아웃",
+                    description: "관리자에게 문의하세요.",
+                    variant: "destructive",
+                });
+            }, 30000);
+
+        } catch (e) {
+            console.error("❌ [OOS] Error:", e);
+            toast({ title: "이슈 접수 중 오류 발생", variant: "destructive" });
+            setStep("REQUEST");
+        }
     };
 
     if (step === "LOADING") {
@@ -74,7 +131,7 @@ export default function AiStockAnalysis() {
     }
 
     if (step === "RESULT") {
-        return <RenderResult result={result} />;
+        return <RenderResult result={result} aiData={aiData} />;
     }
 
     return (
@@ -106,11 +163,73 @@ export default function AiStockAnalysis() {
     );
 }
 
-function RenderResult({ result }: { result: AnalysisResult }) {
+/**
+ * AI 결과를 UI 상태로 매핑
+ */
+function mapAiResultToUI(aiResult: AiResultData): AnalysisResult {
+    const { aiDecision, reasonCode } = aiResult;
+
+    // MOVE_LOCATION: 다른 지번에서 발견
+    if (aiDecision === "PASS" && reasonCode === "MOVE_LOCATION") {
+        return "LOCATION_MOVE";
+    }
+
+    // NEED_CHECK: 관리자 확인 필요
+    if (aiDecision === "NEED_CHECK") {
+        return "ADMIN";
+    }
+
+    // WAITING_RETURN: 반품 대기
+    if (reasonCode === "WAITING_RETURN") {
+        return "WAIT";
+    }
+
+    // DAMAGED: 파손 처리 중
+    if (reasonCode === "DAMAGED") {
+        return "ADMIN";
+    }
+
+    // 기본값: 재고 없음
+    return "OUT_OF_STOCK";
+}
+
+function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiResultData | null }) {
     const navigate = useNavigate();
     const [adminConnected, setAdminConnected] = useState(false);
 
     const getContent = () => {
+        // AI 결과의 summary가 있으면 우선 사용
+        if (aiData?.summary) {
+            switch (result) {
+                case "LOCATION_MOVE":
+                    return {
+                        title: "지번 이동",
+                        desc: aiData.summary,
+                    };
+                case "ADMIN":
+                    return {
+                        title: "관리자 확인 필요",
+                        desc: aiData.summary,
+                    };
+                case "WAIT":
+                    return {
+                        title: "원복 대기",
+                        desc: aiData.summary,
+                    };
+                case "ERROR":
+                    return {
+                        title: "분석 실패",
+                        desc: "AI 분석에 실패했습니다.\n관리자에게 문의하세요.",
+                    };
+                default:
+                    return {
+                        title: "재고 없음",
+                        desc: aiData.summary,
+                    };
+            }
+        }
+
+        // Fallback: 기본 메시지
         switch (result) {
             case "OUT_OF_STOCK":
                 return {
@@ -131,6 +250,11 @@ function RenderResult({ result }: { result: AnalysisResult }) {
                 return {
                     title: "지번 이동",
                     desc: "해당 상품은 지번이 이동되었습니다.\n아래 지번으로 이동하여 작업을 진행하세요.",
+                };
+            case "ERROR":
+                return {
+                    title: "분석 실패",
+                    desc: "AI 분석에 실패했습니다.\n관리자에게 문의하세요.",
                 };
             default:
                 return {
@@ -158,14 +282,14 @@ function RenderResult({ result }: { result: AnalysisResult }) {
                     {content.desc}
                 </p>
 
-                {result === "LOCATION_MOVE" && (
+                {result === "LOCATION_MOVE" && aiData?.newLocationCode && (
                     <div className="mt-10 group w-full max-w-[200px] rounded-[32px] border-2 border-blue-50 bg-white p-7 shadow-sm flex flex-col items-center gap-4">
                         <div className="p-3.5 rounded-full bg-blue-600 text-white">
                             <MapPin className="w-6 h-6" />
                         </div>
                         <div className="text-center">
-                            <p className="text-sm font-black text-gray-900">지번 스캔</p>
-                            <p className="text-[15px] font-bold text-blue-600 mt-1">A-12-03</p>
+                            <p className="text-sm font-black text-gray-900">이동할 지번</p>
+                            <p className="text-[15px] font-bold text-blue-600 mt-1">{aiData.newLocationCode}</p>
                         </div>
                     </div>
                 )}

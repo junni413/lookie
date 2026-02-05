@@ -273,6 +273,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
             RTC_004: "잘못된 요청입니다.",
             RTC_005: "상대방이 자리 비움 상태입니다.",
             RTC_006: "상대방이 작업 중지 상태입니다.",
+            WEBRTC_USER_UNAVAILABLE: "상대방이 현재 통화 가능한 상태가 아닙니다.",
         };
 
         const message = errorMap[errorMessage] || "통화 연결에 실패했습니다.";

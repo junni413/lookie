@@ -27,7 +27,32 @@ export const workLogService = {
    * 내 현재 업무 상태 확인
    * /api/work-logs/current 를 사용하여 실제 출퇴근 세션 여부 확인
    */
-  getMyWorkStatus: async (): Promise<'WORKING' | 'OFF_WORK'> => {
+  /**
+   * 휴식 (업무 일시 중단)
+   * POST /api/work-logs/pause
+   */
+  pauseWork: async (reason: string = "관리자 휴식"): Promise<void> => {
+    await request<ApiResponse<void>>("/api/work-logs/pause", {
+      method: "POST",
+      body: { reason },
+    });
+  },
+
+  /**
+   * 업무 재개
+   * POST /api/work-logs/resume
+   */
+  resumeWork: async (): Promise<void> => {
+    await request<ApiResponse<void>>("/api/work-logs/resume", {
+      method: "POST",
+    });
+  },
+
+  /**
+   * 내 현재 업무 상태 확인
+   * /api/work-logs/current 를 사용하여 실제 출퇴근 세션 여부 확인
+   */
+  getMyWorkStatus: async (): Promise<'WORKING' | 'PAUSED' | 'OFF_WORK'> => {
     try {
         const response = await request<ApiResponse<any>>("/api/work-logs/current", {
             method: "GET",
@@ -35,12 +60,15 @@ export const workLogService = {
         
         if (!response.success || !response.data) return 'OFF_WORK';
         
-        // currentStatus: START, PAUSE, RESUME -> WORKING
-        // currentStatus: END -> OFF_WORK
+        // currentStatus 매핑
         const status = response.data.currentStatus;
-        if (status === 'START' || status === 'RESUME' || status === 'PAUSE' || status === 'WORKING') {
+        
+        if (status === 'START' || status === 'RESUME' || status === 'WORKING') {
             return 'WORKING';
+        } else if (status === 'PAUSE' || status === 'PAUSED') {
+            return 'PAUSED';
         }
+        
         return 'OFF_WORK';
 
     } catch (error) {

@@ -187,10 +187,14 @@ export default function IssueResult() {
     fetchInitialDetail();
 
     // WebSocket 구독 시작
+    console.log(`🔌 [DEBUG] WebSocket 구독 시작: issueId=${nav.issueId}`);
     const unsubscribe = subscribeIssueResult(nav.issueId, token, (body: any) => {
-      console.log("Updated via STOMP details:", body);
+      console.log("📨 [STOMP] Issue Result Received:", body);
+      console.log(`🔍 [DEBUG] Before update - analyzing:`, analyzing);
+      console.log(`🔍 [DEBUG] Received data - aiResult:`, body.aiResult, "reasonCode:", body.reasonCode);
+      
       setDetail((prev) => {
-        return {
+        const updated = {
           ...(prev || {}),
           ...body,
           // Support both new (issueNextAction) and old (nextAction) field names for robustness
@@ -199,9 +203,15 @@ export default function IssueResult() {
           productName: prev?.productName || nav.product.productName,
           locationCode: prev?.locationCode || nav.product.locationCode,
         } as IssueDetail;
+        console.log(`✅ [DEBUG] Detail updated:`, updated);
+        return updated;
       });
+      
       setAnalyzing(false);
-      fetchInitialDetail(); // Check latest consistency
+      console.log(`✅ [DEBUG] analyzing set to false`);
+      
+      // fetchInitialDetail() 제거: WebSocket 데이터를 신뢰
+      // 백엔드 조회가 WebSocket보다 늦을 수 있어서 덮어쓰면 안 됨
     });
 
     return () => unsubscribe();
@@ -213,7 +223,13 @@ export default function IssueResult() {
     // displaySize는 ResizeObserver가 담당함
   };
 
-  const verdict = useMemo(() => verdictFromDetail(detail), [detail]);
+  const verdict = useMemo(() => {
+    const result = verdictFromDetail(detail);
+    console.log(`🎯 [DEBUG] Verdict calculated:`, result, "from detail:", detail);
+    return result;
+  }, [detail]);
+
+  console.log(`🖼️ [DEBUG] Render - analyzing:`, analyzing, "verdict:", verdict, "detail:", detail);
 
   if (!nav) return null;
 

@@ -2,6 +2,7 @@ package lookie.backend.domain.issue.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.inventory.service.InventoryService;
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
 import lookie.backend.infra.ai.AiAnalysisClient;
@@ -32,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import lookie.backend.domain.issue.dto.AdminDecision;
 
@@ -53,6 +55,7 @@ public class IssueService {
     private final TaskMapper taskMapper;
     private final AiAnalysisClient aiAnalysisClient;
     private final SimpMessagingTemplate messagingTemplate;
+    private final InventoryService inventoryService;
 
     /**
      * 이슈 생성
@@ -104,14 +107,83 @@ public class IssueService {
         taskItemService.markAsIssue(item.getBatchTaskItemId());
         log.info("[IssueService] TaskItem marked as ISSUE. itemId={}", item.getBatchTaskItemId());
 
-        // 6. AI 서버로 이미지 판정 요청 (비동기)
-        AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
-                issue.getIssueId(),
-                item.getProductId(),
-                request.getImageUrl());
-        aiAnalysisClient.requestAnalysis(aiRequest);
+        // 6. Response 먼저 반환 (트랜잭션 커밋됨)
+        IssueResponse response = IssueResponse.from(issue);
+        
+        // 7. AI 서버로 판정 요청 (트랜잭션 커밋 후)
+        // NOTE: 트랜잭션이 끝난 후 실행되도록 별도 메서드로 분리
+        Long issueIdForAi = issue.getIssueId();
+        requestAiAnalysisAfterCommit(issueIdForAi, item, request.getIssueType(), request.getImageUrl());
 
-        return IssueResponse.from(issue);
+        return response;
+    }
+    
+    /**
+     * AI 분석 요청 (트랜잭션 외부에서 실행)
+     * - 새로운 트랜잭션에서 실행되므로 createIssue()의 커밋 후 실행됨
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void requestAiAnalysisAfterCommit(Long issueId, TaskItemVO item, String issueType, String imageUrl) {
+        AiAnalysisRequest aiRequest = buildAiAnalysisRequest(issueId, item, issueType, imageUrl);
+        aiAnalysisClient.requestAnalysis(aiRequest);
+    }
+
+    /**
+     * 이슈 타입에 따라 적절한 AI 분석 요청 생성
+     * - DAMAGED: imageUrl 필수, inventoryState 불필요
+     * - OUT_OF_STOCK: imageUrl null, inventoryState 필수
+     */
+    private AiAnalysisRequest buildAiAnalysisRequest(
+            Long issueId,
+            TaskItemVO item,
+            String issueType,
+            String imageUrl) {
+        
+        // DAMAGED 케이스: 이미지만 전달
+        if ("DAMAGED".equals(issueType)) {
+            return AiAnalysisRequest.create(
+                    issueId,
+                    item.getProductId(),
+                    issueType,
+                    imageUrl,
+                    null);
+        }
+        
+        // OUT_OF_STOCK 케이스: 재고 상태 조회 및 전달
+        if ("OUT_OF_STOCK".equals(issueType)) {
+            // 재고 상태 조회
+            Map<String, Object> inventoryState = inventoryService.getInventoryState(
+                    item.getProductId(),
+                    item.getLocationId());
+            
+            // InventoryStateDto 생성
+            lookie.backend.infra.ai.dto.InventoryStateDto inventoryStateDto = 
+                    lookie.backend.infra.ai.dto.InventoryStateDto.builder()
+                    .availableQty((Integer) inventoryState.get("availableQty"))
+                    .damagedTempQty((Integer) inventoryState.get("damagedTempQty"))
+                    .scannedLocation(item.getLocationCode())
+                    .expectedLocation(item.getLocationCode())
+                    .lastEventType((String) inventoryState.get("lastEventType"))
+                    .build();
+            
+            log.info("[IssueService] OUT_OF_STOCK detected. inventoryState={}", inventoryStateDto);
+            
+            return AiAnalysisRequest.create(
+                    issueId,
+                    item.getProductId(),
+                    issueType,
+                    null, // OUT_OF_STOCK은 이미지 없음
+                    inventoryStateDto);
+        }
+        
+        // 기타 타입은 기본 처리 (DAMAGED 방식)
+        log.warn("[IssueService] Unknown issue type: {}. Using DAMAGED default.", issueType);
+        return AiAnalysisRequest.create(
+                issueId,
+                item.getProductId(),
+                issueType,
+                imageUrl,
+                null);
     }
 
     /**
@@ -729,6 +801,24 @@ public class IssueService {
         issueMapper.updateIssueStatus(issue);
         log.info("[IssueService] WebRTC MISSED processed. issueId={}, urgency={}, adminRequired=true",
                 issueId, issue.getUrgency());
+
+        // 6. 파손 TEMP 재고 차감 (DAMAGED 타입만)
+        if ("DAMAGED".equals(issue.getIssueType())) {
+            TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
+            if (item != null) {
+                inventoryService.recordEvent(
+                    "PICK_DAMAGED_TEMP",
+                    item.getProductId(),
+                    item.getLocationId(),
+                    -1, // 파손 1개 임시 차감
+                    "ISSUE",
+                    issueId,
+                    issue.getWorkerId()
+                );
+                log.info("[IssueService] PICK_DAMAGED_TEMP event recorded. issueId={}, product={}, location={}", 
+                    issueId, item.getProductId(), item.getLocationId());
+            }
+        }
     }
 
     // ================================================================
@@ -783,18 +873,37 @@ public class IssueService {
         log.info("[IssueService] Admin confirmed. issueId={}, adminDecision={}",
                 issueId, adminDecision);
 
-        // 6. Inventory Event 기록 (DAMAGED 타입 + DAMAGED 확정만)
-        if ("DAMAGED".equals(issue.getIssueType()) && AdminDecision.DAMAGED.equals(adminDecision)) {
-            // TODO: Inventory Event 시스템 구현 후 활성화
-            // eventService.recordInventoryEvent(
-            // issue.getProductId(),
-            // "PICK_DAMAGED_FINAL",
-            // -1,
-            // issueId
-            // );
-            log.info(
-                    "[IssueService] Inventory event required (currently commented). issueId={}, type=PICK_DAMAGED_FINAL, qty=-1",
-                    issueId);
+        // 6. Inventory Event 기록 (DAMAGED 타입)
+        if ("DAMAGED".equals(issue.getIssueType())) {
+            TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
+            if (item != null) {
+                if (AdminDecision.DAMAGED.equals(adminDecision)) {
+                    // 파손 확정 (마킹용, qty=0)
+                    inventoryService.recordEvent(
+                        "PICK_DAMAGED_FINAL",
+                        item.getProductId(),
+                        item.getLocationId(),
+                        0, // 추가 차감 없음 (TEMP에서 이미 차감됨)
+                        "ISSUE",
+                        issueId,
+                        null // adminId는 별도 파라미터로 받아야 하지만 생략
+                    );
+                    log.info("[IssueService] PICK_DAMAGED_FINAL event recorded. issueId={}", issueId);
+                    
+                } else if (AdminDecision.NORMAL.equals(adminDecision)) {
+                    // 파손 취소/복구 (TEMP 복원)
+                    inventoryService.recordEvent(
+                        "REVERT_DAMAGED",
+                        item.getProductId(),
+                        item.getLocationId(),
+                        +1, // 재고 복구
+                        "ISSUE",
+                        issueId,
+                        null
+                    );
+                    log.info("[IssueService] REVERT_DAMAGED event recorded. issueId={}", issueId);
+                }
+            }
         }
     }
 

@@ -2,6 +2,7 @@ import type { DB_Worker, ZoneLayout } from "@/types/db";
 import { cn } from "@/utils/cn";
 import { Box } from "lucide-react";
 import { getWorkRateBgColor } from "@/utils/styleHelpers";
+import WorkerHoverCard from "../common/WorkerHoverCard";
 
 interface ZoneMapProps {
     layout: ZoneLayout | null;
@@ -71,14 +72,15 @@ export default function ZoneMap({ layout, workers }: ZoneMapProps) {
                                                 const dotColor = getWorkRateBgColor(rate);
 
                                                 return (
-                                                    <div
-                                                        key={worker.userId}
-                                                        className={cn(
-                                                            "w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white",
-                                                            dotColor
-                                                        )}
-                                                        title={`${worker.name} (진척률: ${rate}%)`}
-                                                    />
+                                                    <WorkerHoverCard key={worker.userId} workerId={worker.userId}>
+                                                        <div
+                                                            className={cn(
+                                                                "w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all",
+                                                                dotColor
+                                                            )}
+                                                            title={`${worker.name} (진척률: ${rate}%)`}
+                                                        />
+                                                    </WorkerHoverCard>
                                                 );
                                             })}
                                         </div>

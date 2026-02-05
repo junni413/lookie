@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { issueService } from "@/services/issueService";
 import type { AdminIssueSummary, IssueStatus } from "@/types/issue";
@@ -10,17 +11,20 @@ import { cn } from "@/utils/cn";
 import { ChevronRight, ChevronLeft, RefreshCcw } from "lucide-react";
 
 export default function Issue() {
+    const [searchParams] = useSearchParams();
     // State
     const [currentTab, setCurrentTab] = useState<IssueStatus>("OPEN");
     const [issues, setIssues] = useState<AdminIssueSummary[]>([]);
-    const [selectedId, setSelectedId] = useState<number | null>(null);
+    // Initialize selectedId from URL if present
+    const [selectedId, setSelectedId] = useState<number | null>(() => {
+        const qId = searchParams.get("issueId");
+        return qId ? parseInt(qId) : null;
+    });
     const [loading, setLoading] = useState(false);
 
-    // Pagination & Sort
+    // Pagination
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
-    // Sort is handled by API defaults for now (OPEN: Urgency/Created, RESOLVED: ResolvedAt)
-    // If backend supports dynamic sort param, we can add it back. Currently mock had it, but API contract in service uses API defaults.
 
     const [totalCount, setTotalCount] = useState(0);
 
@@ -28,8 +32,14 @@ export default function Issue() {
 
     useEffect(() => {
         isMountedRef.current = true;
+        // Also update selectedId if URL changes while mounted (optional, but good for deeplinks)
+        const qId = searchParams.get("issueId");
+        if (qId) {
+            const pId = parseInt(qId);
+            if (!isNaN(pId)) setSelectedId(pId);
+        }
         return () => { isMountedRef.current = false; };
-    }, []);
+    }, [searchParams]);
 
     // Fetch Issues
     const fetchIssues = useCallback(async () => {
@@ -70,7 +80,7 @@ export default function Issue() {
                 description="작업자가 요청한 판정 내역을 검토하고 처리합니다."
             />
 
-            <div className="flex-1 p-6 min-h-0 flex gap-6 overflow-hidden">
+            <div className="flex-1 px-6 pb-6 min-h-0 flex gap-6 overflow-hidden">
                 {/* Main List Area - Resizes when split */}
                 <Card className={cn(
                     "flex flex-col h-full transition-all duration-300 ease-in-out border-0 shadow-sm border rounded-xl overflow-hidden",
@@ -152,7 +162,7 @@ export default function Issue() {
                                 size="icon"
                                 className="h-7 w-7"
                                 onClick={() => setPage(p => p + 1)}
-                                disabled={issues.length < pageSize} // Simple check, ideally check against total
+                                disabled={page * pageSize >= totalCount}
                             >
                                 <ChevronRight className="h-4 w-4" />
                             </Button>
@@ -166,6 +176,11 @@ export default function Issue() {
                     selectedId ? "w-1/2 opacity-100 translate-x-0" : "w-0 opacity-0 translate-x-10 pointer-events-none absolute right-6 h-[calc(100%-3rem)]"
                 )}>
                     {selectedId && (
+                        /* 
+                           Note: IssueDetail fetches data independently based on issueId. 
+                           This guarantees correct display even if the issue is not present 
+                           in the current paginated list (Deep Linking support).
+                        */
                         <IssueDetail
                             issueId={selectedId}
                             initialWorkerId={issues.find(i => i.issueId === selectedId)?.workerId}

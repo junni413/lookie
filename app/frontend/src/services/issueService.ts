@@ -46,7 +46,7 @@ async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
 export type CreateIssueRequest = {
   batchTaskId: number;
   batchTaskItemId: number;
-  issueType: string; // "DAMAGED" | "OUT_OF_STOCK"
+  issueType: string; // "DAMAGED" | "MISSING" | "OTHER"
   imageUrl: string;
 };
 

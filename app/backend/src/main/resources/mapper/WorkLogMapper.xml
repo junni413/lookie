@@ -116,6 +116,7 @@
             LEFT JOIN zone_locations loc ON bt.current_location_id = loc.location_id
 
         WHERE w.ended_at IS NULL -- 퇴근하지 않은 사람만 조회
+          AND u.role = 'WORKER' -- WORKER 역할만 필터링 (ADMIN 제외)
 
         <if test="workerId != null">
             AND w.worker_id = #{workerId}

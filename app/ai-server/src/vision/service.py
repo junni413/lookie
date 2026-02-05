@@ -4,9 +4,11 @@ import io
 import json
 import logging
 import httpx
+from typing import Optional
 from ultralytics import YOLO
 from PIL import Image, UnidentifiedImageError
 from src.core.config import BACKEND_URL, PRODUCT_CONFIG, GATE_MODEL_PATH
+from src.oos.service import oos_service  # [추가] OOS 서비스 임포트
 
 logger = logging.getLogger("AI_SERVER")
 
@@ -166,10 +168,11 @@ class VisionService:
 
     async def run_inference_from_url(
         self, 
-        image_url: str, 
+        image_url: Optional[str],  # DAMAGED: 필수, OUT_OF_STOCK: None 허용
         product_id: int, 
         issue_id: int,
-        issue_type: str = "DAMAGED"
+        issue_type: str = "DAMAGED",
+        inventory_state: dict = None  # OOS 판단용 재고 상태
     ):
         """URL 기반 추론 진입점"""
         if not self.is_loaded or self.gate_model is None:
@@ -179,6 +182,13 @@ class VisionService:
         logger.info(f"🔍 Inference started: issueId={issue_id}, productId={product_id}, issueType={issue_type}")
 
         try:
+            # 🔥 OOS(재고 없음) 처리 분기 (OOS 서비스 호출)
+            if issue_type == "OUT_OF_STOCK":
+                logger.info(f"📦 OOS Case Detected: inventoryState={inventory_state}")
+                # OOS 서비스의 investigate_with_inventory 메서드 호출
+                await oos_service.investigate_with_inventory(issue_id, product_id, inventory_state)
+                return
+
             # 1. 상품 검증 (이미지 다운로드 전에 먼저 체크)
             # 지원되지 않는 상품은 NEED_CHECK로 처리
             if issue_type == "DAMAGED" and product_id not in PRODUCT_CONFIG:

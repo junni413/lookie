@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { manageService } from "@/services/manageService";
 import type { DB_Worker, ZoneLayout, ZoneStat } from "@/types/db";
 import ZoneSummaryCard from "./components/map/ZoneSummaryCard";
 import ZoneMapModal from "./components/map/ZoneMapModal";
 import WorkerList from "./components/map/WorkerList";
 import { cn } from "@/utils/cn";
-
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 
 export default function Map() {
+    const [searchParams] = useSearchParams();
     const [stats, setStats] = useState<ZoneStat[]>([]);
     const [workers, setWorkers] = useState<DB_Worker[]>([]);
     const [loading, setLoading] = useState(true);
@@ -21,10 +22,23 @@ export default function Map() {
     const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
     const [isWorkerPanelOpen, setIsWorkerPanelOpen] = useState(false);
     const [selectedLayout, setSelectedLayout] = useState<ZoneLayout | null>(null);
-
     useEffect(() => {
         loadData();
     }, []);
+
+    // Initial URL Param Handling for Navigation from Dashboard
+    useEffect(() => {
+        const queryZoneId = searchParams.get("zoneId");
+        if (queryZoneId) {
+            const zId = parseInt(queryZoneId);
+            if (!isNaN(zId)) {
+                setSelectedZoneId(zId);
+                setIsWorkerPanelOpen(true);
+            }
+        }
+    }, [searchParams]);
+
+    // Load Layout when Zone is selected for MAP modal
 
     // Load Layout when Zone is selected for MAP modal
     useEffect(() => {
