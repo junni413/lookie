@@ -164,7 +164,6 @@ export default function Contact() {
                                         key={admin.userId}
                                         admin={admin}
                                         assignedZone={admin.assignedZone || "미배정"}
-                                        isOnline={admin.isOnline || false}
                                         onCallClick={handleCallClick}
                                     />
                                 ))}

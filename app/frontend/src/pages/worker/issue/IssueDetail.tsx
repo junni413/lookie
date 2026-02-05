@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
-import { issueService, type IssueDetail as IssueDetailType } from "@/services/issueService";
+import { issueService, type IssueDetailData as IssueDetailType } from "@/services/issueService";
 import { MapPin, Package, Calendar, AlertCircle, CheckCircle2, Clock } from "lucide-react";
 
 export default function IssueDetail() {
@@ -41,11 +41,11 @@ export default function IssueDetail() {
 
             try {
                 setLoading(true);
-                const res = await issueService.getIssue(issueId);
-                if (res.success && res.data) {
-                    setIssue(res.data);
+                const res = await issueService.getIssueDetail(issueId);
+                if (res) {
+                    setIssue(res);
                 } else {
-                    console.error("Failed to load issue:", res.message);
+                    console.error("Failed to load issue");
                 }
             } catch (err) {
                 console.error("Error loading issue:", err);

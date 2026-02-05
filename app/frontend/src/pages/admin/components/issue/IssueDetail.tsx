@@ -4,21 +4,35 @@ import type { IssueDetailData } from "@/types/issue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { X } from "lucide-react";
+import { Phone, X } from "lucide-react";
+import { useCallStore } from "@/stores/callStore";
+import { useAuthStore } from "@/stores/authStore";
+import { toast } from "@/components/ui/toast";
+import { cn } from "@/utils/cn";
 
 interface IssueDetailProps {
     issueId: number;
     onUpdate: () => void;
     onClose?: () => void;
+    initialWorkerId?: number;
 }
 
-export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailProps) {
+export default function IssueDetail({ issueId, onUpdate, onClose, initialWorkerId }: IssueDetailProps) {
     const [issue, setIssue] = useState<IssueDetailData | null>(null);
     const [loading, setLoading] = useState(false);
     const [processing, setProcessing] = useState(false);
+    const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+    
+    // WebRTC connection
+    const { startCall } = useCallStore();
+    const { user } = useAuthStore();
 
     useEffect(() => {
         let ignore = false;
+        
+        // Reset state for new issue
+        setSelectedImageIndex(0);
+        setIssue(null);
 
         const fetchDetail = async () => {
             setLoading(true);
@@ -34,7 +48,9 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
             }
         };
 
-        if (issueId) fetchDetail();
+        if (issueId) {
+            fetchDetail();
+        }
 
         return () => {
             ignore = true;
@@ -43,17 +59,46 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
 
     const handleDecision = async (decision: "NORMAL" | "DAMAGED" | "CALLED_OTHER_PROCESS" | "FIXED") => {
         if (!issue) return;
-        if (confirm("확정 하시겠습니까?")) {
+        if (confirm("확정하시겠습니까?")) {
             setProcessing(true);
             try {
                 await issueService.confirmIssue(issue.issueId, { adminDecision: decision });
+                toast.success("처리가 완료되었습니다.");
                 onUpdate(); // 목록 갱신 요청
             } catch (e) {
                 console.error(e);
-                alert("처리에 실패했습니다.");
+                toast.error("처리에 실패했습니다.");
             } finally {
                 setProcessing(false);
             }
+        }
+    };
+
+    const handleWebRTCCall = async () => {
+        const targetWorkerId = issue?.workerId || initialWorkerId;
+        
+        if (!targetWorkerId) {
+            toast.error("작업자 정보를 확인할 수 없습니다.");
+            return;
+        }
+
+        if (!user || !user.userId) {
+            toast.error("로그인 정보를 확인할 수 없습니다.");
+            return;
+        }
+
+        try {
+            // 통화 발신 (callerId, calleeId, issueId, calleeName)
+            await startCall(
+                user.userId,
+                targetWorkerId,
+                issueId,
+                issue?.workerName || "작업자"
+            );
+            toast.success("작업자에게 화상 통화를 발신합니다.");
+        } catch (error) {
+            console.error("Failed to make call", error);
+            toast.error("통화 연결에 실패했습니다.");
         }
     };
 
@@ -62,8 +107,15 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
 
     const isResolved = issue.status === "RESOLVED";
 
-    // Image handling
-    const mainImage = issue.imageUrls && issue.imageUrls.length > 0 ? issue.imageUrls[0] : null;
+    // Normalize issue type
+    const issueType = issue.issueType || "";
+
+    // Image list (combine all available sources)
+    const images = issue.imageUrls && issue.imageUrls.length > 0 
+        ? issue.imageUrls 
+        : (issue.imageUrl ? [issue.imageUrl] : []);
+    
+    const activeImage = images[selectedImageIndex] || images[0];
 
     const getResolvedText = () => {
         if (issue.adminDecision) return `✅ ${issue.adminDecision}`;
@@ -81,12 +133,12 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
                             {isResolved && <Badge variant="secondary">완료</Badge>}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                            ID: {issue.issueId} • 유형: {issue.type}
+                            ID: {issue.issueId} • 유형: {issueType}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Badge variant={issue.type === "OUT_OF_STOCK" ? "destructive" : "default"}>
-                            {issue.type === "OUT_OF_STOCK" ? "재고 부족" : "파손 감지"}
+                        <Badge variant={issueType === "OUT_OF_STOCK" ? "destructive" : "default"}>
+                            {issueType === "OUT_OF_STOCK" ? "재고 부족" : "파손 감지"}
                         </Badge>
                         {onClose && (
                             <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 ml-2">
@@ -98,20 +150,44 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
 
                 <div className="flex-1 overflow-y-auto p-6">
                     {/* Image Area */}
-                    <div className="relative aspect-video w-full bg-muted rounded-xl overflow-hidden mb-6 group shadow-sm border">
-                        {mainImage ? (
-                            <img src={mainImage} alt="Issue Issue" className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-muted-foreground flex-col gap-2">
-                                <span>이미지 없음</span>
-                                <span className="text-xs text-gray-400">(백엔드 API 미지원)</span>
+                    <div className="flex flex-col gap-3 mb-6">
+                        <div className="relative aspect-video w-full bg-muted rounded-xl overflow-hidden group shadow-sm border">
+                            {activeImage ? (
+                                <img 
+                                    src={activeImage} 
+                                    alt="Issue" 
+                                    className="w-full h-full object-cover" 
+                                />
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-muted-foreground flex-col gap-2">
+                                    <span>이미지 없음</span>
+                                    <span className="text-xs text-gray-400">(백엔드 데이터 없음)</span>
+                                </div>
+                            )}
+
+                            {/* Overlay info */}
+                            <div className="absolute top-4 right-4 bg-black/60 text-white px-3 py-1 rounded-full text-xs backdrop-blur-sm font-medium">
+                                긴급도: {issue.urgency}
+                            </div>
+                        </div>
+
+                        {/* Image Gallery Thumbnails */}
+                        {images.length > 1 && (
+                            <div className="flex gap-2 pb-2 overflow-x-auto scroller-hide">
+                                {images.map((url, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => setSelectedImageIndex(idx)}
+                                        className={cn(
+                                            "relative w-20 h-14 rounded-md overflow-hidden border-2 transition-all shrink-0",
+                                            selectedImageIndex === idx ? "border-primary shadow-sm" : "border-transparent opacity-60 hover:opacity-100"
+                                        )}
+                                    >
+                                        <img src={url} alt={`Issue ${idx + 1}`} className="w-full h-full object-cover" />
+                                    </button>
+                                ))}
                             </div>
                         )}
-
-                        {/* Overlay info */}
-                        <div className="absolute top-4 right-4 bg-black/60 text-white px-3 py-1 rounded-full text-xs backdrop-blur-sm font-medium">
-                            긴급도: {issue.urgency}
-                        </div>
                     </div>
 
                     {/* AI Analysis */}
@@ -131,13 +207,10 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
                                 <div className="text-xl font-bold mb-2">
                                     {getResolvedText()}
                                 </div>
-                                <p className="text-sm text-muted-foreground">
-                                    {/* Resolved Date can be added if available in detail data */}
-                                </p>
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {issue.type === "DAMAGED" && (
+                                {issueType === "DAMAGED" && (
                                     <div className="flex items-center justify-center gap-2 p-3 bg-red-100 text-red-700 rounded-lg text-sm font-semibold">
                                         ⚠️ 상품 파손이 감지되었습니다
                                     </div>
@@ -156,17 +229,22 @@ export default function IssueDetail({ issueId, onUpdate, onClose }: IssueDetailP
                                         size="lg"
                                         variant="destructive"
                                         className="w-full shadow-sm"
-                                        onClick={() => handleDecision(issue.type === "DAMAGED" ? "DAMAGED" : "FIXED")}
+                                        onClick={() => handleDecision(issueType === "DAMAGED" ? "DAMAGED" : "FIXED")}
                                         disabled={processing}
                                     >
-                                        {issue.type === "DAMAGED" ? "파손 확정" : "조치 완료"}
+                                        {issueType === "DAMAGED" ? "파손 확정" : "조치 완료"}
                                     </Button>
-                                    {/* Action for CALLED_OTHER_PROCESS if needed */}
                                 </div>
                             </div>
                         )}
 
-                        <Button size="lg" variant="outline" className="w-full border-blue-200 hover:bg-blue-50 text-blue-700">
+                        <Button 
+                            size="lg" 
+                            variant="outline" 
+                            className="w-full border-blue-200 hover:bg-blue-50 text-blue-700 font-bold flex items-center gap-2"
+                            onClick={handleWebRTCCall}
+                        >
+                            <Phone className="h-4 w-4" />
                             화상 연결 (WebRTC)
                         </Button>
                     </div>

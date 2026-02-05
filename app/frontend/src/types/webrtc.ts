@@ -2,7 +2,7 @@
 
 export interface CallRequest {
     callerId: number;
-    calleeId: number;
+    calleeId: number | null;
     issueId: number | null;
 }
 

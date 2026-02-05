@@ -168,6 +168,7 @@ export default function Issue() {
                     {selectedId && (
                         <IssueDetail
                             issueId={selectedId}
+                            initialWorkerId={issues.find(i => i.issueId === selectedId)?.workerId}
                             onUpdate={() => {
                                 fetchIssues();
                                 setSelectedId(null);
