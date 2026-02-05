@@ -1,5 +1,5 @@
 # 1. 파이썬 3.9 슬림
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # 2. 작업 디렉토리
 WORKDIR /app
@@ -31,7 +31,7 @@ COPY model/best.onnx /app/model/best.onnx
 # 7. 나머지 소스 코드 복사
 # .dockerignore를 활용하면 더 좋지만, 일단 모델 외 코드 복사
 COPY . .
-
+ 
 # 8. 실행
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
