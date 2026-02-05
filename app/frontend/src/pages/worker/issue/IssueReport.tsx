@@ -5,7 +5,7 @@ import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
 import { useToast } from "@/components/ui/use-toast";
 import { issueService } from "@/services/issueService";
 
-export type IssueType = "DAMAGED" | "MISSING" | "OTHER";
+export type IssueType = "DAMAGED" | "OUT_OF_STOCK";
 
 type NavState = {
   issueType: IssueType;
@@ -21,8 +21,7 @@ type NavState = {
 
 const TITLE: Record<IssueType, string> = {
   DAMAGED: "상품 파손 신고",
-  MISSING: "재고 없음 신고",
-  OTHER: "기타 이슈 신고",
+  OUT_OF_STOCK: "재고 없음 신고",
 };
 
 export default function IssueReport() {

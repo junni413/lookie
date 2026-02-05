@@ -1,12 +1,16 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { issueService, type MyIssueResponse } from "@/services/issueService";
 
 type Ctx = { setTitle: (t: string) => void };
 
+// ✅ IssueType 통일: DAMAGED | OUT_OF_STOCK
+export type IssueType = "DAMAGED" | "OUT_OF_STOCK";
+
 export default function IssueListPage() {
   const { setTitle } = useOutletContext<Ctx>();
   const navigate = useNavigate();
+
   useEffect(() => setTitle("이슈 목록 조회"), [setTitle]);
 
   const [tab, setTab] = useState<"ALL" | "DONE" | "WAIT">("ALL");
@@ -39,13 +43,15 @@ export default function IssueListPage() {
     return it.status === "OPEN";
   });
 
-  // Helper to map issueType code to readable string if needed
+  // ✅ Helper: issueType code -> label (OUT_OF_STOCK 반영)
   const getIssueTypeLabel = (type: string) => {
     switch (type) {
-      case "DAMAGED": return "파손 이슈";
-      case "MISSING": return "재고 부족";
-      case "OTHER": return "기타 이슈";
-      default: return type;
+      case "DAMAGED":
+        return "파손 이슈";
+      case "OUT_OF_STOCK":
+        return "재고 없음";
+      default:
+        return type;
     }
   };
 
@@ -67,14 +73,20 @@ export default function IssueListPage() {
       {/* 리스트 */}
       <div className="space-y-3">
         {loading ? (
-          <div className="py-20 text-center text-gray-400">이슈 목록을 불러오는 중...</div>
+          <div className="py-20 text-center text-gray-400">
+            이슈 목록을 불러오는 중...
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="py-20 text-center text-gray-400">신고된 이슈가 없습니다.</div>
+          <div className="py-20 text-center text-gray-400">
+            신고된 이슈가 없습니다.
+          </div>
         ) : (
           filtered.map((it) => (
             <div
               key={it.issueId}
-              onClick={() => navigate("/worker/issue/detail", { state: { issue: it } })}
+              onClick={() =>
+                navigate("/worker/issue/detail", { state: { issue: it } })
+              }
               className="rounded-2xl border bg-white p-4 shadow-sm active:scale-[0.98] transition-all cursor-pointer"
             >
               <div className="flex items-start justify-between gap-3">
@@ -98,7 +110,9 @@ export default function IssueListPage() {
                 </div>
               </div>
 
-              <div className="mt-3 text-xs text-gray-400">{new Date(it.createdAt).toLocaleString()}</div>
+              <div className="mt-3 text-xs text-gray-400">
+                {new Date(it.createdAt).toLocaleString()}
+              </div>
             </div>
           ))
         )}
@@ -122,7 +136,9 @@ function TabButton({
       onClick={onClick}
       className={[
         "h-9 px-4 rounded-full text-sm font-semibold border transition",
-        active ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 hover:bg-gray-50",
+        active
+          ? "bg-blue-600 text-white border-blue-600"
+          : "bg-white text-gray-700 hover:bg-gray-50",
       ].join(" ")}
     >
       {children}
