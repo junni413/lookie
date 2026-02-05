@@ -31,6 +31,11 @@ PRODUCT_CONFIG = {
         "gate_class_id": 46,
         "model_path": "model/best.onnx"
     },
+    2001: {
+        "target_name": "banana",
+        "gate_class_id": 46,
+        "model_path": "model/best.onnx"
+    },
     # 나중에 사과(47) 추가 시 여기에 작성
 }
 
