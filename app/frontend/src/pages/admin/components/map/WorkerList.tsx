@@ -1,4 +1,5 @@
 import { DEFAULT_ZONES } from "@/utils/zoneUtils";
+import WorkerHoverCard from "../common/WorkerHoverCard";
 import type { DB_Worker } from "@/types/db";
 import { cn } from "@/utils/cn";
 import { Phone, Users, X } from "lucide-react";
@@ -131,9 +132,11 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
 
                                     {/* 정보 영역 */}
                                     <div className="flex-1 min-w-0">
-                                        <div className="font-semibold text-sm text-slate-800 truncate">
-                                            {worker.name}
-                                        </div>
+                                        <WorkerHoverCard workerId={worker.userId}>
+                                            <div className="font-semibold text-sm text-slate-800 truncate hover:text-blue-600 transition-colors cursor-help inline-block">
+                                                {worker.name}
+                                            </div>
+                                        </WorkerHoverCard>
                                         <div className="text-xs text-slate-500 truncate">
                                             {!worker.currentZoneId && "대기중"}
                                             {worker.lineNumber && `L${worker.lineNumber}`}

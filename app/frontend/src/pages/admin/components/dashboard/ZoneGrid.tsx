@@ -12,7 +12,7 @@ export interface ZoneItem {
   workRate: number; // 진행률
 }
 
-export default function ZoneGrid({ zones }: { zones: ZoneItem[] }) {
+export default function ZoneGrid({ zones, onZoneClick }: { zones: ZoneItem[], onZoneClick?: (id: number) => void }) {
 
   return (
     <div className="h-full flex flex-col">
@@ -23,6 +23,7 @@ export default function ZoneGrid({ zones }: { zones: ZoneItem[] }) {
           return (
             <Card
               key={z.id}
+              onClick={() => onZoneClick?.(z.id)} // Add click handler
               className={cn(
                 "transition-all duration-300 ease-out cursor-pointer rounded-xl flex flex-col justify-between p-5 relative overflow-hidden border",
                 style.card,

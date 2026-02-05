@@ -1,6 +1,7 @@
 import type { DB_Worker } from "@/types/db";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/utils/cn";
+import WorkerHoverCard from "../common/WorkerHoverCard";
 
 interface ManageWorkerCardProps {
     worker: DB_Worker;
@@ -23,7 +24,11 @@ export default function ManageWorkerCard({ worker, onDragStart, isMoved }: Manag
                     {/* 왼쪽: 이름 및 ID */}
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                         <div className="min-w-0 flex-1">
-                            <h4 className="font-semibold text-sm text-slate-800 leading-tight truncate">{worker.name}</h4>
+                            <WorkerHoverCard workerId={worker.userId}>
+                                <h4 className="font-semibold text-sm text-slate-800 leading-tight truncate hover:text-blue-600 transition-colors cursor-help inline-block">
+                                    {worker.name}
+                                </h4>
+                            </WorkerHoverCard>
                         </div>
                     </div>
 

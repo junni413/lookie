@@ -99,9 +99,13 @@ export default function AdminSidebar() {
 
 
 
+import { Play, Pause, Power, Coffee } from "lucide-react";
+
+// ... (previous imports)
+
 function AttendanceButton() {
     const user = useAuthStore((state) => state.user);
-    const [status, setStatus] = useState<'WORKING' | 'OFF_WORK'>('OFF_WORK');
+    const [status, setStatus] = useState<'WORKING' | 'PAUSED' | 'OFF_WORK'>('OFF_WORK');
     const [loading, setLoading] = useState(false);
 
     // Initial Status Check
@@ -115,23 +119,34 @@ function AttendanceButton() {
         checkStatus();
     }, [user?.userId]);
 
-    const toggleWorkStatus = async () => {
+    const handleAction = async (action: 'START' | 'PAUSE' | 'RESUME' | 'END') => {
         if (!user?.userId) return;
         setLoading(true);
         try {
-            if (status === 'OFF_WORK') {
-                await workLogService.startWork();
-                setStatus('WORKING');
-                alert("출근 처리가 완료되었습니다.");
-            } else {
-                await workLogService.endWork();
-                setStatus('OFF_WORK');
-                alert("퇴근 처리가 완료되었습니다.");
+            switch (action) {
+                case 'START':
+                    await workLogService.startWork();
+                    setStatus('WORKING');
+                    alert("출근 처리가 완료되었습니다.");
+                    break;
+                case 'PAUSE':
+                    await workLogService.pauseWork();
+                    setStatus('PAUSED');
+                    alert("휴식 상태로 변경되었습니다.");
+                    break;
+                case 'RESUME':
+                    await workLogService.resumeWork();
+                    setStatus('WORKING');
+                    alert("업무를 재개합니다.");
+                    break;
+                case 'END':
+                    if (confirm("정말로 퇴근하시겠습니까?")) {
+                        await workLogService.endWork();
+                        setStatus('OFF_WORK');
+                        alert("퇴근 처리가 완료되었습니다.");
+                    }
+                    break;
             }
-            // Re-verify status just in case (optional, but safer)
-            const current = await workLogService.getMyWorkStatus();
-            setStatus(current);
-
         } catch (error) {
             console.error("Attendance API failed:", error);
             alert("처리 중 오류가 발생했습니다.");
@@ -140,32 +155,82 @@ function AttendanceButton() {
         }
     };
 
+    if (status === 'OFF_WORK') {
+        return (
+            <button
+                onClick={() => handleAction('START')}
+                disabled={loading || !user}
+                className={cn(
+                    "w-full rounded-lg p-3 flex items-center gap-3 transition-all group border",
+                    "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-500",
+                    loading && "opacity-50 cursor-not-allowed"
+                )}
+            >
+                <div className="w-9 h-9 rounded-full bg-emerald-500/20 flex items-center justify-center transition-colors">
+                    <Briefcase size={16} />
+                </div>
+                <div className="flex-1 text-left">
+                    <div className="text-xs font-medium opacity-80">현재 퇴근 상태</div>
+                    <div className="text-sm font-bold">출근하기</div>
+                </div>
+            </button>
+        );
+    }
+
     return (
-        <button
-            onClick={toggleWorkStatus}
-            disabled={loading || !user}
-            className={cn(
-                "w-full rounded-lg p-3 flex items-center gap-3 transition-all group border",
-                status === 'WORKING' 
-                    ? "bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20 text-amber-500" 
-                    : "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-500",
-                loading && "opacity-50 cursor-not-allowed"
-            )}
-        >
+        <div className="space-y-2">
+            {/* 상태 표시 및 메인 액션 */}
             <div className={cn(
-                "w-9 h-9 rounded-full flex items-center justify-center transition-colors",
-                status === 'WORKING' ? "bg-amber-500/20" : "bg-emerald-500/20"
+                "w-full rounded-lg p-3 border flex flex-col gap-3",
+                status === 'WORKING' 
+                    ? "bg-amber-500/10 border-amber-500/20 text-amber-500" 
+                    : "bg-blue-500/10 border-blue-500/20 text-blue-500"
             )}>
-                {status === 'WORKING' ? <Clock size={16} /> : <Briefcase size={16} />}
-            </div>
-            <div className="flex-1 text-left">
-                <div className="text-xs font-medium opacity-80">
-                    {status === 'WORKING' ? "현재 업무 중" : "현재 휴식 중"}
+                <div className="flex items-center gap-3">
+                    <div className={cn(
+                        "w-9 h-9 rounded-full flex items-center justify-center",
+                        status === 'WORKING' ? "bg-amber-500/20" : "bg-blue-500/20"
+                    )}>
+                        {status === 'WORKING' ? <Clock size={16} /> : <Coffee size={16} />}
+                    </div>
+                    <div>
+                        <div className="text-xs font-medium opacity-80">
+                            {status === 'WORKING' ? "현재 업무 중" : "현재 휴식 중"}
+                        </div>
+                        <div className="text-sm font-bold">
+                            {status === 'WORKING' ? "열심히 일하는 중" : "잠시 충전 중"}
+                        </div>
+                    </div>
                 </div>
-                <div className="text-sm font-bold">
-                    {status === 'WORKING' ? "퇴근하기" : "출근하기"}
+
+                <div className="flex gap-2">
+                    {status === 'WORKING' ? (
+                        <button
+                            onClick={() => handleAction('PAUSE')}
+                            disabled={loading}
+                            className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-colors"
+                        >
+                            <Pause size={12} /> 휴식하기
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => handleAction('RESUME')}
+                            disabled={loading}
+                            className="flex-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-500 text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-colors"
+                        >
+                            <Play size={12} /> 업무재개
+                        </button>
+                    )}
+                    
+                    <button
+                        onClick={() => handleAction('END')}
+                        disabled={loading}
+                        className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-colors border border-red-500/20"
+                    >
+                        <Power size={12} /> 퇴근하기
+                    </button>
                 </div>
             </div>
-        </button>
+        </div>
     );
 }
