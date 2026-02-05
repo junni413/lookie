@@ -33,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import lookie.backend.domain.issue.dto.AdminDecision;
 
@@ -106,14 +107,83 @@ public class IssueService {
         taskItemService.markAsIssue(item.getBatchTaskItemId());
         log.info("[IssueService] TaskItem marked as ISSUE. itemId={}", item.getBatchTaskItemId());
 
-        // 6. AI 서버로 이미지 판정 요청 (비동기)
-        AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
-                issue.getIssueId(),
-                item.getProductId(),
-                request.getImageUrl());
-        aiAnalysisClient.requestAnalysis(aiRequest);
+        // 6. Response 먼저 반환 (트랜잭션 커밋됨)
+        IssueResponse response = IssueResponse.from(issue);
+        
+        // 7. AI 서버로 판정 요청 (트랜잭션 커밋 후)
+        // NOTE: 트랜잭션이 끝난 후 실행되도록 별도 메서드로 분리
+        Long issueIdForAi = issue.getIssueId();
+        requestAiAnalysisAfterCommit(issueIdForAi, item, request.getIssueType(), request.getImageUrl());
 
-        return IssueResponse.from(issue);
+        return response;
+    }
+    
+    /**
+     * AI 분석 요청 (트랜잭션 외부에서 실행)
+     * - 새로운 트랜잭션에서 실행되므로 createIssue()의 커밋 후 실행됨
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void requestAiAnalysisAfterCommit(Long issueId, TaskItemVO item, String issueType, String imageUrl) {
+        AiAnalysisRequest aiRequest = buildAiAnalysisRequest(issueId, item, issueType, imageUrl);
+        aiAnalysisClient.requestAnalysis(aiRequest);
+    }
+
+    /**
+     * 이슈 타입에 따라 적절한 AI 분석 요청 생성
+     * - DAMAGED: imageUrl 필수, inventoryState 불필요
+     * - OUT_OF_STOCK: imageUrl null, inventoryState 필수
+     */
+    private AiAnalysisRequest buildAiAnalysisRequest(
+            Long issueId,
+            TaskItemVO item,
+            String issueType,
+            String imageUrl) {
+        
+        // DAMAGED 케이스: 이미지만 전달
+        if ("DAMAGED".equals(issueType)) {
+            return AiAnalysisRequest.create(
+                    issueId,
+                    item.getProductId(),
+                    issueType,
+                    imageUrl,
+                    null);
+        }
+        
+        // OUT_OF_STOCK 케이스: 재고 상태 조회 및 전달
+        if ("OUT_OF_STOCK".equals(issueType)) {
+            // 재고 상태 조회
+            Map<String, Object> inventoryState = inventoryService.getInventoryState(
+                    item.getProductId(),
+                    item.getLocationId());
+            
+            // InventoryStateDto 생성
+            lookie.backend.infra.ai.dto.InventoryStateDto inventoryStateDto = 
+                    lookie.backend.infra.ai.dto.InventoryStateDto.builder()
+                    .availableQty((Integer) inventoryState.get("availableQty"))
+                    .damagedTempQty((Integer) inventoryState.get("damagedTempQty"))
+                    .scannedLocation(item.getLocationCode())
+                    .expectedLocation(item.getLocationCode())
+                    .lastEventType((String) inventoryState.get("lastEventType"))
+                    .build();
+            
+            log.info("[IssueService] OUT_OF_STOCK detected. inventoryState={}", inventoryStateDto);
+            
+            return AiAnalysisRequest.create(
+                    issueId,
+                    item.getProductId(),
+                    issueType,
+                    null, // OUT_OF_STOCK은 이미지 없음
+                    inventoryStateDto);
+        }
+        
+        // 기타 타입은 기본 처리 (DAMAGED 방식)
+        log.warn("[IssueService] Unknown issue type: {}. Using DAMAGED default.", issueType);
+        return AiAnalysisRequest.create(
+                issueId,
+                item.getProductId(),
+                issueType,
+                imageUrl,
+                null);
     }
 
     /**

@@ -139,26 +139,34 @@ class OOSService:
         damaged_temp = inventory_state.get("damagedTempQty", 0)
         scanned_loc = inventory_state.get("scannedLocation")
         expected_loc = inventory_state.get("expectedLocation")
+        last_event_type = inventory_state.get("lastEventType")
         
-        # 1순위: 재고 있음 (유령 재고 / 전산 오류)
-        if available > 0:
-            return "GHOST_STOCK", \
-                   f"전산상 가용 재고 {available}개 존재. 분실 또는 위치 오류 의심.", \
-                   {"availableQty": available, "damagedTempQty": damaged_temp}
-        
-        # 2순위: 위치 불일치 (다른 지번에 있음)
+        # 1순위: 위치 불일치 (다른 지번에 있음)
         if scanned_loc and expected_loc and scanned_loc != expected_loc:
             return "LOCATION_UPDATED", \
                    f"상품이 {scanned_loc}에서 발견됨 (기존: {expected_loc}).", \
                    {"scannedLocation": scanned_loc, "expectedLocation": expected_loc}
         
-        # 3순위: 파손 처리 중
+        # 2순위: 원복 대기 중 (REVERT_DAMAGED 이벤트 발생)
+        # 원복 중에는 availableQty가 증가할 수 있으므로 재고 체크보다 먼저 판단
+        if last_event_type == "REVERT_DAMAGED":
+            return "WAITING_RETURN", \
+                   f"파손 원복 처리가 진행 중입니다. 잠시 후 재고가 복구됩니다.", \
+                   {"lastEventType": last_event_type, "availableQty": available}
+        
+        # 3순위: 재고 있음 (유령 재고 / 전산 오류)
+        if available > 0:
+            return "GHOST_STOCK", \
+                   f"전산상 가용 재고 {available}개 존재. 분실 또는 위치 오류 의심.", \
+                   {"availableQty": available, "damagedTempQty": damaged_temp}
+        
+        # 4순위: 파손 처리 중
         if damaged_temp > 0:
             return "PENDING_DAMAGED", \
                    f"파손 처리 중인 재고 {damaged_temp}개 존재.", \
                    {"damagedTempQty": damaged_temp}
         
-        # 4순위: 진짜 품절 (모든 재고 0)
+        # 5순위: 진짜 품절 (모든 재고 0)
         if available <= 0 and damaged_temp <= 0:
             return "REAL_OOS", \
                    "가용 재고가 없습니다. 품절 상태입니다.", \
@@ -169,10 +177,11 @@ class OOSService:
     def _map_decision_to_reason_code(self, decision: str) -> str:
         """decision을 백엔드 계약의 reasonCode로 매핑"""
         mapping = {
-            "GHOST_STOCK": "STOCK_EXISTS",
-            "LOCATION_UPDATED": "MOVE_LOCATION",
-            "PENDING_DAMAGED": "DAMAGED",
-            "REAL_OOS": "SOLD_OUT",
+            "GHOST_STOCK": "STOCK_EXISTS",      # 유령 재고 → 전산 오류
+            "LOCATION_UPDATED": "MOVE_LOCATION", # 지번 이동
+            "WAITING_RETURN": "WAITING_RETURN",  # 원복 대기 중
+            "PENDING_DAMAGED": "DAMAGED",        # 파손 처리 중
+            "REAL_OOS": "UNKNOWN",               # 진짜 품절 (원인 불명)
             "UNKNOWN": "UNKNOWN"
         }
         return mapping.get(decision, "UNKNOWN")

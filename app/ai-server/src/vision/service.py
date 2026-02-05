@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import httpx
+from typing import Optional
 from ultralytics import YOLO
 from PIL import Image, UnidentifiedImageError
 from src.core.config import BACKEND_URL, PRODUCT_CONFIG, GATE_MODEL_PATH
@@ -167,7 +168,7 @@ class VisionService:
 
     async def run_inference_from_url(
         self, 
-        image_url: str, 
+        image_url: Optional[str],  # DAMAGED: 필수, OUT_OF_STOCK: None 허용
         product_id: int, 
         issue_id: int,
         issue_type: str = "DAMAGED",

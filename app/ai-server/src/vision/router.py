@@ -15,7 +15,7 @@ class InventoryState(BaseModel):
     expectedLocation: Optional[str] = None  # 시스템에 등록된 위치
 
 class PredictRequest(BaseModel):
-    imageUrl: str
+    imageUrl: Optional[str] = None  # DAMAGED: 필수, OUT_OF_STOCK: null 허용
     productId: int
     issueId: int
     issueType: Optional[str] = "DAMAGED"  # 기본값: DAMAGED
