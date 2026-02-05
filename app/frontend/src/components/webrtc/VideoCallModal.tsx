@@ -17,7 +17,7 @@ import UserVideoComponent from "./UserVideoComponent";
 
 export default function VideoCallModal() {
     const status = useCallStore((state) => state.status);
-    const remoteUserName = useCallStore((state) => state.remoteUserName);
+
     const cancelCall = useCallStore((state) => state.cancelCall);
     const endCall = useCallStore((state) => state.endCall);
 
@@ -27,18 +27,17 @@ export default function VideoCallModal() {
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-all duration-300">
+            <div className="relative bg-white/90 backdrop-blur-xl rounded-[2rem] shadow-2xl w-[420px] overflow-hidden border border-white/50 ring-1 ring-black/5">
                 {/* 상태별 UI */}
                 {status === "WAITING" && (
                     <WaitingView
-                        userName={remoteUserName || "작업자"}
                         onCancel={() => cancelCall("MISTAKE")}
                     />
                 )}
 
                 {status === "INCOMING" && (
-                    <IncomingView userName={remoteUserName || "관리자"} />
+                    <IncomingView />
                 )}
 
                 {status === "ACTIVE" && (
@@ -55,46 +54,44 @@ export default function VideoCallModal() {
  * 발신 대기 중 (WAITING)
  */
 function WaitingView({
-    userName,
     onCancel,
 }: {
-    userName: string;
     onCancel: () => void;
 }) {
     return (
-        <div className="p-8 text-center">
-            <div className="w-24 h-24 mx-auto mb-6 bg-emerald-100 rounded-full flex items-center justify-center animate-pulse">
-                <Phone className="w-12 h-12 text-emerald-600" />
+        <div className="relative h-full p-10 flex flex-col items-center justify-center overflow-hidden">
+            {/* Background Decor */}
+            <div className="absolute inset-0 bg-white/50" />
+            
+            {/* Ripple Animation */}
+            <div className="relative mb-12">
+                <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping opacity-20 duration-1000"></div>
+                <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping delay-150 opacity-10 duration-[1500ms]"></div>
+                <div className="relative w-32 h-32 bg-white rounded-full flex items-center justify-center shadow-2xl z-10 p-1">
+                    <div className="w-full h-full bg-slate-50 rounded-full flex items-center justify-center border border-slate-100">
+                        <Phone className="w-12 h-12 text-[#304FFF] fill-current" />
+                    </div>
+                </div>
             </div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">
-                {userName}에게 전화 거는 중...
-            </h2>
-            <p className="text-slate-500 mb-8">상대방이 응답하기를 기다리고 있습니다.</p>
+            
+            <div className="relative z-10 text-center w-full">
+                <h2 className="text-2xl font-bold text-slate-800 mb-2 tracking-tight">
+                    전화 연결 중...
+                </h2>
+                <p className="text-slate-500 text-sm font-medium mb-12">
+                    상대방의 응답을 기다리고 있습니다
+                </p>
 
-            <Button
-                variant="outline"
-                size="lg"
-                onClick={onCancel}
-                className="w-full border-red-200 text-red-600 hover:bg-red-50"
-            >
-                <X className="w-5 h-5 mr-2" />
-                취소
-            </Button>
-
-            {/* DEV ONLY: Test Button */}
-            {import.meta.env.DEV && (
                 <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-4 text-xs text-slate-400 hover:text-emerald-600"
-                    onClick={async () => {
-                        const { callId } = useCallStore.getState();
-                        if (callId) await useCallStore.getState().acceptCall(); // This logic is wrong for caller, see my thought
-                    }}
+                    variant="outline"
+                    size="lg"
+                    onClick={onCancel}
+                    className="w-full max-w-[200px] h-14 rounded-full border-slate-200 text-slate-600 hover:bg-[#304FFF]/5 hover:text-[#304FFF] hover:border-[#304FFF]/30 shadow-sm transition-all text-base font-semibold mx-auto flex items-center justify-center gap-2"
                 >
-                    (TEST) 강제 수락 (Callee Simulation)
+                    <X className="w-5 h-5" />
+                    취소하기
                 </Button>
-            )}
+            </div>
         </div>
     );
 }
@@ -102,36 +99,42 @@ function WaitingView({
 /**
  * 수신 중 (INCOMING)
  */
-function IncomingView({ userName }: { userName: string }) {
+function IncomingView() {
     const acceptCall = useCallStore((state) => state.acceptCall);
     const rejectCall = useCallStore((state) => state.rejectCall);
 
     return (
-        <div className="p-8 text-center">
-            <div className="w-24 h-24 mx-auto mb-6 bg-blue-100 rounded-full flex items-center justify-center animate-bounce">
-                <Phone className="w-12 h-12 text-blue-600" />
+        <div className="p-10 text-center flex flex-col items-center bg-gradient-to-b from-white to-[#304FFF]/5">
+            <div className="relative w-32 h-32 mb-8">
+                <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping opacity-20"></div>
+                <div className="relative w-full h-full bg-white rounded-full flex items-center justify-center border-4 border-[#304FFF]/10 shadow-2xl">
+                    <div className="w-24 h-24 bg-[#304FFF] rounded-full flex items-center justify-center animate-pulse shadow-lg shadow-[#304FFF]/30">
+                        <Phone className="w-10 h-10 text-white fill-current" />
+                    </div>
+                </div>
             </div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">
-                {userName}님의 전화
-            </h2>
-            <p className="text-slate-500 mb-8">화상 통화 요청이 왔습니다.</p>
 
-            <div className="flex gap-3">
+            <span className="inline-block px-3 py-1 bg-[#304FFF]/10 text-[#304FFF] text-xs font-bold rounded-full mb-3 tracking-wide">
+                INCOMING CALL
+            </span>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">
+                화상 전화 요청
+            </h2>
+            <p className="text-slate-500 text-sm mb-12">
+                영상 통화 요청이 들어왔습니다
+            </p>
+
+            <div className="flex gap-6 w-full px-4">
                 <Button
-                    variant="outline"
-                    size="lg"
                     onClick={() => rejectCall()}
-                    className="flex-1 border-red-200 text-red-600 hover:bg-red-50"
+                    className="flex-1 h-14 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-100 shadow-sm transition-all text-base font-semibold"
                 >
-                    <PhoneOff className="w-5 h-5 mr-2" />
                     거절
                 </Button>
                 <Button
-                    size="lg"
                     onClick={() => acceptCall()}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    className="flex-1 h-14 rounded-2xl bg-[#304FFF] hover:bg-[#304FFF]/90 text-white shadow-lg shadow-[#304FFF]/30 hover:shadow-xl transition-all text-base font-semibold"
                 >
-                    <Phone className="w-5 h-5 mr-2" />
                     수락
                 </Button>
             </div>
@@ -153,14 +156,6 @@ function ActiveView({
     const [isMicOn, setIsMicOn] = useState(true);
     const [isCamOn, setIsCamOn] = useState(true);
 
-    // LiveKit Room URL (일단 하드코딩 또는 환경변수 처리 필요)
-    // 보통 백엔드에서 토큰과 함께 주거나, 환경변수로 관리
-    // 임시로 로컬 LiveKit 서버 주소 사용 (확인 필요) 혹은 토큰에 임베딩됨?
-    // LiveKit client connect 시 url 필요함.
-    // 백엔드에서 토큰 줄 때 url도 같이 주는지 확인 필요하지만, 보통 별도 설정.
-    // 여기서는 window.location.hostname 기반으로 추론하거나 하드코딩.
-    // LiveKit Room URL
-    // application.properties: livekit.url=${LIVEKIT_URL:wss://lookie-of5j44vq.livekit.cloud}
     const [liveKitUrl] = useState(import.meta.env.VITE_LIVEKIT_URL || "wss://lookie-of5j44vq.livekit.cloud");
 
     // LiveKit Room 연결 (커스텀 훅 사용)
@@ -196,59 +191,63 @@ function ActiveView({
     };
 
     return (
-        <div className="relative w-full h-[600px] bg-slate-900 flex flex-col">
-            {/* Main Video Area */}
-            <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4 gap-4">
+        <div className="relative w-full h-[640px] bg-slate-900 flex flex-col group">
+            {/* Header Gradient */}
+            <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-black/60 to-transparent z-10 pointer-events-none" />
 
+            {/* Main Video Area */}
+            <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-zinc-900">
                 {/* Remote Video (Large) */}
                 {remoteTrack ? (
-                    <div className="w-full h-full flex-1">
+                    <div className="w-full h-full">
                         <UserVideoComponent track={remoteTrack} participant={remoteParticipant} />
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-white/50 animate-pulse">
-                        <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-4">
-                            <Phone className="w-10 h-10" />
+                    <div className="flex flex-col items-center justify-center text-white/40 animate-pulse">
+                        <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mb-6">
+                            <Phone className="w-10 h-10 opacity-50" />
                         </div>
-                        <p>{remoteParticipant ? "상대방 카메라 꺼짐" : "상대방 연결 대기 중..."}</p>
+                        <p className="font-medium">상대방 연결 대기 중...</p>
                     </div>
                 )}
 
-                {/* Local Video (PIP) */}
+                {/* Local Video (PIP) - Draggable feel with shadow */}
                 {localTrack && (
-                    <div className="absolute bottom-6 right-6 w-48 h-36 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl bg-black">
+                    <div className="absolute top-6 right-6 w-36 h-48 rounded-xl overflow-hidden shadow-2xl border border-white/10 bg-zinc-800 z-20">
                         <UserVideoComponent track={localTrack} isLocal={true} />
                     </div>
                 )}
             </div>
 
-            {/* Controls */}
-            <div className="h-20 bg-slate-800/80 backdrop-blur flex items-center justify-center gap-6 z-10">
-                <Button
-                    size="icon"
-                    variant={isMicOn ? "secondary" : "destructive"}
-                    className="rounded-full w-12 h-12"
-                    onClick={toggleMic}
-                >
-                    {isMicOn ? <Mic /> : <MicOff />}
-                </Button>
+            {/* Controls Bar - Floating Style */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 z-30">
+                <div className="flex items-center gap-2 px-2 py-2 bg-black/40 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl">
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        className={`w-12 h-12 rounded-full transition-all ${isMicOn ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-red-500/20 text-red-500 hover:bg-red-500/30'}`}
+                        onClick={toggleMic}
+                    >
+                        {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+                    </Button>
 
-                <Button
-                    size="icon"
-                    className="rounded-full w-14 h-14 bg-red-600 hover:bg-red-700 text-white"
-                    onClick={onEnd}
-                >
-                    <PhoneOff className="w-6 h-6" />
-                </Button>
+                    <Button
+                        size="icon"
+                        className="w-16 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white mx-2 shadow-lg shadow-red-500/20"
+                        onClick={onEnd}
+                    >
+                        <PhoneOff className="w-6 h-6" />
+                    </Button>
 
-                <Button
-                    size="icon"
-                    variant={isCamOn ? "secondary" : "destructive"}
-                    className="rounded-full w-12 h-12"
-                    onClick={toggleCam}
-                >
-                    {isCamOn ? <Video /> : <VideoOff />}
-                </Button>
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        className={`w-12 h-12 rounded-full transition-all ${isCamOn ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-red-500/20 text-red-500 hover:bg-red-500/30'}`}
+                        onClick={toggleCam}
+                    >
+                        {isCamOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+                    </Button>
+                </div>
             </div>
         </div>
     );

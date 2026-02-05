@@ -9,6 +9,7 @@ import { useCallStore } from "@/stores/callStore";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/utils/cn";
+import { timeAgo } from "@/utils/format";
 
 interface IssueDetailProps {
     issueId: number;
@@ -126,23 +127,35 @@ export default function IssueDetail({ issueId, onUpdate, onClose, initialWorkerI
         <Card className="h-full border-l-0 rounded-l-none shadow-none md:border-l md:rounded-l-xl md:shadow-sm flex flex-col overflow-hidden">
             <CardContent className="p-0 h-full flex flex-col">
                 {/* Header */}
-                <div className="flex items-start justify-between p-6 border-b bg-card z-10">
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <h2 className="text-2xl font-bold">이슈 상세</h2>
-                            {isResolved && <Badge variant="secondary">완료</Badge>}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                            ID: {issue.issueId} • 유형: {issueType}
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 border-b bg-card z-10 h-14 min-h-[3.5rem]">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                        {/* Type Badge */}
+                        <span className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold border shrink-0",
+                            issueType === "OUT_OF_STOCK" 
+                                ? "bg-indigo-50 text-indigo-700 border-indigo-100"
+                                : "bg-rose-50 text-rose-700 border-rose-200"
+                        )}>
+                            {issueType === "OUT_OF_STOCK" ? "재고" : "파손"}
+                        </span>
+                        
+                        {/* Info */}
+                        <div className="flex flex-col min-w-0">
+                            <span className="text-xs font-bold text-slate-700 truncate">
+                                {issue.productName || "상품정보 없음"}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                                {issue.createdAt ? timeAgo(issue.createdAt) : "-"}
+                            </span>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Badge variant={issueType === "OUT_OF_STOCK" ? "destructive" : "default"}>
-                            {issueType === "OUT_OF_STOCK" ? "재고 부족" : "파손 감지"}
-                        </Badge>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                        {isResolved && <Badge variant="secondary" className="text-[10px] h-5 px-1.5 mr-1">완료</Badge>}
                         {onClose && (
-                            <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 ml-2">
-                                <X className="h-4 w-4" />
+                            <Button variant="ghost" size="icon" onClick={onClose} className="h-7 w-7">
+                                <X className="h-3.5 w-3.5" />
                             </Button>
                         )}
                     </div>
@@ -150,8 +163,9 @@ export default function IssueDetail({ issueId, onUpdate, onClose, initialWorkerI
 
                 <div className="flex-1 overflow-y-auto p-6">
                     {/* Image Area */}
+                    {/* Image Area */}
                     <div className="flex flex-col gap-3 mb-6">
-                        <div className="relative aspect-video w-full bg-muted rounded-xl overflow-hidden group shadow-sm border">
+                        <div className="relative aspect-square w-4/5 mx-auto bg-slate-50 rounded-xl overflow-hidden group shadow-sm border border-slate-100">
                             {activeImage ? (
                                 <img 
                                     src={activeImage} 
@@ -159,15 +173,17 @@ export default function IssueDetail({ issueId, onUpdate, onClose, initialWorkerI
                                     className="w-full h-full object-cover" 
                                 />
                             ) : (
-                                <div className="flex items-center justify-center h-full text-muted-foreground flex-col gap-2">
-                                    <span>이미지 없음</span>
-                                    <span className="text-xs text-gray-400">(백엔드 데이터 없음)</span>
+                                <div className="flex items-center justify-center h-full text-muted-foreground flex-col gap-2 p-6 text-center">
+                                    <span className="font-medium text-slate-400">이미지가 등록되지 않았습니다</span>
+                                    <span className="text-xs text-slate-300">
+                                        재고 부족 등 현장 상황에 따라<br/>이미지가 첨부되지 않을 수 있습니다.
+                                    </span>
                                 </div>
                             )}
 
                             {/* Overlay info */}
                             <div className="absolute top-4 right-4 bg-black/60 text-white px-3 py-1 rounded-full text-xs backdrop-blur-sm font-medium">
-                                긴급도: {issue.urgency}
+                                긴급도: {issue.urgency <= 2 ? "HIGH" : issue.urgency === 3 ? "MID" : "LOW"}
                             </div>
                         </div>
 
@@ -195,7 +211,7 @@ export default function IssueDetail({ issueId, onUpdate, onClose, initialWorkerI
                         <div className="mb-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                             <div className="text-sm font-semibold text-blue-800 mb-1">AI 분석 결과 ({issue.aiResult})</div>
                             <div className="text-sm text-blue-600">
-                                {issue.summary || "특이사항 없음"} (신뢰도: {(issue.confidence || 0) * 100}%)
+                                {issue.summary || "특이사항 없음"}
                             </div>
                         </div>
                     )}
@@ -210,12 +226,6 @@ export default function IssueDetail({ issueId, onUpdate, onClose, initialWorkerI
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {issueType === "DAMAGED" && (
-                                    <div className="flex items-center justify-center gap-2 p-3 bg-red-100 text-red-700 rounded-lg text-sm font-semibold">
-                                        ⚠️ 상품 파손이 감지되었습니다
-                                    </div>
-                                )}
-
                                 <div className="grid grid-cols-2 gap-4">
                                     <Button
                                         size="lg"
