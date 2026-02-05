@@ -49,6 +49,8 @@ class IssueServiceTest {
     private AiAnalysisClient aiAnalysisClient;
     @Mock
     private SimpMessagingTemplate messagingTemplate;
+    @Mock
+    private lookie.backend.domain.inventory.service.InventoryService inventoryService;
 
     @InjectMocks
     private IssueService issueService;
@@ -132,6 +134,8 @@ class IssueServiceTest {
         Long workerId = 1L;
         Long taskId = 100L;
         Long itemId = 200L;
+        Long productId = 1000L;
+        Long locationId = 100L;
 
         CreateIssueRequest request = new CreateIssueRequest();
         request.setBatchTaskId(taskId);
@@ -142,14 +146,23 @@ class IssueServiceTest {
         TaskItemVO item = new TaskItemVO();
         item.setBatchTaskItemId(itemId);
         item.setBatchTaskId(taskId);
+        item.setProductId(productId);
+        item.setLocationId(locationId);
+        item.setLocationCode("A-01-01");
         item.setStatus("PENDING");
 
         TaskVO task = new TaskVO();
         task.setBatchTaskId(taskId);
         task.setWorkerId(workerId);
 
+        // Mock: InventoryService.getInventoryState() 호출 시 재고 상태 반환
+        java.util.Map<String, Object> inventoryState = new java.util.HashMap<>();
+        inventoryState.put("availableQty", 0);
+        inventoryState.put("damagedTempQty", 1);
+
         when(taskItemService.getTaskItem(itemId)).thenReturn(item);
         when(taskMapper.findById(taskId)).thenReturn(task);
+        when(inventoryService.getInventoryState(productId, locationId)).thenReturn(inventoryState);
 
         // when
         IssueResponse response = issueService.createIssue(workerId, request);
@@ -157,10 +170,13 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
         ArgumentCaptor<IssueVO> issueCaptor = ArgumentCaptor.forClass(IssueVO.class);
-        verify(issueMapper).insertIssue(issueCaptor.capture()); // 누락된 캡처 코드 복구
+        verify(issueMapper).insertIssue(issueCaptor.capture());
         assertEquals("OUT_OF_STOCK", issueCaptor.getValue().getIssueType());
 
-        // AI 분석 요청 검증 추가
+        // InventoryService 호출 검증
+        verify(inventoryService).getInventoryState(productId, locationId);
+
+        // AI 분석 요청 검증
         verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
     }
 
