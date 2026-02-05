@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { issueService } from "@/services/issueService";
 import type { AdminIssueSummary, IssueStatus } from "@/types/issue";
@@ -10,10 +11,15 @@ import { cn } from "@/utils/cn";
 import { ChevronRight, ChevronLeft, RefreshCcw } from "lucide-react";
 
 export default function Issue() {
+    const [searchParams] = useSearchParams();
     // State
     const [currentTab, setCurrentTab] = useState<IssueStatus>("OPEN");
     const [issues, setIssues] = useState<AdminIssueSummary[]>([]);
-    const [selectedId, setSelectedId] = useState<number | null>(null);
+    // Initialize selectedId from URL if present
+    const [selectedId, setSelectedId] = useState<number | null>(() => {
+        const qId = searchParams.get("issueId");
+        return qId ? parseInt(qId) : null;
+    });
     const [loading, setLoading] = useState(false);
 
     // Pagination
@@ -26,8 +32,14 @@ export default function Issue() {
 
     useEffect(() => {
         isMountedRef.current = true;
+        // Also update selectedId if URL changes while mounted (optional, but good for deeplinks)
+        const qId = searchParams.get("issueId");
+        if (qId) {
+            const pId = parseInt(qId);
+            if (!isNaN(pId)) setSelectedId(pId);
+        }
         return () => { isMountedRef.current = false; };
-    }, []);
+    }, [searchParams]);
 
     // Fetch Issues
     const fetchIssues = useCallback(async () => {

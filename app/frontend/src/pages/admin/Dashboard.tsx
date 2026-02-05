@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import StatusCard from "./components/dashboard/StatusCard";
 import ZoneGrid from "./components/dashboard/ZoneGrid";
@@ -14,6 +15,7 @@ import { DEFAULT_ZONES, mergeZoneData } from "@/utils/zoneUtils";
 type SortKey = "TIME" | "PRIORITY";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [issues, setIssues] = useState<AdminIssueSummary[]>([]);
   const [zoneData, setZoneData] = useState<ZoneItem[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("TIME");
@@ -45,9 +47,6 @@ export default function Dashboard() {
       // 2. Zone Stats
       if (zonesResult.status === "fulfilled") {
           const mergedZones = mergeZoneData(zonesResult.value);
-          // Convert ZoneStat (Shared) to ZoneItem (Dashboard specific) if needed
-          // Actually mergedZones is ZoneStat[], but ZoneItem has 'id' instead of 'zoneId' and 'working' instead of 'workerCount'
-          // We map it here
           setZoneData(mergedZones.map(z => ({
               id: z.zoneId,
               name: z.name,
@@ -57,7 +56,6 @@ export default function Dashboard() {
           })));
       } else {
         console.error("Failed to load zone stats, using defaults", zonesResult.reason);
-        // Map DEFAULT_ZONES from ZoneStat to ZoneItem
         setZoneData(DEFAULT_ZONES.map(z => ({
               id: z.zoneId,
               name: z.name,
@@ -90,9 +88,6 @@ export default function Dashboard() {
   }, [issues, sortKey]);
 
   return (
-    // Global Container: strict h-full to fit parent, no overflow on body
-    // 🔒 LOCKED LAYOUT: The container structure and Grid Split (50/50) are FIXED. Do not modify layout sizing.
-    // SPACING UPDATE: Red (Top/Left 30px) > Blue (Right/Bottom 24px)
     <div className="flex flex-col h-full bg-[#f8f9fc] overflow-hidden relative">
       <AdminPageHeader
         title="통합 대시보드"
@@ -100,13 +95,14 @@ export default function Dashboard() {
         className="pb-0"
       />
 
-      {/* Top Section: Tight Packing (pb-5 ensures gap to bottom section) */}
+      {/* Top Section */}
       <div className="shrink-0 pt-6 pr-6 pb-5 pl-[30px]">
         <section className="grid grid-cols-4 gap-3">
           <StatusCard
             title="작업중인 작업자"
             value={summary.working}
             icon={Users}
+            onClick={() => navigate('/admin/manage')}
           />
           <StatusCard
             title="대기중인 전체 이슈"
@@ -126,22 +122,25 @@ export default function Dashboard() {
         </section>
       </div>
 
-      {/* Bottom Section: Fills remaining height, strict internal scroll, Flex Layout (Zone Expanded, Issue Fixed) */}
+      {/* Bottom Section */}
       <div className="flex-1 min-h-0 flex gap-5 items-stretch pr-6 pb-6">
 
-        {/* Left: Zone Cards (Grid) - Takes remaining width */}
+        {/* Left: Zone Cards (Grid) */}
         <div className="flex-1 flex flex-col min-h-0 relative h-[calc(100%+20px)] -mt-5">
           <div className="absolute inset-0 pl-[30px] pr-1 pt-5">
-            <ZoneGrid zones={zoneData} />
+            <ZoneGrid 
+                zones={zoneData} 
+                onZoneClick={(id) => navigate(`/admin/map?zoneId=${id}`)}
+            />
           </div>
         </div>
 
-        {/* Right: Issue List (Card) - Fixed Width Restored */}
+        {/* Right: Issue List (Card) */}
         <div className="w-[400px] shrink-0 flex flex-col bg-white rounded-xl shadow-sm overflow-hidden h-full border border-slate-100/50">
           <div className="px-5 pt-4 pb-2 flex justify-between items-center shrink-0">
             <h3 className="text-base font-bold text-slate-900">승인 요청 목록</h3>
 
-            {/* Minimal Text Sort Controls */}
+            {/* Sort Controls */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSortKey("TIME")}
@@ -155,7 +154,6 @@ export default function Dashboard() {
                 시간순
               </button>
 
-              {/* Divider */}
               <div className="h-2.5 w-px bg-slate-200" />
 
               <button
@@ -163,7 +161,7 @@ export default function Dashboard() {
                 className={cn(
                   "text-[11px] font-semibold transition-colors cursor-pointer",
                   sortKey === "PRIORITY"
-                    ? "text-slate-900" // Highlighted
+                    ? "text-slate-900"
                     : "text-slate-400 hover:text-slate-600"
                 )}
               >
@@ -174,14 +172,17 @@ export default function Dashboard() {
 
           {/* List Area */}
           <div className="flex-1 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1">
-            <IssueList issues={sortedIssues} />
+            <IssueList 
+                issues={sortedIssues} 
+                onSelect={(id) => navigate(`/admin/issue?issueId=${id}`)}
+            />
           </div>
 
           {/* Footer: See All Button */}
           <div className="p-4">
             <button
               className="w-full py-3 rounded-full border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-              onClick={() => window.location.href = '/admin/issue'} // Simple navigation for now
+              onClick={() => navigate('/admin/issue')}
             >
               전체 이슈 확인하기
             </button>
@@ -189,7 +190,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 스크롤바 숨김 스타일 */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 0px;

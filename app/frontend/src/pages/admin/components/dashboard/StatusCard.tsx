@@ -1,19 +1,27 @@
 import { Card } from "@/components/ui/card";
-
+import { cn } from "@/utils/cn";
 import type { LucideIcon } from "lucide-react";
 
 export default function StatusCard({
   title,
   value,
   icon: Icon,
+  onClick, // Link handler
 }: {
   title: string;
   value: string | number;
   icon: LucideIcon;
+  onClick?: () => void;
 }) {
 
   return (
-    <Card className="border-0 shadow-sm hover:shadow-md transition-all duration-300 rounded-xl bg-white cursor-pointer h-full group ring-1 ring-slate-100/80 relative overflow-hidden">
+    <Card 
+        onClick={onClick}
+        className={cn(
+            "border-0 shadow-sm hover:shadow-md transition-all duration-300 rounded-xl bg-white h-full group ring-1 ring-slate-100/80 relative overflow-hidden",
+            onClick ? "cursor-pointer" : ""
+        )}
+    >
       <div className="px-8 py-12 flex items-center h-full">
 
         {/* Left: Circular Icon */}

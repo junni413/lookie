@@ -1,4 +1,4 @@
-import { cn } from "@/utils/cn";
+
 
 /**
  * 긴급도에 따른 배지 스타일 및 텍스트 반환
