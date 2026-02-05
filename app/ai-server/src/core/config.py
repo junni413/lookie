@@ -31,21 +31,16 @@ PRODUCT_CONFIG = {
         "gate_class_id": 46,
         "model_path": "model/best.onnx"
     },
+    2001: {
+        "target_name": "banana",
+        "gate_class_id": 46,
+        "model_path": "model/best.onnx"
+    },
     # 나중에 사과(47) 추가 시 여기에 작성
 }
 
 # 공통 모델 경로
 GATE_MODEL_PATH = "model/yolov8n.onnx"
-
-# [추가] DB 설정
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "host.docker.internal"),
-    "user": os.getenv("DB_USER", "root"),
-    "password": get_required_env("DB_PASSWORD"), # 필수!
-    "db": get_required_env("DB_NAME"), # 필수!
-    "charset": "utf8mb4",
-    "cursorclass": "DictCursor" # 중요: 결과를 딕셔너리로 받음
-}
 
 # [수정] GMS (SSAFY AI) 설정
 # OpenAI 공식 키 대신 GMS 키를 사용

@@ -43,6 +43,7 @@ interface AdminListResponseItem {
     assignedZoneId: number | null;
     zoneName: string;
     currentStatus: string;
+    status: string; // [NEW] UserVO status (ONLINE, BUSY, etc.)
 }
 
 // API Params
@@ -149,7 +150,8 @@ export async function getAdmins(token: string, params?: AdminListParams): Promis
         // AdminContact Specific
         assignedZoneId: item.assignedZoneId, // DB_User field
         assignedZone: item.zoneName === 'UNKNOWN' ? undefined : item.zoneName, // UI Display
-        isOnline: true, // Always allow call (Requested)
+        isOnline: item.status === 'ONLINE', // Map from new status field
+        status: item.status, // Real-time status
     })) as AdminContact[];
 }
 

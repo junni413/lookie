@@ -86,7 +86,7 @@ export default function IssueTable({
 
 
                             {/* WORKER INFO */}
-                            <TableHead>{tab === "OPEN" ? "작업자" : "작업자 ID"}</TableHead>
+                            <TableHead>작업자</TableHead>
 
                             {/* COMMON: Product / Zone */}
                             <TableHead>상품 (위치)</TableHead>
@@ -150,12 +150,9 @@ export default function IssueTable({
 
                                     {/* Worker Info */}
                                     <TableCell className="text-xs">
-                                        {tab === "OPEN" ? (
-                                            <div>
-                                                <div className="font-bold">{issue.workerName}</div>
-                                            </div>
-                                        ) : (
-                                            <div className="font-mono text-gray-600">ID: {issue.workerId}</div>
+                                        <div className="font-bold">{issue.workerName || "알 수 없음"}</div>
+                                        {issue.workerId && (
+                                            <div className="text-[10px] text-gray-400 font-mono">ID: {issue.workerId}</div>
                                         )}
                                     </TableCell>
 

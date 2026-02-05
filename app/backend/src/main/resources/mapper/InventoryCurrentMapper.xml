@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="lookie.backend.domain.inventory.mapper.InventoryCurrentMapper">
+
+    <!-- 현재 재고 조회 -->
+    <select id="selectCurrent" resultType="InventoryCurrentVO">
+        SELECT
+            product_id AS productId,
+            location_id AS locationId,
+            available_qty AS availableQty,
+            damaged_temp_qty AS damagedTempQty,
+            last_event_id AS lastEventId,
+            last_event_type AS lastEventType,
+            updated_at AS updatedAt,
+            updated_by AS updatedBy
+        FROM inventory_current
+        WHERE product_id = #{productId}
+          AND location_id = #{locationId}
+    </select>
+
+    <!-- 현재 재고 초기 생성 -->
+    <insert id="insert">
+        INSERT INTO inventory_current (
+            product_id,
+            location_id,
+            available_qty,
+            damaged_temp_qty,
+            last_event_id,
+            last_event_type,
+            updated_by
+        ) VALUES (
+            #{productId},
+            #{locationId},
+            #{availableQty},
+            #{damagedTempQty},
+            #{lastEventId},
+            #{lastEventType},
+            #{updatedBy}
+        )
+    </insert>
+
+    <!-- 이벤트 적용하여 재고 업데이트 -->
+    <update id="applyEvent">
+        UPDATE inventory_current
+        SET
+            available_qty = CASE
+                WHEN #{eventType} = 'PICK_NORMAL' THEN available_qty + #{quantityChange}
+                WHEN #{eventType} = 'PICK_DAMAGED_TEMP' THEN available_qty + #{quantityChange}
+                WHEN #{eventType} = 'REVERT_DAMAGED' THEN available_qty + #{quantityChange}
+                ELSE available_qty
+            END,
+            damaged_temp_qty = CASE
+                WHEN #{eventType} = 'PICK_DAMAGED_TEMP' THEN damaged_temp_qty - #{quantityChange}
+                WHEN #{eventType} = 'REVERT_DAMAGED' THEN damaged_temp_qty + #{quantityChange}
+                ELSE damaged_temp_qty
+            END,
+            last_event_id = #{eventId},
+            last_event_type = #{eventType},
+            updated_by = #{updatedBy}
+        WHERE product_id = #{productId}
+          AND location_id = #{locationId}
+          AND (last_event_id IS NULL OR last_event_id &lt; #{eventId})
+    </update>
+
+    <!-- 전체 재고 목록 조회 (페이징) -->
+    <select id="selectAll" resultType="InventoryCurrentVO">
+        SELECT
+            product_id AS productId,
+            location_id AS locationId,
+            available_qty AS availableQty,
+            damaged_temp_qty AS damagedTempQty,
+            last_event_id AS lastEventId,
+            last_event_type AS lastEventType,
+            updated_at AS updatedAt,
+            updated_by AS updatedBy
+        FROM inventory_current
+        ORDER BY product_id, location_id
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

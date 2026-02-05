@@ -2,6 +2,7 @@ package lookie.backend.domain.issue.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.inventory.service.InventoryService;
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
 import lookie.backend.infra.ai.AiAnalysisClient;
@@ -53,6 +54,7 @@ public class IssueService {
     private final TaskMapper taskMapper;
     private final AiAnalysisClient aiAnalysisClient;
     private final SimpMessagingTemplate messagingTemplate;
+    private final InventoryService inventoryService;
 
     /**
      * 이슈 생성
@@ -246,6 +248,7 @@ public class IssueService {
             log.warn("[IssueService] AI result already applied. Skip overwrite. issueId={}, existingDecision={}",
                     issueId, existing.getAiDecision());
             return AiResultResponse.from(issue, calculateNextAction(issue),
+                    generateAvailableActions(issue),
                     existing.getAiDecision(), existing.getSummary(),
                     existing.getConfidence(), existing.getAiResult());
         }
@@ -275,9 +278,10 @@ public class IssueService {
                 issueId, issue.getStatus(), issue.getReasonCode());
 
         // 6. nextAction 계산
-        IssueNextAction nextAction = calculateNextAction(issue);
+        IssueNextAction issueNextAction = calculateNextAction(issue);
+        List<String> availableActions = generateAvailableActions(issue);
 
-        AiResultResponse response = AiResultResponse.from(issue, nextAction,
+        AiResultResponse response = AiResultResponse.from(issue, issueNextAction, availableActions,
                 judgment.getAiDecision(), judgment.getSummary(),
                 judgment.getConfidence(), judgment.getAiResult());
 
@@ -727,6 +731,24 @@ public class IssueService {
         issueMapper.updateIssueStatus(issue);
         log.info("[IssueService] WebRTC MISSED processed. issueId={}, urgency={}, adminRequired=true",
                 issueId, issue.getUrgency());
+
+        // 6. 파손 TEMP 재고 차감 (DAMAGED 타입만)
+        if ("DAMAGED".equals(issue.getIssueType())) {
+            TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
+            if (item != null) {
+                inventoryService.recordEvent(
+                    "PICK_DAMAGED_TEMP",
+                    item.getProductId(),
+                    item.getLocationId(),
+                    -1, // 파손 1개 임시 차감
+                    "ISSUE",
+                    issueId,
+                    issue.getWorkerId()
+                );
+                log.info("[IssueService] PICK_DAMAGED_TEMP event recorded. issueId={}, product={}, location={}", 
+                    issueId, item.getProductId(), item.getLocationId());
+            }
+        }
     }
 
     // ================================================================
@@ -781,18 +803,37 @@ public class IssueService {
         log.info("[IssueService] Admin confirmed. issueId={}, adminDecision={}",
                 issueId, adminDecision);
 
-        // 6. Inventory Event 기록 (DAMAGED 타입 + DAMAGED 확정만)
-        if ("DAMAGED".equals(issue.getIssueType()) && AdminDecision.DAMAGED.equals(adminDecision)) {
-            // TODO: Inventory Event 시스템 구현 후 활성화
-            // eventService.recordInventoryEvent(
-            // issue.getProductId(),
-            // "PICK_DAMAGED_FINAL",
-            // -1,
-            // issueId
-            // );
-            log.info(
-                    "[IssueService] Inventory event required (currently commented). issueId={}, type=PICK_DAMAGED_FINAL, qty=-1",
-                    issueId);
+        // 6. Inventory Event 기록 (DAMAGED 타입)
+        if ("DAMAGED".equals(issue.getIssueType())) {
+            TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
+            if (item != null) {
+                if (AdminDecision.DAMAGED.equals(adminDecision)) {
+                    // 파손 확정 (마킹용, qty=0)
+                    inventoryService.recordEvent(
+                        "PICK_DAMAGED_FINAL",
+                        item.getProductId(),
+                        item.getLocationId(),
+                        0, // 추가 차감 없음 (TEMP에서 이미 차감됨)
+                        "ISSUE",
+                        issueId,
+                        null // adminId는 별도 파라미터로 받아야 하지만 생략
+                    );
+                    log.info("[IssueService] PICK_DAMAGED_FINAL event recorded. issueId={}", issueId);
+                    
+                } else if (AdminDecision.NORMAL.equals(adminDecision)) {
+                    // 파손 취소/복구 (TEMP 복원)
+                    inventoryService.recordEvent(
+                        "REVERT_DAMAGED",
+                        item.getProductId(),
+                        item.getLocationId(),
+                        +1, // 재고 복구
+                        "ISSUE",
+                        issueId,
+                        null
+                    );
+                    log.info("[IssueService] REVERT_DAMAGED event recorded. issueId={}", issueId);
+                }
+            }
         }
     }
 

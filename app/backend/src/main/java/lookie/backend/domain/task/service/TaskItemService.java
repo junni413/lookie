@@ -1,6 +1,7 @@
 package lookie.backend.domain.task.service;
 
 import lombok.RequiredArgsConstructor;
+import lookie.backend.domain.inventory.service.InventoryService;
 import lookie.backend.domain.task.exception.ItemQuantityExceededException;
 import lookie.backend.domain.task.exception.ItemQuantityNotSufficientException;
 import lookie.backend.domain.product.exception.ProductNotFoundException;
@@ -23,6 +24,7 @@ public class TaskItemService {
 
     private final TaskItemMapper taskItemMapper;
     private final ProductMapper productMapper;
+    private final InventoryService inventoryService;
 
     /**
      * 상품 바코드 스캔 및 매칭되는 아이템 조회
@@ -58,6 +60,7 @@ public class TaskItemService {
     /**
      * [수동 완료] 상품 집품을 사용자가 직접 완료 처리
      * - 필수 조건: 집품 수량(pickedQty)이 목표 수량(requiredQty)과 일치해야 함
+     * - DONE 확정 시 재고 차감 이벤트 발행 (PICK_NORMAL)
      */
     @Transactional
     public TaskItemVO completeItemManual(Long itemId) {
@@ -75,6 +78,17 @@ public class TaskItemService {
 
         // 3. 상태 업데이트 (PENDING -> DONE)
         taskItemMapper.updateStatus(itemId, "DONE");
+
+        // 4. 재고 차감 이벤트 발행 (정상 집품 확정)
+        inventoryService.recordEvent(
+            "PICK_NORMAL",
+            item.getProductId(),
+            item.getLocationId(),
+            -item.getRequiredQty(), // 음수 = 재고 감소
+            "TASK_ITEM",
+            itemId,
+            null // workerId는 TaskWorkflowFacade에서 얻을 수 있지만, 여기서는 null
+        );
 
         return taskItemMapper.findById(itemId);
     }

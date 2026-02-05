@@ -6,6 +6,8 @@ import type {
   IssueDetailData
 } from "../types/issue";
 
+export type { AdminIssueListRequest, AdminIssueListResponse, IssueDetailData };
+
 /** -----------------------------
  * HTTP Helper
  * ----------------------------- */
@@ -58,34 +60,7 @@ export type CreateIssueResponseData = {
   issueHandling: string;
 };
 
-export type IssueDetail = {
-  issueId: number;
-  type: string;
-  status: string;
-  priority: string;
-  issueHandling: string;
-  adminRequired: boolean;
-  reasonCode: string;
-  urgency: number;
-  adminDecision: string;
-  aiResult: string;
-  aiDetail?: string;
-  confidence: number;
-  summary: string;
-  workerNextAction: string;
-  issueNextAction: string;
-  adminNextAction: string;
-  availableActions: string[];
-
-  // UI 보조 필드
-  productName?: string;
-  issueType?: string;
-  locationCode?: string;
-  imageUrl?: string;
-  createdAt?: string;
-  verdict?: string;
-  sku?: string;
-};
+// IssueDetailData from types/issue.ts is used instead
 
 export type MyIssueResponse = {
   issueId: number;
@@ -124,12 +99,7 @@ export const issueService = {
     });
   },
 
-  /** ✅ 이슈 상세 조회 (AI 결과 포함) */
-  getIssue: async (issueId: number): Promise<ApiResponse<IssueDetail>> => {
-    return requestJSON(`/api/issues/${issueId}`, {
-      method: "GET",
-    });
-  },
+  // Unified with getIssueDetail
 
   /** ✅ 내 이슈 목록 조회 */
   getMyIssues: async (
@@ -165,9 +135,21 @@ export const issueService = {
     const queryString = qs.toString();
     const url = `/api/issues${queryString ? `?${queryString}` : ""}`;
 
-    const response = await requestJSON<ApiResponse<AdminIssueListResponse>>(url, { method: "GET" });
-    // Default fallback if data is missing, though generic ApiResponse implies data exists
-    return response.data || { issues: [], paging: { total: 0, page: 1, size: 10 } };
+    const response = await requestJSON<ApiResponse<AdminIssueListResponse & { paging: { totalCount: number } }>>(url, { method: "GET" });
+    
+    // Check if data exists and map totalCount to total for frontend consistency
+    if (response.data) {
+      return {
+        issues: response.data.issues || [],
+        paging: {
+          total: response.data.paging.totalCount || 0,
+          page: response.data.paging.page || 1,
+          size: response.data.paging.size || 10
+        }
+      };
+    }
+    
+    return { issues: [], paging: { total: 0, page: 1, size: 10 } };
   },
 
   /** ✅ Admin: 이슈 상세 조회 */
@@ -177,8 +159,18 @@ export const issueService = {
         `/api/issues/${issueId}`,
         { method: "GET" }
       );
-      return response.data || null;
-    } catch {
+      
+      if (response.data) {
+        // 백엔드와의 타입 혼용 방지를 위해 issueType으로 통일
+        const data = response.data;
+        return {
+          ...data,
+          issueType: data.issueType || data.type // 'type' 필드가 올 경우 'issueType'으로 매핑
+        };
+      }
+      return null;
+    } catch (err) {
+      console.error(`Failed to fetch issue detail for ${issueId}`, err);
       return null;
     }
   },

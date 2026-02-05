@@ -370,14 +370,9 @@ export default function WorkDetail() {
       navigate("/worker/issue/report", { state: { issueType: type, toteBarcode, product: currentItem } });
       return;
     }
-    if (type === "MISSING") {
+    if (type === "OUT_OF_STOCK") {
       setIssueOpen(false);
       navigate("/worker/issue/stock-analysis", { state: { task: safeTask, toteBarcode, product: currentItem } });
-      return;
-    }
-    if (type === "OTHER") {
-      setIssueOpen(false);
-      navigate("/worker/issue/other", { state: { task: safeTask, toteBarcode, product: currentItem } });
       return;
     }
     setIssueOpen(false);

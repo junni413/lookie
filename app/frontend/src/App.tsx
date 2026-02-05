@@ -24,6 +24,7 @@ import IssueListPage from "./pages/worker/issue/IssueList";
 import IssueReportPage from "./pages/worker/issue/IssueReport";
 import IssueResultPage from "./pages/worker/issue/IssueResult";
 import IssueDetail from "./pages/worker/issue/IssueDetail";
+import AiStockAnalysis from "./pages/worker/issue/AiStockAnalysis";
 
 // ADMIN pages
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -139,6 +140,7 @@ export default function App() {
           <Route path="issue/report" element={<IssueReportPage />} />
           <Route path="issue/result" element={<IssueResultPage />} />
           <Route path="issue/detail" element={<IssueDetail />} />
+          <Route path="issue/stock-analysis" element={<AiStockAnalysis />} />
 
           {/* 사이드바 연결 페이지들 */}
           <Route path="mypage" element={<MyPage />} />

@@ -1,6 +1,6 @@
-export type IssueType = "DAMAGED" | "MISSING" | "OTHER";
+export type IssueType = "DAMAGED" | "OUT_OF_STOCK";
 export type AiVerdict = "OK" | "DAMAGED" | "NEED_REVIEW";
-export type IssueStatus = "OPEN" | "RESOLVED";
+export type IssueStatus = "OPEN" | "RESOLVED" | "DONE";
 
 /** Admin Issue Summary (목록용) */
 export type AdminIssueSummary = {
@@ -49,6 +49,9 @@ export type IssueDetailData = {
   issueNextAction?: string;
   adminNextAction?: string;
   availableActions?: string[];
+  workerId?: number;
+  sku?: string;
+  verdict?: string;
 };
 
 /** Admin Issue List Request */

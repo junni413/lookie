@@ -4,7 +4,7 @@ import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
 import { ChevronRight, MapPin, Loader2 } from "lucide-react";
 import { taskService } from "@/services/taskService";
 
-type AnalysisResult = "MISSING" | "WAIT" | "ADMIN" | "LOCATION_MOVE";
+type AnalysisResult = "OUT_OF_STOCK" | "WAIT" | "ADMIN" | "LOCATION_MOVE";
 
 type NavState = {
     product: { productName: string; barcode: string; locationCode: string };
@@ -16,7 +16,7 @@ export default function AiStockAnalysis() {
     const navigate = useNavigate();
 
     const [step, setStep] = useState<"REQUEST" | "LOADING" | "RESULT">("REQUEST");
-    const [result, setResult] = useState<AnalysisResult>("MISSING");
+    const [result, setResult] = useState<AnalysisResult>("OUT_OF_STOCK");
 
     useEffect(() => {
         if (!nav) navigate("/worker/home", { replace: true });
@@ -44,13 +44,13 @@ export default function AiStockAnalysis() {
 
         // Simulate AI Analysis delay
         setTimeout(async () => {
-            const results: AnalysisResult[] = ["MISSING", "WAIT", "ADMIN", "LOCATION_MOVE"];
+            const results: AnalysisResult[] = ["OUT_OF_STOCK", "WAIT", "ADMIN", "LOCATION_MOVE"];
             const randomResult = results[Math.floor(Math.random() * results.length)];
 
             // 결과 업데이트 (지번 이동 등이면 상태도 바뀔 수 있음)
             await taskService.updateIssueResult(issueId, {
                 aiResult: randomResult,
-                status: randomResult === "MISSING" ? "WAIT" : "DONE" // 예시 로직
+                status: randomResult === "OUT_OF_STOCK" ? "WAIT" : "DONE" // 예시 로직
             });
 
             setResult(randomResult);
@@ -112,7 +112,7 @@ function RenderResult({ result }: { result: AnalysisResult }) {
 
     const getContent = () => {
         switch (result) {
-            case "MISSING":
+            case "OUT_OF_STOCK":
                 return {
                     title: "재고 없음",
                     desc: "해당 제품은 결손 상태로 확인됩니다.\n작업을 이어서 진행하세요.",
@@ -131,6 +131,11 @@ function RenderResult({ result }: { result: AnalysisResult }) {
                 return {
                     title: "지번 이동",
                     desc: "해당 상품은 지번이 이동되었습니다.\n아래 지번으로 이동하여 작업을 진행하세요.",
+                };
+            default:
+                return {
+                    title: "분석 완료",
+                    desc: "분석이 완료되었습니다.",
                 };
         }
     };

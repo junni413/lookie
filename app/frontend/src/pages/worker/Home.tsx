@@ -9,25 +9,23 @@ import type { ApiResponse, WorkLogData, WorkLogStatus } from "@/services/attend.
 type WorkStatus = "WORKING" | "PAUSED";
 type Stats = { done: number; issue: number; waiting: number };
 
-// ✅ 시간 포맷 통일 (UTC(Z) -> 브라우저 로컬(KST) 표시)
-function formatHHmmKST(isoLike: string) {
-  const hasTZ = /Z$|[+\-]\d{2}:\d{2}$/.test(isoLike);
-  const safeIso = hasTZ ? isoLike : `${isoLike}Z`;
 
-  const d = new Date(safeIso);
-  return d.toLocaleTimeString("ko-KR", {
-    timeZone: "Asia/Seoul",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+function formatHHmm(isoLike: string) {
+
+  const timePart = isoLike.split("T")[1] ?? "";
+  const hhmmss = timePart.slice(0, 8); // "14:59:46"
+
+  return hhmmss.length === 8 ? hhmmss : "—:—:—";
 }
 
-// assignedZoneId -> A/B/C...
-function zoneLabelFromId(zoneId: number | null | undefined) {
-  if (zoneId === null || zoneId === undefined) return "—";
-  // ✅ 현재는 0->A 가정. 만약 1->A면 64+zoneId로 바꾸기
-  return String.fromCharCode(65 + zoneId);
+
+// ✅ 구역 표기 통일: assignedZoneId(1~4) => "Zone A"~"Zone D"
+function zoneLabelFromAssignedId(assignedZoneId: number | null | undefined) {
+  if (assignedZoneId == null) return "Zone ?";
+
+  const map: Record<number, string> = { 1: "A", 2: "B", 3: "C", 4: "D" };
+  const letter = map[assignedZoneId];
+  return `Zone ${letter ?? assignedZoneId}`;
 }
 
 function mapBackendStatusToUi(status: WorkLogStatus): WorkStatus {
@@ -36,24 +34,18 @@ function mapBackendStatusToUi(status: WorkLogStatus): WorkStatus {
 }
 
 // 구역 카드
-function ZoneCard({ zone, status }: { zone: string; status: string }) {
+function ZoneCard({ zone }: { zone: string }) {
   return (
     <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-extrabold text-slate-900">오늘 근무 구역</p>
         </div>
-        <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
-          {status}
-        </span>
       </div>
 
       <div className="mt-4 flex items-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-blue-50 text-blue-600">
-          <span className="text-[18px] font-black">{zone}</span>
-        </div>
         <div className="flex-1">
-          <div className="text-[16px] font-black text-slate-900">{zone}구역</div>
+          <div className="text-[16px] font-black text-slate-900">{zone}</div>
           <div className="mt-1 text-[12px] font-semibold text-slate-400">
             작업 시작 전 구역이 맞는지 확인해주세요.
           </div>
@@ -79,7 +71,7 @@ export default function Home() {
   const [stats, setStats] = useState<Stats>({ done: 0, issue: 0, waiting: 0 });
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const [zoneLabel, setZoneLabel] = useState<string>("—");
+  const [zoneLabel, setZoneLabel] = useState<string>("Zone ?");
   const [zoneStatusText, setZoneStatusText] = useState<string>("근무중");
 
   // ✅ 진행중 작업(있으면 이어하기)
@@ -103,7 +95,7 @@ export default function Home() {
 
         // ✅ 출근 시간은 startedAt 기준(항상 로컬 포맷으로)
         if (cur.startedAt) {
-          const t = formatHHmmKST(cur.startedAt);
+          const t = formatHHmm(cur.startedAt);
           setSavedTime(t);
           localStorage.setItem("worker_attend_time", t); // fallback
         } else {
@@ -116,8 +108,8 @@ export default function Home() {
         setWorkStatus(uiStatus);
         setZoneStatusText(uiStatus === "WORKING" ? "근무중" : "근무중단");
 
-        // ✅ 구역 (swagger: assignedZoneId)
-        setZoneLabel(zoneLabelFromId(cur.assignedZoneId));
+        // ✅ 구역: "Zone A" 형태로 표시
+        setZoneLabel(zoneLabelFromAssignedId(cur.assignedZoneId));
 
         // ✅ 1-2) 출근 상태가 정상일 때만 "진행중 작업" 조회
         setIsTaskChecking(true);
@@ -256,11 +248,6 @@ export default function Home() {
     }
   };
 
-  const statusChipClass =
-    workStatus === "WORKING"
-      ? "rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700"
-      : "rounded-full bg-yellow-50 px-3 py-1 text-xs font-bold text-yellow-700";
-
   const isPaused = workStatus === "PAUSED";
   const hasActiveTask = typeof activeTaskId === "number" && activeTaskId > 0;
 
@@ -269,14 +256,14 @@ export default function Home() {
   const taskBtnLabel = isTaskChecking
     ? "작업 확인 중..."
     : hasActiveTask
-      ? "작업 이어서하기"
-      : "새로운 작업 시작";
+    ? "작업 이어서하기"
+    : "새로운 작업 시작";
 
   const taskHelpText = isPaused
     ? "근무가 중단된 상태에서는 작업을 진행할 수 없어요."
     : !isTaskChecking && hasActiveTask
-      ? "진행 중인 작업이 있어요. 이어서 진행할 수 있어요."
-      : "";
+    ? "진행 중인 작업이 있어요. 이어서 진행할 수 있어요."
+    : "";
 
   return (
     <div className="space-y-4">
@@ -290,27 +277,46 @@ export default function Home() {
         </p>
       </div>
 
-      {/* 출근 카드 */}
-      <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
+      <section
+        className="
+          rounded-[28px]
+          bg-blue-600
+          p-5
+          shadow-[0_20px_40px_rgba(37,99,235,0.35)]
+        "
+      >
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-slate-50 text-lg">
+            <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-white/20 text-lg">
               ⏱️
             </div>
             <div>
-              <p className="text-sm font-extrabold text-slate-900">오늘의 출근 시간</p>
-              <p className="mt-1 text-[28px] font-black leading-none tracking-tight text-slate-900">
+              <p className="text-sm font-extrabold text-blue-100">오늘의 출근 시간</p>
+              <p className="mt-1 text-[28px] font-black leading-none tracking-tight text-white">
                 {savedTime}
               </p>
             </div>
           </div>
-          <span className={statusChipClass}>{zoneStatusText}</span>
+
+          <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold text-white">
+            {zoneStatusText}
+          </span>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button
             type="button"
-            className="h-11 rounded-[18px] border border-slate-200 bg-white text-sm font-extrabold text-slate-700 active:scale-[0.99] transition disabled:opacity-50"
+            className="
+              h-11
+              rounded-[18px]
+              bg-white
+              text-sm
+              font-black
+              text-blue-700
+              active:scale-[0.99]
+              transition
+              disabled:opacity-50
+            "
             onClick={workStatus === "WORKING" ? onPause : onResume}
             disabled={isProcessing}
           >
@@ -319,17 +325,27 @@ export default function Home() {
 
           <button
             type="button"
-            className="h-11 rounded-[18px] border border-red-200 bg-red-50 text-sm font-extrabold text-red-600 active:scale-[0.99] transition disabled:opacity-50"
+            className="
+              h-11
+              rounded-[18px]
+              bg-white/20
+              text-sm
+              font-black
+              text-white
+              active:scale-[0.99]
+              transition
+              disabled:opacity-50
+            "
             onClick={onCheckout}
             disabled={isProcessing}
           >
-            {isProcessing ? "처리 중..." : "퇴근"}
+            퇴근
           </button>
         </div>
       </section>
 
       {/* 근무 구역 */}
-      <ZoneCard zone={zoneLabel} status={zoneStatusText} />
+      <ZoneCard zone={zoneLabel} />
 
       {/* 작업 통계 */}
       <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
@@ -370,9 +386,7 @@ export default function Home() {
         </button>
 
         {taskHelpText && (
-          <p className="px-1 text-[12px] font-semibold text-slate-400">
-            {taskHelpText}
-          </p>
+          <p className="px-1 text-[12px] font-semibold text-slate-400">{taskHelpText}</p>
         )}
       </div>
     </div>
