@@ -1,11 +1,10 @@
 import type { MouseEvent } from "react";
 
-export type IssueType = "DAMAGED" | "MISSING" | "OTHER";
+export type IssueType = "DAMAGED" | "OUT_OF_STOCK";
 
 const ISSUE_OPTIONS: { key: IssueType; title: string; desc: string }[] = [
   { key: "DAMAGED", title: "상품 파손", desc: "파손되거나 손상된 상품 발견" },
-  { key: "MISSING", title: "재고 없음", desc: "해당 위치에 상품이 없음" },
-  { key: "OTHER", title: "기타", desc: "그 외 이슈" },
+  { key: "OUT_OF_STOCK", title: "재고 없음", desc: "해당 위치에 상품이 없음" },
 ];
 
 type Props = {
