@@ -21,6 +21,11 @@ PRODUCT_CONFIG = {
         "model_path": "model/best.onnx"
     },
     # 테스트용: DB에 있는 상품들도 바나나 모델로 처리
+    1000: {
+        "target_name": "banana",
+        "gate_class_id": 46,
+        "model_path": "model/best.onnx"
+    },
     1001: {
         "target_name": "banana",
         "gate_class_id": 46,

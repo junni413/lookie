@@ -107,15 +107,25 @@ public class IssueService {
         taskItemService.markAsIssue(item.getBatchTaskItemId());
         log.info("[IssueService] TaskItem marked as ISSUE. itemId={}", item.getBatchTaskItemId());
 
-        // 6. AI 서버로 판정 요청 (비동기)
-        AiAnalysisRequest aiRequest = buildAiAnalysisRequest(
-                issue.getIssueId(),
-                item,
-                request.getIssueType(),
-                request.getImageUrl());
-        aiAnalysisClient.requestAnalysis(aiRequest);
+        // 6. Response 먼저 반환 (트랜잭션 커밋됨)
+        IssueResponse response = IssueResponse.from(issue);
+        
+        // 7. AI 서버로 판정 요청 (트랜잭션 커밋 후)
+        // NOTE: 트랜잭션이 끝난 후 실행되도록 별도 메서드로 분리
+        Long issueIdForAi = issue.getIssueId();
+        requestAiAnalysisAfterCommit(issueIdForAi, item, request.getIssueType(), request.getImageUrl());
 
-        return IssueResponse.from(issue);
+        return response;
+    }
+    
+    /**
+     * AI 분석 요청 (트랜잭션 외부에서 실행)
+     * - 새로운 트랜잭션에서 실행되므로 createIssue()의 커밋 후 실행됨
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void requestAiAnalysisAfterCommit(Long issueId, TaskItemVO item, String issueType, String imageUrl) {
+        AiAnalysisRequest aiRequest = buildAiAnalysisRequest(issueId, item, issueType, imageUrl);
+        aiAnalysisClient.requestAnalysis(aiRequest);
     }
 
     /**
