@@ -176,6 +176,11 @@ export default function Issue() {
                     selectedId ? "w-1/2 opacity-100 translate-x-0" : "w-0 opacity-0 translate-x-10 pointer-events-none absolute right-6 h-[calc(100%-3rem)]"
                 )}>
                     {selectedId && (
+                        /* 
+                           Note: IssueDetail fetches data independently based on issueId. 
+                           This guarantees correct display even if the issue is not present 
+                           in the current paginated list (Deep Linking support).
+                        */
                         <IssueDetail
                             issueId={selectedId}
                             initialWorkerId={issues.find(i => i.issueId === selectedId)?.workerId}

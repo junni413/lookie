@@ -25,10 +25,19 @@ export default function WorkerHoverCard({ workerId, children, className }: Worke
         timeoutRef.current = setTimeout(() => {
             const rect = triggerRef.current?.getBoundingClientRect();
             if (rect) {
-                // Position logic: defaults to top-right of the trigger
+                // Position logic: Check viewport boundary
+                const cardWidth = 260; // w-64 (16rem) + margin
+                const viewportWidth = window.innerWidth;
+                
+                let left = rect.right + 10;
+                // If card goes off-screen to the right, flip to left
+                if (left + cardWidth > viewportWidth) {
+                    left = rect.left - cardWidth - 10;
+                }
+
                 setPosition({
                     top: rect.top + window.scrollY, // Align with top
-                    left: rect.right + 10,          // Offset to right
+                    left: left,
                 });
                 setIsOpen(true);
                 fetchData();
@@ -67,7 +76,7 @@ export default function WorkerHoverCard({ workerId, children, className }: Worke
 
             {isOpen && createPortal(
                 <div 
-                    className="fixed z-50 animate-in fade-in zoom-in-95 duration-200 pointer-events-none" // pointer-events-none to prevent interfering with mouse
+                    className="fixed z-50 animate-in fade-in zoom-in-95 duration-200" 
                     style={{ 
                         top: position.top, 
                         left: position.left,
