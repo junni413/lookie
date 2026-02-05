@@ -150,8 +150,8 @@ export async function getAdmins(token: string, params?: AdminListParams): Promis
         // AdminContact Specific
         assignedZoneId: item.assignedZoneId, // DB_User field
         assignedZone: item.zoneName === 'UNKNOWN' ? undefined : item.zoneName, // UI Display
-        isOnline: item.status === 'ONLINE', // Map from new status field
-        status: item.status, // Real-time status
+        isOnline: item.currentStatus === 'ONLINE', // Map from new status field
+        status: item.currentStatus, // Real-time status
     })) as AdminContact[];
 }
 

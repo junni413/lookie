@@ -17,7 +17,9 @@ import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
 import lookie.backend.global.util.WorkerNameFormatter;
 import lookie.backend.domain.worklog.event.WorkStatusChangedEvent;
+import lookie.backend.global.constant.RedisKeyConstants;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +45,7 @@ public class WorkLogService {
     private final ZoneAssignmentService zoneAssignmentService;
     private final UserMapper userMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final StringRedisTemplate redisTemplate;
 
     /**
      * 1. 출근 처리 (START) 수행
@@ -82,9 +85,8 @@ public class WorkLogService {
         workLogMapper.insertWorkLog(workLog);
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.START, "출근");
 
-        // 1-6. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화 + Zone 캐시 무효화)
-        eventPublisher.publishEvent(
-                new WorkStatusChangedEvent(userId, WorkLogEventType.START, null, user.getAssignedZoneId()));
+        // 1-6. 근무 상태 변경 이벤트 발행 및 Redis 동기화
+        publishEventAndSyncRedis(userId, WorkLogEventType.START, null, user.getAssignedZoneId());
 
         return WorkLogResponseDto.from(workLog, event);
     }
@@ -119,10 +121,8 @@ public class WorkLogService {
         // 2-3. 종료(END) 이벤트 기록
         WorkLogEvent event = createAndSaveEvent(workLog.getWorkLogId(), WorkLogEventType.END, "퇴근");
 
-        // 2-4. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화 + Zone 캐시 무효화)
-        // 퇴근 전 구역 정보 저장 (unassignZoneFromWorker 호출 전에 이미 user 조회함)
-        eventPublisher
-                .publishEvent(new WorkStatusChangedEvent(userId, WorkLogEventType.END, null, user.getAssignedZoneId()));
+        // 2-4. 근무 상태 변경 이벤트 발행 및 Redis 동기화
+        publishEventAndSyncRedis(userId, WorkLogEventType.END, null, user.getAssignedZoneId());
 
         return WorkLogResponseDto.from(workLog, event);
     }
@@ -146,9 +146,8 @@ public class WorkLogService {
         UserVO user = userMapper.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
 
-        // 3-3. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화 + Zone 캐시 무효화)
-        eventPublisher.publishEvent(new WorkStatusChangedEvent(userId, WorkLogEventType.PAUSE, request.getReason(),
-                user.getAssignedZoneId()));
+        // 3-3. 근무 상태 변경 이벤트 발행 및 Redis 동기화
+        publishEventAndSyncRedis(userId, WorkLogEventType.PAUSE, request.getReason(), user.getAssignedZoneId());
 
         return WorkLogResponseDto.from(workLog, event);
     }
@@ -177,9 +176,8 @@ public class WorkLogService {
         UserVO user = userMapper.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
 
-        // 4-3. 근무 상태 변경 이벤트 발행 (WebRTC 가용성 동기화 + Zone 캐시 무효화)
-        eventPublisher.publishEvent(
-                new WorkStatusChangedEvent(userId, WorkLogEventType.RESUME, null, user.getAssignedZoneId()));
+        // 4-3. 근무 상태 변경 이벤트 발행 및 Redis 동기화
+        publishEventAndSyncRedis(userId, WorkLogEventType.RESUME, null, user.getAssignedZoneId());
 
         return WorkLogResponseDto.from(workLog, event);
     }
@@ -322,6 +320,35 @@ public class WorkLogService {
                 .build();
         workLogMapper.insertWorkLogEvent(event);
         return event;
+    }
+
+    /**
+     * 4. 이벤트 발행 및 Redis 실시간 상태 동기화 (Refactored Helper)
+     */
+    private void publishEventAndSyncRedis(Long userId, WorkLogEventType type, String reason, Long zoneId) {
+        // 1. Spring Event 발행 (WebRTC 등)
+        eventPublisher.publishEvent(new WorkStatusChangedEvent(userId, type, reason, zoneId));
+
+        // 2. Redis 실시간 상태 동기화
+        String key = RedisKeyConstants.USER_STATUS_KEY + userId;
+
+        switch (type) {
+            case START:
+            case RESUME:
+                // 근무 중(ONLINE) -> 키 삭제 (UserService에서 ONLINE으로 간주)
+                redisTemplate.delete(key);
+                break;
+            case PAUSE:
+                // 휴식 중 -> PAUSED
+                redisTemplate.opsForValue().set(key, "PAUSED");
+                break;
+            case END:
+                // 퇴근 -> AWAY (자리비움)
+                redisTemplate.opsForValue().set(key, "AWAY");
+                break;
+            default:
+                break;
+        }
     }
 
     /**
