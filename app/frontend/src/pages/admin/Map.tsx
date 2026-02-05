@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { manageService, type ZoneStat } from "@/services/manageService";
-import type { DB_Worker, ZoneLayout } from "@/types/db";
+import { manageService } from "@/services/manageService";
+import type { DB_Worker, ZoneLayout, ZoneStat } from "@/types/db";
 import ZoneSummaryCard from "./components/map/ZoneSummaryCard";
 import ZoneMapModal from "./components/map/ZoneMapModal";
 import WorkerList from "./components/map/WorkerList";
@@ -39,7 +39,7 @@ export default function Map() {
         try {
             const [fetchedStats, fetchedWorkers] = await Promise.all([
                 manageService.getZoneStats(),
-                manageService.getAllWorkers()
+                manageService.getAssignedWorkers()
             ]);
             setStats(fetchedStats);
             setWorkers(fetchedWorkers);

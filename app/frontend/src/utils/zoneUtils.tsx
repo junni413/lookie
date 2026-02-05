@@ -1,5 +1,41 @@
 import { CheckCircle, Activity, AlertCircle } from "lucide-react";
-import type { ZoneStatus } from "@/types/db";
+import type { ZoneStatus, ZoneStat } from "@/types/db";
+
+// ===================================
+// Shared Constants & Utilities
+// ===================================
+
+export const DEFAULT_ZONES: ZoneStat[] = [
+    { zoneId: 1, name: "ZONE A", status: "STABLE", workerCount: 0, workRate: 0 },
+    { zoneId: 2, name: "ZONE B", status: "STABLE", workerCount: 0, workRate: 0 },
+    { zoneId: 3, name: "ZONE C", status: "STABLE", workerCount: 0, workRate: 0 },
+    { zoneId: 4, name: "ZONE D", status: "STABLE", workerCount: 0, workRate: 0 },
+];
+
+/**
+ * Merges API response data with DEFAULT_ZONES fallback.
+ * Handles missing name, missing status, etc.
+ * 
+ * @param apiData Array of zone data from API (could be AdminZoneResponse[] or partial ZoneStat[])
+ * @returns Complete ZoneStat[] with 4 items guaranteed
+ */
+export const mergeZoneData = (apiData: any[]): ZoneStat[] => {
+    return DEFAULT_ZONES.map(def => {
+        // Find matching item from API by zoneId or id handling
+        const match = apiData.find(item => (item.zoneId === def.zoneId) || (item.id === def.zoneId));
+        
+        if (match) {
+            return {
+                zoneId: def.zoneId,
+                name: match.name || def.name, // Name Fallback
+                status: match.status || def.status,
+                workerCount: match.workerCount ?? match.working ?? 0, // Handle different field names
+                workRate: match.workRate ?? 0
+            };
+        }
+        return def;
+    });
+};
 
 export const getZoneStyle = (status: ZoneStatus) => {
     switch (status) {

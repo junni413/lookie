@@ -1,18 +1,12 @@
 
 import type { DB_Worker, ZoneLayout } from "@/types/db";
-import { zonesLayoutMock, db_users, db_zones, zoneNames } from "@/mocks/mockData";
+import { zonesLayoutMock } from "@/mocks/mockData";
 import { request } from "@/api/http";
 import type { ApiResponse } from "@/api/type";
+import { adminService } from "./adminService";
 
-export interface ZoneStat {
-    zoneId: number;
-    name: string;
-    status: "STABLE" | "NORMAL" | "CRITICAL";
-    workerCount: number;
-    workRate: number; // percentage (0-100)
-}
-
-
+import { DEFAULT_ZONES, mergeZoneData } from "@/utils/zoneUtils";
+import type { ZoneStat } from "@/types/db"; // Import from types/db
 
 export const manageService = {
     // Get all workers with full details
@@ -85,44 +79,96 @@ export const manageService = {
         }
     },
 
-    // Get statistics for all zones
+    // Get statistics for all zones (Now uses Real API via adminService)
     getZoneStats: async (): Promise<ZoneStat[]> => {
-        // Fetch real workers first
-        const workers = await manageService.getAllWorkers();
+        try {
+            // 1. Fetch real stats from API
+            const apiZones = await adminService.getZones();
+            
 
-        // Use static db_zones
-        return db_zones.map((zone) => {
-            const zoneWorkers = workers.filter((w) => w.currentZoneId === zone.zoneId);
+            // 2. Merge with Default Zones (Fallback) using shared utility
+            return mergeZoneData(apiZones);
+        } catch (error) {
+            console.error("Failed to load real zone stats, using defaults:", error);
+            return DEFAULT_ZONES;
+        }
+    },
 
-            // Calculate average work rate
-            const totalRate = zoneWorkers.reduce((sum, w) => sum + (w.workRate || 0), 0);
-            const avgRate = zoneWorkers.length > 0 ? Math.floor(totalRate / zoneWorkers.length) : 0;
+    // Expanded Worker Fetching (All Workers + Zone Detail Merge)
+    // Expanded Worker Fetching (Optimized: Assigned Only via Zone API)
+    getAssignedWorkers: async (): Promise<DB_Worker[]> => {
+        try {
+            // 1. Fetch Detailed Info for Zones 1-4 ONLY (No "All Workers" call)
+            const zonePromises = DEFAULT_ZONES.map(z => adminService.getWorkersByZone(z.zoneId)
+                .catch(err => {
+                    console.warn(`Failed to fetch workers for zone ${z.zoneId}`, err);
+                    return [];
+                })
+            );
 
-            const name = zoneNames[zone.zoneId] || "Unknown";
+            const zonesResults = await Promise.all(zonePromises);
+            
+            // 2. Flatten and Map to DB_Worker
+            const allAssignedWorkers: DB_Worker[] = [];
+            
+            zonesResults.forEach((zoneWorkers, index) => {
+                const zoneId = DEFAULT_ZONES[index].zoneId; // Correct Zone ID from loop
+                
+                zoneWorkers.forEach(dto => {
+                    // Map DTO status string to Enum
+                    let mappedStatus: 'WORKING' | 'PAUSED' | 'OFF_WORK' = 'OFF_WORK';
+                    if (dto.status === 'START' || dto.status === 'RESUME' || dto.status === 'WORKING') mappedStatus = 'WORKING';
+                    else if (dto.status === 'PAUSE' || dto.status === 'PAUSED') mappedStatus = 'PAUSED';
 
-            return {
-                zoneId: zone.zoneId,
-                name: name,
-                status: "STABLE", // Simplified logic
-                workerCount: zoneWorkers.length,
-                workRate: avgRate,
-            };
+                    const worker: DB_Worker = {
+                        userId: dto.workerId,
+                        name: dto.name,
+                        role: 'WORKER',
+                        isActive: true,
+                        passwordHash: '',
+                        phoneNumber: '',
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        
+                        // Assignment Info
+                        assignedZoneId: zoneId,
+                        currentZoneId: zoneId,
+                        
+                        // Stats
+                        status: mappedStatus,
+                        todayWorkCount: dto.workCount,
+                        processingSpeed: dto.processingSpeed,
+                        currentTaskProgress: dto.currentTaskProgress,
+                        workRate: Math.floor(dto.currentTaskProgress || 0),
+                        webrtcStatus: dto.webrtcStatus
+                    };
+                    allAssignedWorkers.push(worker);
+                });
+            });
+
+            return allAssignedWorkers;
+
+        } catch (error) {
+            console.error("Failed to fetch assigned detailed workers", error);
+            return [];
+        }
+    },
+
+
+
+    // Batch update workers (Real API)
+    updateWorkers: async (changedWorkers: DB_Worker[]): Promise<void> => {
+        if (changedWorkers.length === 0) return;
+
+        // Call assignWorkerToZone for each changed worker in parallel
+        const promises = changedWorkers.map(worker => {
+             if (worker.currentZoneId === null) return Promise.resolve(); // Skip if no zone (or handle unassign?)
+             // API requires zoneId. If unassign logic exists, we need standard unassign API. 
+             // Currently assuming re-assign to valid zone.
+             return adminService.assignWorkerToZone(worker.userId, worker.currentZoneId!, "Manual Reallocation");
         });
-    },
 
-    // Update worker zone (Mock)
-    moveWorker: async (workerId: number, targetZoneId: number): Promise<void> => {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        console.log(`[Mock API] Moved worker ${workerId} to zone ${targetZoneId}`);
-        // Update mock data in memory
-        const u = db_users.find(u => u.userId === workerId);
-        if (u) u.assignedZoneId = targetZoneId;
-    },
-
-    // Batch update workers (Mock)
-    updateWorkers: async (workers: DB_Worker[]): Promise<void> => {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        console.log(`[Mock API] Batch updating ${workers.length} workers...`);
+        await Promise.all(promises);
     },
 
     // Get Zone Layout (Mock)

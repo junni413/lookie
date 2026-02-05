@@ -2,7 +2,9 @@ package lookie.backend.domain.user.mapper;
 
 import lookie.backend.domain.user.vo.UserVO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 @Mapper
@@ -37,5 +39,14 @@ public interface UserMapper {
 
     // 9. 회원 탈퇴 (Soft Delete)
     void softDeleteUser(java.util.Map<String, Object> params);
+
+    // 10. 구역별 관리자 조회 (WebRTC 자동 배정용)
+    /**
+     * 특정 구역의 관리자(ADMIN) 목록 조회
+     * 
+     * @param zoneId 구역 ID
+     * @return 활성 상태의 관리자 목록
+     */
+    List<UserVO> findAdminsByZone(@Param("zoneId") Long zoneId);
 
 }

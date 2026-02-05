@@ -287,6 +287,15 @@ export interface DB_CallHistory {
 
 // =========================
 // UI Types
+
+export interface ZoneStat {
+    zoneId: number;
+    name: string;
+    status: ZoneStatus;
+    workerCount: number;
+    workRate: number; // percentage (0-100)
+}
+
 export type ZoneStatus = 'STABLE' | 'NORMAL' | 'CRITICAL';
 
 
@@ -309,6 +318,10 @@ export interface DB_Worker extends DB_User {
     workRate?: number;
     lineNumber?: number;
     binNumber?: number;
+    // Enhanced fields for Manage Page
+    processingSpeed?: number;
+    currentTaskProgress?: number;
+    webrtcStatus?: string;
 }
 
 // Layout Types for Map

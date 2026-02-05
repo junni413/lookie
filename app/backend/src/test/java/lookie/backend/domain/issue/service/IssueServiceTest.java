@@ -21,6 +21,7 @@ import lookie.backend.infra.ai.AiAnalysisClient;
 import lookie.backend.infra.ai.dto.AiAnalysisRequest;
 import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +47,8 @@ class IssueServiceTest {
 
     @Mock
     private AiAnalysisClient aiAnalysisClient;
+    @Mock
+    private SimpMessagingTemplate messagingTemplate;
 
     @InjectMocks
     private IssueService issueService;
@@ -92,8 +95,7 @@ class IssueServiceTest {
         // 기본 정책 검증 (IssueVO.createInitial 기본값)
         assertEquals("DAMAGED", capturedIssue.getIssueType());
         assertEquals("OPEN", capturedIssue.getStatus());
-        // assertEquals("MEDIUM", capturedIssue.getPriority()); // 삭제
-        assertEquals(3, capturedIssue.getUrgency()); // 신규 필드 검증
+        assertEquals(3, capturedIssue.getUrgency()); // 신규 필드 검증 (기본값 3)
         assertEquals("NON_BLOCKING", capturedIssue.getIssueHandling());
         assertEquals(false, capturedIssue.getAdminRequired());
         assertEquals("UNKNOWN", capturedIssue.getReasonCode());
@@ -160,6 +162,56 @@ class IssueServiceTest {
 
         // AI 분석 요청 검증 추가
         verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
+    }
+
+    @Test
+    @DisplayName("이슈 생성 성공 - OUT_OF_STOCK (이미지 없이 생성)")
+    void createIssue_Success_OutOfStock_NoImage() {
+        // given
+        Long workerId = 1L;
+        Long taskId = 100L;
+        Long itemId = 200L;
+
+        CreateIssueRequest request = new CreateIssueRequest();
+        request.setBatchTaskId(taskId);
+        request.setBatchTaskItemId(itemId);
+        request.setIssueType("OUT_OF_STOCK");
+        request.setImageUrl(null); // 이미지 없음
+
+        TaskItemVO item = new TaskItemVO();
+        item.setBatchTaskItemId(itemId);
+        item.setBatchTaskId(taskId);
+        item.setStatus("PENDING");
+
+        TaskVO task = new TaskVO();
+        task.setBatchTaskId(taskId);
+        task.setWorkerId(workerId);
+
+        when(taskItemService.getTaskItem(itemId)).thenReturn(item);
+        when(taskMapper.findById(taskId)).thenReturn(task);
+
+        // when
+        IssueResponse response = issueService.createIssue(workerId, request);
+
+        // then
+        assertNotNull(response);
+        // Issue 저장 검증
+        ArgumentCaptor<IssueVO> issueCaptor = ArgumentCaptor.forClass(IssueVO.class);
+        verify(issueMapper).insertIssue(issueCaptor.capture());
+        assertEquals("OUT_OF_STOCK", issueCaptor.getValue().getIssueType());
+
+        // 중요: 이미지가 없으므로 insertIssueImage 호출되면 안됨
+        verify(issueMapper, never()).insertIssueImage(any());
+
+        // AiJudgment 생성 검증 (이미지 없이)
+        ArgumentCaptor<AiJudgmentVO> judgmentCaptor = ArgumentCaptor.forClass(AiJudgmentVO.class);
+        verify(issueMapper).insertAiJudgment(judgmentCaptor.capture());
+        assertNull(judgmentCaptor.getValue().getImageUrl());
+
+        // AI 분석 요청 검증 (이미지 null)
+        ArgumentCaptor<AiAnalysisRequest> aiRequestCaptor = ArgumentCaptor.forClass(AiAnalysisRequest.class);
+        verify(aiAnalysisClient).requestAnalysis(aiRequestCaptor.capture());
+        assertNull(aiRequestCaptor.getValue().getImageUrl());
     }
 
     @Test
@@ -323,6 +375,72 @@ class IssueServiceTest {
         assertEquals(newImageUrl, requestCaptor.getValue().getImageUrl());
     }
 
+    @Test
+    @DisplayName("보고용 이미지 등록 성공 - OUT_OF_STOCK 후행 등록")
+    void reportImage_Success() {
+        // given
+        Long workerId = 1L;
+        Long issueId = 100L;
+        String imageUrl = "https://example.com/report.jpg";
+
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setWorkerId(workerId);
+        issue.setIssueType("OUT_OF_STOCK");
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setIssueId(issueId);
+        // 초기엔 이미지가 없었음
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        issueService.reportImage(workerId, issueId, imageUrl);
+
+        // then
+        // 1. 이미지 저장 검증
+        ArgumentCaptor<IssueImageVO> imageCaptor = ArgumentCaptor.forClass(IssueImageVO.class);
+        verify(issueMapper).insertIssueImage(imageCaptor.capture());
+        assertEquals(imageUrl, imageCaptor.getValue().getImageUrl());
+
+        // 2. AiJudgment 업데이트 검증 (이미지 URL만)
+        ArgumentCaptor<AiJudgmentVO> judgmentCaptor = ArgumentCaptor.forClass(AiJudgmentVO.class);
+        verify(issueMapper).updateAiJudgment(judgmentCaptor.capture());
+        assertEquals(imageUrl, judgmentCaptor.getValue().getImageUrl());
+
+        // 3. AI 재분석은 요청하지 않아야 함
+        verify(aiAnalysisClient, never()).requestAnalysis(any());
+    }
+
+    @Test
+    @DisplayName("NextAction 계산 - OUT_OF_STOCK + 관리자 필요 + 이미지 없음 -> UPLOAD_REPORT_IMAGE")
+    void calculateWorkerNextAction_UploadReportImage() {
+        // given
+        Long issueId = 1L;
+        IssueVO issue = new IssueVO();
+        issue.setIssueId(issueId);
+        issue.setIssueType("OUT_OF_STOCK");
+        issue.setStatus("OPEN");
+        issue.setAdminRequired(true); // 관리자 연결 필요
+        issue.setIssueHandling("NON_BLOCKING"); // WebRTC 부재 시 NON_BLOCKING으로 전환됨
+
+        // 이미지가 없는 상태의 AiJudgment
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setIssueId(issueId);
+        judgment.setImageUrl(null);
+
+        when(issueMapper.findById(issueId)).thenReturn(issue);
+        when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
+
+        // when
+        IssueDetailResponse response = issueService.getIssueDetail(issueId);
+
+        // then
+        assertEquals("UPLOAD_REPORT_IMAGE", response.getWorkerNextAction());
+        assertEquals("WAIT_REPORT_IMAGE", response.getIssueNextAction());
+    }
+
     // ================================================================
     // AI 판정 결과 처리 테스트
     // ================================================================
@@ -350,12 +468,15 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
         assertEquals("OPEN", response.getStatus()); // OPEN 유지
-        // assertEquals("MEDIUM", response.getPriority()); // 삭제
         assertEquals(4, response.getUrgency()); // urgency=4
         assertEquals("NON_BLOCKING", response.getIssueHandling());
         assertEquals(true, response.getAdminRequired()); // 관리자 사후 확정 필요
         assertEquals("UNKNOWN", response.getReasonCode());
         assertNull(response.getResolvedAt()); // RESOLVED 아님
+
+        // 새로 추가된 AI 상세 필드 검증
+        assertEquals("PASS", response.getAiResult());
+        assertEquals(0.95f, response.getConfidence());
 
         verify(issueMapper).updateAiJudgment(any(AiJudgmentVO.class));
         verify(issueMapper).updateIssueStatus(issue);
@@ -382,11 +503,12 @@ class IssueServiceTest {
 
         // then
         assertEquals("OPEN", response.getStatus());
-        // assertEquals("HIGH", response.getPriority()); // 삭제
         assertEquals(1, response.getUrgency()); // urgency=1
         assertEquals("BLOCKING", response.getIssueHandling()); // 가이드에 따라 BLOCKING으로 변경됨
         assertEquals(true, response.getAdminRequired());
         assertEquals("UNKNOWN", response.getReasonCode());
+
+        assertEquals("NEED_CHECK", response.getAiResult());
     }
 
     @Test
@@ -409,10 +531,11 @@ class IssueServiceTest {
         AiResultResponse response = issueService.processAiResult(issueId, request);
 
         // then
-        // assertEquals("MEDIUM", response.getPriority()); // 삭제
         assertEquals(3, response.getUrgency()); // urgency=3
         assertEquals(true, response.getAdminRequired()); // 사후 확정 필요
         assertEquals("DAMAGED", response.getReasonCode());
+
+        assertEquals("FAIL", response.getAiResult());
     }
 
     @Test
@@ -479,7 +602,6 @@ class IssueServiceTest {
         issue.setIssueId(issueId);
         issue.setIssueType("DAMAGED");
         issue.setStatus("RESOLVED");
-        // issue.setPriority("LOW"); // 삭제
         issue.setUrgency(5); // LOW 대응
         issue.setIssueHandling("NON_BLOCKING");
         issue.setAdminRequired(false);
@@ -490,6 +612,7 @@ class IssueServiceTest {
         judgment.setConfidence(0.95f);
         judgment.setSummary("정상 상품으로 판정됨");
         judgment.setImageUrl("https://example.com/image.jpg");
+        judgment.setAiResult("{\"detections\":[]}"); // 상세 JSON
 
         when(issueMapper.findById(issueId)).thenReturn(issue);
         when(issueMapper.findAiJudgmentByIssueId(issueId)).thenReturn(judgment);
@@ -506,6 +629,7 @@ class IssueServiceTest {
         assertEquals(0.95f, response.getConfidence());
         assertEquals("정상 상품으로 판정됨", response.getSummary());
         assertEquals("https://example.com/image.jpg", response.getImageUrl());
+        assertEquals("{\"detections\":[]}", response.getAiDetail());
         assertEquals("AUTO_RESOLVED", response.getIssueNextAction());
         assertTrue(response.getAvailableActions().isEmpty());
     }
@@ -520,7 +644,6 @@ class IssueServiceTest {
         issue.setIssueId(issueId);
         issue.setIssueType("DAMAGED");
         issue.setStatus("OPEN");
-        // issue.setPriority("HIGH"); // 삭제
         issue.setUrgency(1); // HIGH 대응
         issue.setIssueHandling("BLOCKING");
         issue.setAdminRequired(true);

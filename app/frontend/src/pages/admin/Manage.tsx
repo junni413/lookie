@@ -2,15 +2,19 @@ import { useEffect, useState } from "react";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 
-import { manageService, type ZoneStat } from "@/services/manageService";
+import { manageService } from "@/services/manageService";
+import type { ZoneStat } from "@/types/db"; // Import from shared types
 import type { DB_Worker } from "@/types/db";
+import { DEFAULT_ZONES } from "@/utils/zoneUtils"; // Import shared constant
 import ManageStatisticCard from "./components/manage/ManageStatisticCard";
 import ManageZoneColumn from "./components/manage/ManageZoneColumn";
 import AiReallocationModal from "./components/manage/AiReallocationModal";
 import { RotateCcw, Wand2, Check } from "lucide-react";
 
+
 export default function Manage() {
-    const [stats, setStats] = useState<ZoneStat[]>([]);
+    // Init with Defaults to prevent flash of empty content
+    const [stats, setStats] = useState<ZoneStat[]>(DEFAULT_ZONES);
     const [workers, setWorkers] = useState<DB_Worker[]>([]);
 
     // History State
@@ -29,17 +33,38 @@ export default function Manage() {
         setLoading(true);
         setError(null);
         try {
-            const [fetchedStats, fetchedWorkers] = await Promise.all([
+            const [statsResult, workersResult] = await Promise.allSettled([
                 manageService.getZoneStats(),
-                manageService.getAllWorkers()
+                manageService.getAssignedWorkers() // Use new API with merged details
             ]);
-            setStats(fetchedStats);
-            setWorkers(fetchedWorkers);
-            setLastAppliedWorkers(structuredClone(fetchedWorkers));
-            setPrevAppliedWorkers(null);
+
+            // 1. Process Stats
+            if (statsResult.status === "fulfilled") {
+                const fetchedStats = statsResult.value;
+                // fetchedStats coming from manageService.getZoneStats() which already uses mergeZoneData
+                // So it is guaranteed to be ZoneStat[] with length 4
+                setStats(fetchedStats.length > 0 ? fetchedStats : DEFAULT_ZONES);
+            } else {
+                console.error("Failed to load zone stats", statsResult.reason);
+                // Keep DEFAULT_ZONES (already init state)
+            }
+
+            // 2. Process Workers (failure is non-blocking)
+            if (workersResult.status === "fulfilled") {
+                const fetchedWorkers = workersResult.value;
+                setWorkers(fetchedWorkers);
+                setLastAppliedWorkers(structuredClone(fetchedWorkers));
+            } else {
+                console.error("Failed to load workers", workersResult.reason);
+                // Optionally show a toast or partial error, but don't block UI
+                // setError(workersResult.reason?.message); // Uncomment if we want to blocking-fail
+                setWorkers([]);
+            }
+            
+            setPrevAppliedWorkers(null); 
         } catch (error: any) {
-            console.error("Failed to load manage data", error);
-            setError(error.message || "Unknown error");
+            console.error("Unexpected error in loadData", error);
+            // setError(error.message); // Don't block UI
         } finally {
             setLoading(false);
         }
@@ -53,23 +78,8 @@ export default function Manage() {
             return w;
         }));
     };
-
-    // Helper: Deep comparison for worker state (optimization)
-    const hasWorkerStateChanged = (current: DB_Worker[], original: DB_Worker[]) => {
-        if (current.length !== original.length) return true;
-        for (let i = 0; i < current.length; i++) {
-            if (current[i].userId !== original[i].userId) return true; // Order changed (shouldn't happen if sorted, but safe check)
-            if (current[i].currentZoneId !== original[i].currentZoneId) return true; // Zone changed
-        }
-        return false;
-    };
-
-    const handleReset = () => {
-        if (lastAppliedWorkers.length > 0) {
-            setWorkers(structuredClone(lastAppliedWorkers));
-        }
-    };
-
+    
+    // Restore Previous Layout Handler
     const handleRestorePrevious = () => {
         if (prevAppliedWorkers) {
             if (confirm("정말 이전 배치로 되돌리시겠습니까? 현재 작업 내용은 저장되지 않습니다.")) {
@@ -78,11 +88,24 @@ export default function Manage() {
         }
     };
 
+
     const handleApply = async () => {
         setLoading(true);
         try {
-            // Call API
-            await manageService.updateWorkers(workers);
+            // Calculate changed workers
+            const changedWorkers = workers.filter((worker) => {
+                 const original = lastAppliedWorkers.find(w => w.userId === worker.userId);
+                 return original && original.currentZoneId !== worker.currentZoneId;
+            });
+
+            if (changedWorkers.length === 0) {
+                alert("변경된 사항이 없습니다.");
+                setLoading(false);
+                return;
+            }
+
+            // Call API only for changed workers
+            await manageService.updateWorkers(changedWorkers);
             alert("작업자 배치가 적용되었습니다.");
 
             // Update History with Deep Copy
@@ -106,15 +129,17 @@ export default function Manage() {
     };
 
     if (loading && stats.length === 0) {
-        return <div className="h-full flex items-center justify-center">Loading...</div>;
+        // Show loading but maybe empty layout first? 
+        // Actually, let's init state with DEFAULT_ZONES so we never show "Loading..." text for empty structure
+        // But if we want to show spinner:
+        return <div className="h-full flex items-center justify-center">데이터를 불러오는 중입니다...</div>;
     }
 
     if (error) {
         return <div className="h-full flex items-center justify-center text-red-500">Error: {error}</div>;
     }
 
-    // Optimized diff check
-    const hasChanges = hasWorkerStateChanged(workers, lastAppliedWorkers);
+
 
 
     return (
@@ -133,8 +158,7 @@ export default function Manage() {
                         AI 추천 재배치
                     </Button>
                     <div className="w-px h-8 bg-slate-200 mx-1" />
-
-                    {/* Previous Restore Button */}
+                    
                     <Button
                         variant="outline"
                         onClick={handleRestorePrevious}
@@ -145,19 +169,6 @@ export default function Manage() {
                     >
                         <RotateCcw size={16} />
                         이전 배치
-                    </Button>
-
-                    {/* Reset Button */}
-                    <Button
-                        variant="outline"
-                        onClick={handleReset}
-                        disabled={!hasChanges}
-                        className="gap-2 text-slate-600 shadow-sm"
-                        title="현재 변경사항 초기화"
-                        size="sm"
-                    >
-                        <RotateCcw size={16} />
-                        되돌리기
                     </Button>
 
                     <Button

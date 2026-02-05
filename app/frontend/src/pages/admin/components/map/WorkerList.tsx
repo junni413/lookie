@@ -1,3 +1,4 @@
+import { DEFAULT_ZONES } from "@/utils/zoneUtils";
 import type { DB_Worker } from "@/types/db";
 import { cn } from "@/utils/cn";
 import { Phone, Users, X } from "lucide-react";
@@ -34,20 +35,13 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
         startCall(user.userId, worker.userId, null, worker.name);
     };
 
-    const ZONES = [
-        { id: 1, name: "A" },
-        { id: 2, name: "B" },
-        { id: 3, name: "C" },
-        { id: 4, name: "D" },
-    ];
+
 
     const workersToShow = activeFilter === 'all'
         ? allWorkers
         : allWorkers.filter(w => w.currentZoneId === activeFilter);
-
-    const searchedWorkers = workersToShow;
-
-    const sortedWorkers = [...searchedWorkers].sort((a, b) => {
+        
+    const sortedWorkers = [...workersToShow].sort((a, b) => {
         const statusOrder: Record<string, number> = { "WORKING": 1, "PAUSED": 2, "OFF_WORK": 3 };
         return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
     });
@@ -65,7 +59,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                     <div className="flex-1">
                         <h3 className="text-lg font-bold text-slate-800">작업자 현황</h3>
                         <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                            {sortedWorkers.length}명 {activeFilter !== 'all' && `· Zone ${ZONES.find(z => z.id === activeFilter)?.name}`}
+                            {sortedWorkers.length}명 {activeFilter !== 'all' && `· ${DEFAULT_ZONES.find(z => z.zoneId === activeFilter)?.name}`}
                         </p>
                     </div>
                     {onClose && (
@@ -81,22 +75,22 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
 
             {/* 구역 필터 탭 */}
             <div className="flex border-b bg-white overflow-x-auto no-scrollbar px-4">
-                {ZONES.map(zone => (
+                {DEFAULT_ZONES.map(zone => (
                     <button
-                        key={zone.id}
+                        key={zone.zoneId}
                         onClick={() => {
-                            setActiveFilter(zone.id);
-                            onFilterChange?.(zone.id);
+                            setActiveFilter(zone.zoneId);
+                            onFilterChange?.(zone.zoneId);
                         }}
                         className={cn(
                             "relative flex-1 min-w-[65px] py-3 px-3 text-xs font-semibold transition-all duration-200",
-                            activeFilter === zone.id
+                            activeFilter === zone.zoneId
                                 ? "text-primary"
                                 : "text-slate-500 hover:text-slate-700"
                         )}
                     >
-                        Zone {zone.name}
-                        {activeFilter === zone.id && (
+                        {zone.name}
+                        {activeFilter === zone.zoneId && (
                             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/50 via-primary to-primary/50 rounded-full" />
                         )}
                     </button>
@@ -141,8 +135,8 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                                             {worker.name}
                                         </div>
                                         <div className="text-xs text-slate-500 truncate">
-                                            {worker.currentZoneId ? `Zone ${worker.currentZoneId}` : "대기중"}
-                                            {worker.lineNumber && ` - L${worker.lineNumber}`}
+                                            {!worker.currentZoneId && "대기중"}
+                                            {worker.lineNumber && `L${worker.lineNumber}`}
                                         </div>
                                     </div>
 
@@ -157,6 +151,10 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                                             <div className={cn("font-semibold", getWorkRateColor(worker.workRate || 0))}>
                                                 {worker.workRate || 0}%
                                             </div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-slate-400 text-[10px] font-medium">속도</div>
+                                            <div className="font-semibold text-slate-700">{worker.processingSpeed || 0}</div>
                                         </div>
                                     </div>
 
