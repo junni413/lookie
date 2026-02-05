@@ -18,7 +18,27 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
     const isOutOfStock = issue.issueType === "OUT_OF_STOCK";
     const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
 
-    // Placeholder for worker details popover if needed
+    // Safe property access
+    const locationDisplay = (issue as AdminIssueSummary).locationCode || (issue as IssueResponse).zoneName || "-";
+    const productDisplay = (issue as AdminIssueSummary).productName || "-";
+    
+    // Urgency/Priority Logic
+    const urgencyVal = (issue as AdminIssueSummary).urgency;
+    const priorityVal = (issue as IssueResponse).priority;
+
+    let badgeText = "LOW";
+    let badgeClass = "bg-green-100 text-green-800";
+
+    if (urgencyVal !== undefined) {
+         if (urgencyVal <= 2) { badgeText = "HIGH"; badgeClass = "bg-red-100 text-red-800"; }
+         else if (urgencyVal === 3) { badgeText = "MID"; badgeClass = "bg-yellow-100 text-yellow-800"; }
+    } else if (priorityVal) {
+        badgeText = priorityVal;
+        if (priorityVal === "HIGH") badgeClass = "bg-red-100 text-red-800";
+        else if (priorityVal === "MEDIUM") badgeClass = "bg-yellow-100 text-yellow-800";
+    }
+
+    // Placeholder for worker details
     const worker = {
         name: issue.workerName || "Unknown",
         status: "UNKNOWN",
@@ -26,12 +46,9 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
         currentZoneId: null
     };
 
-
-
     const handleNameClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         const rect = e.currentTarget.getBoundingClientRect();
-        // Position to the right of the name
         setPopoverPos({
             x: rect.right + 12,
             y: rect.top + rect.height / 2
@@ -113,21 +130,31 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
 
                 <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
                     <span className="uppercase tracking-wide">
-                        {(issue as IssueResponse).zoneName || (issue as AdminIssueSummary).locationCode || "ZONE --"}
+                        {locationDisplay} <span className="text-slate-300">|</span> {productDisplay}
                     </span>
                 </span>
             </div>
 
             {/* Right: Badge & Time */}
             <div className="flex flex-col items-end gap-1.5">
-                <span className={cn(
-                    "px-2.5 py-1 rounded-full text-[10px] font-bold shadow-sm border",
-                    isOutOfStock
-                        ? "bg-indigo-50 text-indigo-700 border-indigo-100" // Indigo for Stock (Distinct from Warn/Busy)
-                        : "bg-violet-50 text-violet-700 border-violet-100" // Violet for Broken
-                )}>
-                    {isOutOfStock ? "재고 부족" : "물품 파손"}
-                </span>
+                <div className="flex items-center gap-2">
+                    {/* Urgency Badge */}
+                    <span className={cn(
+                        "px-2 py-0.5 rounded text-[10px] font-bold",
+                        badgeClass
+                    )}>
+                        {badgeText}
+                    </span>
+                    
+                    <span className={cn(
+                        "px-2.5 py-1 rounded-full text-[10px] font-bold shadow-sm border",
+                        isOutOfStock
+                            ? "bg-indigo-50 text-indigo-700 border-indigo-100" // Indigo for Stock
+                            : "bg-violet-50 text-violet-700 border-violet-100" // Violet for Broken
+                    )}>
+                        {isOutOfStock ? "재고 부족" : "물품 파손"}
+                    </span>
+                </div>
                 <span className="text-[10px] text-slate-400 font-medium">
                     {timeAgo(issue.createdAt)}
                 </span>
