@@ -248,6 +248,7 @@ public class IssueService {
             log.warn("[IssueService] AI result already applied. Skip overwrite. issueId={}, existingDecision={}",
                     issueId, existing.getAiDecision());
             return AiResultResponse.from(issue, calculateNextAction(issue),
+                    generateAvailableActions(issue),
                     existing.getAiDecision(), existing.getSummary(),
                     existing.getConfidence(), existing.getAiResult());
         }
@@ -277,9 +278,10 @@ public class IssueService {
                 issueId, issue.getStatus(), issue.getReasonCode());
 
         // 6. nextAction 계산
-        IssueNextAction nextAction = calculateNextAction(issue);
+        IssueNextAction issueNextAction = calculateNextAction(issue);
+        List<String> availableActions = generateAvailableActions(issue);
 
-        AiResultResponse response = AiResultResponse.from(issue, nextAction,
+        AiResultResponse response = AiResultResponse.from(issue, issueNextAction, availableActions,
                 judgment.getAiDecision(), judgment.getSummary(),
                 judgment.getConfidence(), judgment.getAiResult());
 

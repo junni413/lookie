@@ -6,5 +6,6 @@ import type { User } from "@/stores/authStore";
  */
 export interface AdminContact extends User {
     assignedZone?: string; // 담당 구역 (예: "Zone A", "Zone B")
-    isOnline?: boolean; // 온라인 상태
+    isOnline?: boolean; // 온라인 상태 (Legacy)
+    status?: string; // 실시간 상태 (ONLINE, BUSY, PAUSED, AWAY)
 }

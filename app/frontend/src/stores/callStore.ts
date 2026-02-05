@@ -12,7 +12,7 @@ interface CallStore extends CallState {
 
     startCall: (
         callerId: number,
-        calleeId: number,
+        calleeId: number | null,
         issueId: number | null,
         calleeName?: string
     ) => Promise<void>;
