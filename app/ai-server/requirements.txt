@@ -19,5 +19,10 @@ pytest
 # 3. Ultralytics (맨 마지막에)
 ultralytics
 
+pydantic
+pandas
+numpy
+catboost
+
 # openai
 openai

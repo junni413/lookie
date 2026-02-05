@@ -1,5 +1,5 @@
 # 1. 파이썬 3.9 슬림
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # 2. 작업 디렉토리
 WORKDIR /app

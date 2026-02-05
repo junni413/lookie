@@ -1,0 +1,18 @@
+{
+  "model_type": "CatBoostRegressor",
+  "target": "speed_label",
+  "features": [
+    "progress",
+    "remaining_qty",
+    "time_to_planned_end_min",
+    "time_to_deadline_min",
+    "zone_backlog",
+    "zone_active_workers",
+    "zone_location_cnt",
+    "zone_blocking_issue_cnt",
+    "worker_speed_30m_avg"
+  ],
+  "snapshot_min": 5,
+  "window_size_for_30m": 6,
+  "leakage_safe_shift": true
+}
