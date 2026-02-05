@@ -163,6 +163,7 @@ public class IssueService {
                     .damagedTempQty((Integer) inventoryState.get("damagedTempQty"))
                     .scannedLocation(item.getLocationCode())
                     .expectedLocation(item.getLocationCode())
+                    .lastEventType((String) inventoryState.get("lastEventType"))
                     .build();
             
             log.info("[IssueService] OUT_OF_STOCK detected. inventoryState={}", inventoryStateDto);

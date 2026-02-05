@@ -32,4 +32,10 @@ public class InventoryStateDto {
      * 시스템에 등록된 기본 위치 (예: "A-01-01")
      */
     private String expectedLocation;
+    
+    /**
+     * 마지막 재고 이벤트 타입 (예: "PICK_DAMAGED_TEMP", "REVERT_DAMAGED")
+     * AI가 원복 대기(WAITING_RETURN) 등의 상태를 판단하는 데 사용
+     */
+    private String lastEventType;
 }
