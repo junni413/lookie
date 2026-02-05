@@ -2,11 +2,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
-import VideoCallModal from "./VideoCallModal";
-import { issueService, type IssueDetail } from "@/services/issueService";
+import { issueService, type IssueDetailData as IssueDetail } from "@/services/issueService";
 import type { IssueType } from "./IssueReport";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuthStore } from "@/stores/authStore";
+import { useCallStore } from "@/stores/callStore"; // Add callStore
 import { subscribeIssueResult } from "@/services/stompService";
 
 type AiVerdict = "OK" | "DAMAGED" | "NEED_REVIEW" | "RETAKE";
@@ -127,11 +127,10 @@ export default function IssueResult() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [showVideoCall, setShowVideoCall] = useState(false);
-  const [adminResolved, setAdminResolved] = useState(false);
   const [connectionAttempted, setConnectionAttempted] = useState(false);
 
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
+  const startCall = useCallStore((s) => s.startCall); // Add startCall action
   const [detail, setDetail] = useState<IssueDetail | null>(null);
   const [analyzing, setAnalyzing] = useState(true);
 
@@ -174,10 +173,10 @@ export default function IssueResult() {
     // 초기 상세 정보 조회
     const fetchInitialDetail = async () => {
       try {
-        const res = await issueService.getIssue(nav.issueId);
-        if (res.success && res.data) {
-          setDetail(res.data);
-          if (res.data.aiResult) {
+        const res = await issueService.getIssueDetail(nav.issueId);
+        if (res) {
+          setDetail(res);
+          if (res.aiResult) {
             setAnalyzing(false);
           }
         }
@@ -218,19 +217,19 @@ export default function IssueResult() {
 
   if (!nav) return null;
 
-  const connectAdmin = () => {
+  const connectAdmin = async () => {
+    if (!user) return;
     setConnectionAttempted(true);
-    setShowVideoCall(true);
+    try {
+      // Start auto-assignment call
+      await startCall(user.userId, null, nav.issueId, "관리자");
+    } catch (err) {
+      console.error("Failed to start call:", err);
+    }
   };
 
-  const handleSendToAdmin = () => {
-    setAdminResolved(true);
-    setShowVideoCall(false);
-    toast({
-      title: "관리자에게 전송되었습니다.",
-      description: "관리자가 확인 후 처리할 것입니다. 다음 작업을 진행하세요.",
-    });
-  };
+  // Note: handleSendToAdmin will now be handled via global modal or simplified logic
+  // For now, if auto-assignment starts, we consider the attempt "done" for the worker flow.
 
   const goNext = () => {
     navigate(-2);
@@ -265,7 +264,7 @@ export default function IssueResult() {
   };
 
   // Analyzing일 때는 버튼 비활성화
-  const isNextDisabled = analyzing || ((verdict === "DAMAGED" || verdict === "NEED_REVIEW" || verdict === "RETAKE") && !adminResolved && !connectionAttempted);
+  const isNextDisabled = analyzing || ((verdict === "DAMAGED" || verdict === "NEED_REVIEW" || verdict === "RETAKE") && !connectionAttempted);
 
   return (
     <div className="space-y-4">
@@ -392,12 +391,6 @@ export default function IssueResult() {
           작업 이어 진행하기
         </button>
       </div>
-
-      <VideoCallModal
-        isOpen={showVideoCall}
-        onClose={() => setShowVideoCall(false)}
-        onSendToAdmin={handleSendToAdmin}
-      />
     </div>
   );
 }

@@ -18,15 +18,12 @@ export default function IssueListItem({ issue, selected, onClick }: IssueListIte
     const isOutOfStock = issue.issueType === "OUT_OF_STOCK";
     const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
 
-    const param = issue as any; // Quick access for optional/missing fields
-    const rawWorker = param.worker; // AdminIssueSummary might have this injected
-
-    const worker = rawWorker || {
-        worker_id: -1, // Dummy ID
-        status: "OFF_WORK",
+    // Placeholder for worker details popover if needed
+    const worker = {
+        name: issue.workerName || "Unknown",
+        status: "UNKNOWN",
         todayWorkCount: 0,
-        currentZoneId: null,
-        name: issue.workerName || "Unknown"
+        currentZoneId: null
     };
 
 
