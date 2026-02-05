@@ -1,20 +1,15 @@
 import { Card } from "@/components/ui/card";
-import { cn } from "@/utils/cn";
-import { TrendingUp, TrendingDown } from "lucide-react";
+
 import type { LucideIcon } from "lucide-react";
 
 export default function StatusCard({
   title,
   value,
   icon: Icon,
-  trend,
-  trendUp,
 }: {
   title: string;
   value: string | number;
   icon: LucideIcon;
-  trend: string;
-  trendUp: boolean;
 }) {
 
   return (
@@ -32,14 +27,6 @@ export default function StatusCard({
           <span className="text-sm font-medium text-slate-500 mt-0.5">{title}</span>
         </div>
 
-        {/* Trend Badge (Absolute Top Right - Subtle) */}
-        <div className={cn(
-          "absolute top-4 right-4 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity",
-          trendUp ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
-        )}>
-          {trendUp ? <TrendingUp size={10} strokeWidth={3} /> : <TrendingDown size={10} strokeWidth={3} />}
-          <span>{trend.split(" ")[0]}</span>
-        </div>
       </div>
     </Card>
   );

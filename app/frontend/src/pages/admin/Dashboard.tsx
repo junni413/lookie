@@ -107,29 +107,21 @@ export default function Dashboard() {
             title="작업중인 작업자"
             value={summary.working}
             icon={Users}
-            trend="8.5% Up"
-            trendUp={true}
           />
           <StatusCard
-            title="대기중인 판정"
+            title="대기중인 전체 이슈"
             value={summary.waiting}
             icon={Package}
-            trend="1.3% Up"
-            trendUp={true}
           />
           <StatusCard
-            title="완료된 판정"
+            title="완료된 전체 이슈"
             value={summary.done}
             icon={CheckCircle2}
-            trend="4.3% Down"
-            trendUp={false}
           />
           <StatusCard
             title="작업 진행률"
             value={`${summary.progress}%`}
             icon={History}
-            trend="1.8% Up"
-            trendUp={true}
           />
         </section>
       </div>
@@ -147,7 +139,7 @@ export default function Dashboard() {
         {/* Right: Issue List (Card) - Fixed Width Restored */}
         <div className="w-[400px] shrink-0 flex flex-col bg-white rounded-xl shadow-sm overflow-hidden h-full border border-slate-100/50">
           <div className="px-5 pt-4 pb-2 flex justify-between items-center shrink-0">
-            <h3 className="text-base font-bold text-slate-900">판정 요청 목록</h3>
+            <h3 className="text-base font-bold text-slate-900">승인 요청 목록</h3>
 
             {/* Minimal Text Sort Controls */}
             <div className="flex items-center gap-2">

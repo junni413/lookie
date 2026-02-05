@@ -183,4 +183,36 @@ export const adminService = {
     getAdmins,
     assignWorkerToZone,
     getWorkersByZone,
+    getWorkerHoverInfo, // Add export
 };
+
+// ... (Existing interfaces)
+
+// Worker Hover Info
+export interface WorkerHoverInfo {
+    workerId: number;
+    name: string;
+    currentZoneName: string | null;
+    currentLocationCode: string | null;
+    todayWorkCount: number;
+    recentIssueType: string | null;
+}
+
+/**
+ * 작업자 호버 정보 조회
+ * GET /api/control/workers/{workerId}/hover
+ */
+export async function getWorkerHoverInfo(workerId: number): Promise<WorkerHoverInfo> {
+    const response = await request<ApiResponse<WorkerHoverInfo>>(`/api/control/workers/${workerId}/hover`, {
+        method: "GET",
+    });
+    // Ensure all fields are present (safety fallback)
+    return response.data || {
+        workerId,
+        name: "Unknown",
+        currentZoneName: "-",
+        currentLocationCode: "-",
+        todayWorkCount: 0,
+        recentIssueType: null
+    };
+}
