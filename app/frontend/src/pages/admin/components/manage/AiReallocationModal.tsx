@@ -3,8 +3,7 @@ import { createPortal } from "react-dom";
 import { X, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { DB_Worker } from "@/types/db";
-import type { ZoneStat } from "@/services/manageService";
+import type { DB_Worker, ZoneStat } from "@/types/db";
 import ManageZoneColumn from "./ManageZoneColumn";
 
 interface AiReallocationModalProps {

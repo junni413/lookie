@@ -4,10 +4,12 @@ import StatusCard from "./components/dashboard/StatusCard";
 import ZoneGrid from "./components/dashboard/ZoneGrid";
 import IssueList from "./components/issue/IssueList";
 import { adminService } from "@/services/adminService";
+import { issueService } from "@/services/issueService";
 import type { AdminIssueSummary } from "@/types/issue";
 import { Users, Package, CheckCircle2, History } from "lucide-react";
 import { cn } from "@/utils/cn";
 import type { ZoneItem } from "./components/dashboard/ZoneGrid";
+import { DEFAULT_ZONES, mergeZoneData } from "@/utils/zoneUtils";
 
 type SortKey = "TIME" | "PRIORITY";
 
@@ -26,38 +28,50 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchData = async () => {
-      // 1. Issues (Fail-safe)
-      try {
-        // Backend requires 'status' parameter (OPEN/RESOLVED)
-        const fetchedIssues = await adminService.getDashboardIssues({ status: "OPEN" });
-        // No need to filter again if API returns filtered list, but safe to keep or remove.
-        // Since we requested OPEN, we assume backend returns OPEN issues.
-        setIssues(fetchedIssues);
-      } catch (error) {
-        console.error("Failed to load dashboard issues", error);
+      // Parallel execution with independent error handling
+      const [issuesResult, zonesResult, summaryResult] = await Promise.allSettled([
+        issueService.getIssues({ status: "OPEN" }),
+        adminService.getZones(),
+        adminService.getDashboardSummary()
+      ]);
+
+      // 1. Issues
+      if (issuesResult.status === "fulfilled") {
+        setIssues(issuesResult.value.issues);
+      } else {
+        console.error("Failed to load dashboard issues", issuesResult.reason);
       }
 
-      // 2. Zone Stats (Fail-safe)
-      try {
-        const fetchedZones = await adminService.getZones();
-        const formattedZones: ZoneItem[] = fetchedZones.map((z) => ({
-          id: z.zoneId,
-          name: z.name,
-          status: z.status,
-          working: z.workerCount,
-          workRate: z.workRate,
-        }));
-        setZoneData(formattedZones);
-      } catch (error) {
-        console.error("Failed to load zone stats", error);
+      // 2. Zone Stats
+      if (zonesResult.status === "fulfilled") {
+          const mergedZones = mergeZoneData(zonesResult.value);
+          // Convert ZoneStat (Shared) to ZoneItem (Dashboard specific) if needed
+          // Actually mergedZones is ZoneStat[], but ZoneItem has 'id' instead of 'zoneId' and 'working' instead of 'workerCount'
+          // We map it here
+          setZoneData(mergedZones.map(z => ({
+              id: z.zoneId,
+              name: z.name,
+              status: z.status,
+              working: z.workerCount,
+              workRate: z.workRate
+          })));
+      } else {
+        console.error("Failed to load zone stats, using defaults", zonesResult.reason);
+        // Map DEFAULT_ZONES from ZoneStat to ZoneItem
+        setZoneData(DEFAULT_ZONES.map(z => ({
+              id: z.zoneId,
+              name: z.name,
+              status: z.status,
+              working: z.workerCount,
+              workRate: z.workRate
+        })));
       }
 
-      // 3. Summary (Fail-safe)
-      try {
-        const fetchedSummary = await adminService.getDashboardSummary();
-        setSummary(fetchedSummary);
-      } catch (error) {
-        console.error("Failed to load dashboard summary", error);
+      // 3. Summary
+      if (summaryResult.status === "fulfilled") {
+        setSummary(summaryResult.value);
+      } else {
+        console.error("Failed to load dashboard summary", summaryResult.reason);
       }
     };
 
