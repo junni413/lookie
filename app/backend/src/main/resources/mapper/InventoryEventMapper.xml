@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="lookie.backend.domain.inventory.mapper.InventoryEventMapper">
+
+    <!-- 재고 이벤트 INSERT -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="eventId">
+        INSERT INTO inventory_events (
+            event_type,
+            product_id,
+            location_id,
+            quantity_change,
+            reference_type,
+            reference_id,
+            created_by
+        ) VALUES (
+            #{eventType},
+            #{productId},
+            #{locationId},
+            #{quantityChange},
+            #{referenceType},
+            #{referenceId},
+            #{createdBy}
+        )
+    </insert>
+
+    <!-- 최근 이벤트 조회 -->
+    <select id="findRecentEvents" resultType="InventoryEventVO">
+        SELECT
+            event_id AS eventId,
+            event_type AS eventType,
+            product_id AS productId,
+            location_id AS locationId,
+            quantity_change AS quantityChange,
+            reference_type AS referenceType,
+            reference_id AS referenceId,
+            created_at AS createdAt,
+            created_by AS createdBy
+        FROM inventory_events
+        WHERE product_id = #{productId}
+          AND location_id = #{locationId}
+        ORDER BY event_id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 이벤트 ID로 조회 -->
+    <select id="findById" resultType="InventoryEventVO">
+        SELECT
+            event_id AS eventId,
+            event_type AS eventType,
+            product_id AS productId,
+            location_id AS locationId,
+            quantity_change AS quantityChange,
+            reference_type AS referenceType,
+            reference_id AS referenceId,
+            created_at AS createdAt,
+            created_by AS createdBy
+        FROM inventory_events
+        WHERE event_id = #{eventId}
+    </select>
+
+</mapper>

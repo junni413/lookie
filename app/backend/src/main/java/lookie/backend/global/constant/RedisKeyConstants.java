@@ -108,6 +108,22 @@ public class RedisKeyConstants {
      */
     public static final long DASHBOARD_TTL = 60;
 
+    // ==================== Inventory 관련 ====================
+
+    /**
+     * 재고 상태 캐시
+     * Pattern: lookie:inventory:product:{productId}:location:{locationId}:state
+     * Type: Hash
+     * Fields: availableQty, damagedTempQty, lastEventId, lastEventType, updatedAt
+     */
+    public static final String INVENTORY_STATE = "lookie:inventory:product:%d:location:%d:state";
+
+    /**
+     * 재고 상태 캐시 유효 시간 (24시간)
+     * - 장기 유지, miss 시 DB fallback
+     */
+    public static final long INVENTORY_TTL = 24 * 60 * 60; // 24 hours
+
     private RedisKeyConstants() {
         // Utility class - prevent instantiation
     }
