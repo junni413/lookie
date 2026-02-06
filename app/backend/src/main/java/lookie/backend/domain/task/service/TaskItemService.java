@@ -69,8 +69,10 @@ public class TaskItemService {
     public TaskItemVO completeItemManual(Long itemId) {
         TaskItemVO item = taskItemMapper.findById(itemId);
 
-        // 1. 이미 완료된 경우 체크
-        if ("DONE".equals(item.getStatus())) {
+        // 1. 이미 완료되거나 이슈 상태인 경우 체크 (건너뛰기/Pass)
+        if ("DONE".equals(item.getStatus()) ||
+                "ISSUE".equals(item.getStatus()) ||
+                "ISSUE_PENDING".equals(item.getStatus())) {
             return item;
         }
 
