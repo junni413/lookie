@@ -186,7 +186,15 @@ export const taskService = {
 
   /** 작업 완료 */
   completeTask: async (taskId: number): Promise<ApiResponse<{}>> => {
-    return requestJSON(`/api/tasks/${taskId}/complete`, { method: "POST" });
+    const res = await requestJSON<ApiResponse<{}>>(`/api/tasks/${taskId}/complete`, { method: "POST" });
+    if (res.success) {
+      const stats = getStats();
+      stats.done += 1;
+      // 대기 중인 작업이 있으면 하나 감소 (일반적으로 1개씩 할당되므로)
+      if (stats.waiting > 0) stats.waiting -= 1;
+      setStats(stats);
+    }
+    return res;
   },
 
   /** 작업 아이템 목록 조회 */
@@ -257,12 +265,17 @@ export const taskService = {
     const local = getStats();
 
     try {
-      // 2) issue는 서버에서 가져온 내 이슈 총 개수로 계산
-      const issues = await requestJSON<{ success: boolean; data: any[] }>(`/api/issues/my`, { method: "GET" });
+      // 2) issue는 서버에서 가져온 내 이슈 중 '오늘' 발생한 것만 필터링
+      const issuesRes = await requestJSON<{ success: boolean; data: any[] }>(`/api/issues/my`, { method: "GET" });
+      
+      const today = new Date().toISOString().split('T')[0]; // "2026-02-06"
+      const todayIssues = Array.isArray(issuesRes.data) 
+        ? issuesRes.data.filter(iss => iss.createdAt && iss.createdAt.startsWith(today))
+        : [];
 
       return {
         ...local,
-        issue: Array.isArray(issues.data) ? issues.data.length : 0,
+        issue: todayIssues.length,
       };
     } catch (err) {
       console.warn("Failed to fetch server stats, using local fallbacks:", err);

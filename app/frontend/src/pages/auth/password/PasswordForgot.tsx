@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ChevronLeft, Home } from "lucide-react";
+import { Home } from "lucide-react";
 import { requestPasswordResetOtp } from "../../../api/auth";
 import { isValidEmail } from "../../../utils/validators";
 

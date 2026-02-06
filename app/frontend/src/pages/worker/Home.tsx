@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, CheckCircle2, AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
@@ -149,9 +149,8 @@ export default function Home() {
 
   const workStats = useMemo(
     () => [
-      { id: "done", label: "처리한 작업", value: stats.done, icon: "📦" },
-      { id: "issue", label: "전체 이슈", value: stats.issue, icon: "🧾" },
-      { id: "waiting", label: "처리 대기 중", value: stats.waiting, icon: "⏳" },
+      { id: "done", label: "완료 작업", value: stats.done, icon: <CheckCircle2 className="w-5 h-5 text-emerald-500" /> },
+      { id: "issue", label: "전체 이슈", value: stats.issue, icon: <AlertCircle className="w-5 h-5 text-rose-500" /> },
     ],
     [stats]
   );
@@ -253,16 +252,15 @@ export default function Home() {
     ? "근무 중단 상태에서는 작업을 진행할 수 없습니다."
     : !isTaskChecking && hasActiveTask
     ? "진행 중인 작업이 있습니다. 이어서 진행하세요."
-    : "오늘 배정된 작업을 시작하세요.";
+    : "새로운 작업을 할당 받으세요.";
 
   return (
     <div className="space-y-4 pb-4">
-      {/* 인사 (예전 디자인) */}
       <div className="px-1 pt-2">
         <h1 className="text-[26px] font-black tracking-tight text-slate-900">
           {user?.name ?? "작업자"}님
         </h1>
-        <p className="mt-1 text-[13px] font-semibold text-slate-400 pl-2">
+        <p className="mt-1 text-[15px] font-semibold text-slate-400 pl-2">
           안녕하세요! 오늘의 작업을 시작하세요.
         </p>
       </div>
@@ -321,7 +319,7 @@ export default function Home() {
             onClick={workStatus === "WORKING" ? onPause : onResume}
             disabled={isProcessing}
           >
-            {workStatus === "WORKING" ? "잠시 중단" : "다시 시작"}
+            {workStatus === "WORKING" ? "중단" : "다시 시작"}
           </button>
 
           <button
@@ -344,7 +342,7 @@ export default function Home() {
             onClick={onCheckout}
             disabled={isProcessing}
           >
-            퇴근하기
+            퇴근
           </button>
         </div>
       </section>
@@ -358,16 +356,22 @@ export default function Home() {
           <h2 className="text-[17px] font-black text-slate-900">작업 통계량</h2>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-4 grid grid-cols-2 gap-4">
           {workStats.map((s) => (
-            <div key={s.id} className="rounded-[22px] bg-slate-50 p-3 text-center">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[14px] bg-white text-base">
-                {s.icon}
+            <div key={s.id} className="group relative rounded-[28px] bg-white p-5 border border-slate-100/80 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-current opacity-20" style={{ color: s.id === 'done' ? '#10b981' : '#f43f5e' }} />
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`p-2 rounded-xl ${s.id === 'done' ? 'bg-emerald-50' : 'bg-rose-50'}`}>
+                    {s.icon}
+                </div>
+                <p className="text-[13px] font-black text-slate-400 tracking-tight">{s.label}</p>
               </div>
-              <p className="mt-3 text-[26px] font-black leading-none text-slate-900">
-                {s.value}
-              </p>
-              <p className="mt-2 text-[12px] font-bold text-slate-500">{s.label}</p>
+              <div className="flex items-baseline gap-1">
+                <p className="text-[32px] font-black text-slate-900 leading-none tracking-tighter">
+                    {s.value}
+                </p>
+                <p className="text-[13px] font-bold text-slate-300">건</p>
+              </div>
             </div>
           ))}
         </div>

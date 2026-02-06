@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { TaskVO } from "@/types/task";
-import { MapPin, ScanLine, X, CheckCircle2, AlertTriangle } from "lucide-react";
+import { MapPin, ScanLine, X, CheckCircle2 } from "lucide-react";
 
 function zoneText(task: any) {
   const z = task?.assignedZoneId ?? task?.zoneId;
@@ -171,7 +171,7 @@ export default function TaskScanStart() {
         </div>
 
         <p className="mt-10 max-w-[280px] text-center text-[15px] font-bold text-slate-400 leading-relaxed px-4 opacity-70 break-keep">
-          카메라 권한이 필요합니다. 설정에서 권한을 확인해주세요.
+          카메라 권한이 필요합니다. <br />설정에서 권한을 확인해주세요.
         </p>
       </div>
     </div>

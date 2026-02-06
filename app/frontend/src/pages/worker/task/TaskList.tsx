@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useOutletContext, useNavigate, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import type { MobileLayoutContext } from "../../../components/layout/MobileLayout";
 import { taskService } from "@/services/taskService";
 import type { TaskItemVO, TaskVO } from "@/types/task";
+import { Hash, Package, MapPin, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function TaskList() {
     const { setTitle } = useOutletContext<MobileLayoutContext>();
@@ -50,65 +52,90 @@ export default function TaskList() {
     return (
         <div className="flex flex-col h-full bg-white">
             <div className="flex-1 space-y-4 pb-8 overflow-y-auto">
-                <div className="flex items-center justify-between px-2 pt-2">
-                    <h2 className="text-[20px] font-black text-gray-900 leading-tight">
-                        아래 물건들을 담아주세요.
+                <div className="flex items-center justify-between px-4 pt-6 pb-2">
+                    <h2 className="text-[23px] font-black text-slate-900 leading-tight tracking-tight">
+                        아래 물건들을<br />담아주세요.
                     </h2>
                 </div>
 
-                <div className="space-y-3 px-2">
-                    {items.map((item) => (
-                        <div
-                            key={item.batchTaskItemId}
-                            className={`rounded-3xl border p-4 flex items-center gap-4 transition-all ${item.status === 'DONE' ? 'bg-gray-50/50 border-gray-100 opacity-60' : 'bg-white border-gray-100 shadow-sm'
-                                }`}
-                        >
+                <div className="space-y-4 px-4 pb-12">
+                    <AnimatePresence mode="popLayout">
+                        {items.map((item) => (
+                            <motion.div
+                                layout
+                                initial={{ opacity: 0, scale: 0.98 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.98 }}
+                                transition={{ duration: 0.25, ease: "easeOut" }}
+                                key={item.batchTaskItemId}
+                                className={`h-[120px] rounded-[24px] border px-4 flex items-center gap-4 transition-all duration-300 ${item.status === 'DONE'
+                                    ? 'bg-slate-50/50 border-slate-100 opacity-60 grayscale-[0.5]' :
+                                    item.status === 'ISSUE'
+                                        ? 'bg-rose-50/30 border-rose-100/50 shadow-[0_4px_15px_-5px_rgba(244,63,94,0.1)]' :
+                                        'bg-white border-slate-100 shadow-[0_4px_12px_-5px_rgba(30,41,59,0.08)]'
+                                    }`}
+                            >
                             {/* Product Image */}
-                            <div className="h-20 w-20 rounded-2xl bg-gray-50 flex-shrink-0 overflow-hidden">
+                            <div className="h-20 w-20 rounded-2xl bg-slate-50 flex-shrink-0 overflow-hidden border border-slate-100/50 p-1">
                                 {item.productImage ? (
-                                    <img src={item.productImage} alt={item.productName} className="w-full h-full object-cover" />
+                                    <img src={item.productImage} alt={item.productName} className="w-full h-full object-contain" />
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                        No Image
+                                    <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                        <Package className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
                                 )}
                             </div>
 
                             <div className="flex-1 min-w-0">
-                                <div className="font-extrabold text-[16px] text-gray-900 truncate">
+                                <div className="font-black text-[17px] text-slate-900 truncate tracking-tight">
                                     {item.productName}
                                 </div>
-                                <div className="text-[12px] font-semibold text-gray-400 mt-0.5">
-                                    {item.barcode}
+                                <div className="flex items-center gap-1.5 text-[12px] font-bold text-slate-400 mt-1">
+                                    <Hash className="w-3 h-3" />
+                                    <span>{item.barcode}</span>
                                 </div>
-                                <div className="flex items-center gap-3 mt-2 text-[12px] font-bold">
-                                    <span className="text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">수량: <span className="text-blue-600 ml-0.5">{item.requiredQty}개</span></span>
-                                    <span className="text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">지번: <span className="text-blue-600 ml-0.5">{item.locationCode}</span></span>
+                                <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px] font-black">
+                                    <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
+                                        <Package className="w-3 h-3 text-slate-400" />
+                                        <span><span className="text-blue-600 font-black">{item.requiredQty}</span>개</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
+                                        <MapPin className="w-3 h-3 text-slate-400" />
+                                        <span><span className="text-blue-600 font-black">{item.locationCode}</span></span>
+                                    </div>
                                 </div>
                             </div>
 
                             {item.status === 'DONE' && (
-                                <div className="bg-green-100 text-green-700 text-[10px] font-black px-2 py-1 rounded-lg shrink-0">
-                                    준비 완료
+                                <div className="bg-emerald-50 text-emerald-500 p-2 rounded-xl border border-emerald-100 shrink-0">
+                                    <CheckCircle2 className="w-5 h-5" strokeWidth={3} />
                                 </div>
                             )}
-                        </div>
+                            {item.status === 'ISSUE' && (
+                                <div className="bg-rose-50 text-rose-500 p-2 rounded-xl border border-rose-100 shrink-0">
+                                    <AlertCircle className="w-5 h-5" strokeWidth={3} />
+                                </div>
+                            )}
+                        </motion.div>
                     ))}
+                    </AnimatePresence>
 
                     {items.length === 0 && (
-                        <div className="py-20 text-center text-gray-400 font-medium">
-                            표시할 상품이 없습니다.
+                        <div className="py-24 text-center">
+                            <Package className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                            <p className="text-slate-400 font-bold">표시할 상품이 없습니다.</p>
                         </div>
                     )}
                 </div>
             </div>
 
             {/* Bottom Action */}
-            <div className="px-2 pb-6 pt-4 bg-white border-t border-gray-50">
+            <div className="px-5 pb-8 pt-4 bg-white border-t border-slate-50">
                 {remainingCount > 0 && (
-                    <div className="text-center mb-4">
-                        <div className="inline-block px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full text-[12px] font-bold">
-                            남은 작업 <span className="ml-1 text-orange-700">{remainingCount}개</span>
+                    <div className="text-center mb-5">
+                        <div className="inline-flex items-center gap-1.5 px-5 py-2 bg-amber-50 text-amber-600 rounded-full text-[13px] font-black border border-amber-100/50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            남은 작업 <span className="ml-0.5 text-amber-700">{remainingCount}건</span>
                         </div>
                     </div>
                 )}
@@ -118,9 +145,9 @@ export default function TaskList() {
                     onClick={() => navigate("/worker/task/work-detail", {
                         state: { task, toteBarcode }
                     })}
-                    className="w-full h-14 bg-blue-600 text-white font-black text-base rounded-[20px] shadow-lg shadow-blue-100 active:scale-[0.98] transition-all"
+                    className="w-full h-16 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-black text-[17px] rounded-[22px] shadow-[0_12px_24px_-8px_rgba(37,99,235,0.4)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
-                    작업 계속하기
+                    <span>작업 계속하기</span>
                 </button>
             </div>
         </div>

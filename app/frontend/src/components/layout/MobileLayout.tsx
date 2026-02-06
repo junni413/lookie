@@ -1,20 +1,24 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import WorkerDrawer from "@/components/layout/WorkerDrawer";
 import { useUIStore } from "@/stores/uiStore";
 import { useCallStore } from "@/stores/callStore"; // Import callStore
 import VideoCallModal from "@/components/webrtc/VideoCallModal"; // Import VideoCallModal
 import { LayoutGrid, ChevronLeft } from "lucide-react";
 
-export type MobileLayoutContext = { setTitle: (t: string) => void };
+export type MobileLayoutContext = { 
+  setTitle: (t: string) => void;
+  setHeaderRight: (el: React.ReactNode) => void;
+  setHeaderCenter: (el: React.ReactNode) => void;
+};
 
 export default function MobileLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const toggleWorkerDrawer = useUIStore((s) => s.toggleWorkerDrawer);
-  const listenForIncomingCalls = useCallStore((s) => s.listenForIncomingCalls); // Get listener action
+  const listenForIncomingCalls = useCallStore((s) => s.listenForIncomingCalls);
 
-  // Start listening for incoming calls when layout mounts
   useEffect(() => {
     listenForIncomingCalls();
   }, [listenForIncomingCalls]);
@@ -24,9 +28,13 @@ export default function MobileLayout() {
     else navigate("/worker/home", { replace: true });
   };
 
+  const [headerRight, setHeaderRight] = useState<React.ReactNode>(null);
+  const [headerCenter, setHeaderCenter] = useState<React.ReactNode>(null);
+  
   // 타이틀 표시를 안 하기로 했으므로 setTitle은 더이상 상태를 변경하지 않는 no-op으로 제공
   const setTitle = () => {};
-  const contextValue = useMemo(() => ({ setTitle }), []);
+
+  const contextValue = useMemo(() => ({ setTitle, setHeaderRight, setHeaderCenter }), []);
 
   // 홈화면이나 출근화면에서는 뒤로가기 숨김
   const hideBackButton = location.pathname === "/worker/home" || location.pathname === "/worker/attend";
@@ -37,31 +45,39 @@ export default function MobileLayout() {
         {/* Video Call Modal */}
         <VideoCallModal />
 
-        <header className="sticky top-0 z-10 flex items-center justify-between bg-white/70 backdrop-blur-xl px-5 pt-7 pb-4 border-b border-gray-100/50">
+        <header className="sticky top-0 z-[50] flex items-center justify-between bg-white/70 backdrop-blur-xl px-5 pt-7 pb-4 border-b border-slate-100 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)]">
           {/* left */}
           <div className="flex items-center gap-4">
             {!hideBackButton && (
-              <button
+              <motion.button
+                whileTap={{ scale: 0.95 }}
                 type="button"
                 onClick={handleBack}
-                className="h-11 w-11 flex items-center justify-center rounded-[18px] bg-white shadow-[0_4px_14px_rgba(0,0,0,0.06)] active:scale-95 transition-all text-slate-800 border border-gray-50/50"
+                className="h-10 w-10 flex items-center justify-center rounded-[14px] bg-white border border-slate-100 shadow-sm transition-all text-slate-600 hover:text-slate-900"
                 aria-label="뒤로가기"
               >
-                <ChevronLeft size={22} strokeWidth={2.5} />
-              </button>
+                <ChevronLeft size={20} strokeWidth={2.5} />
+              </motion.button>
             )}
           </div>
 
+          {/* center slot */}
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-auto">
+            {headerCenter}
+          </div>
+
           {/* right icons */}
-          <div className="flex items-center gap-1">
-            <button
+          <div className="flex items-center gap-3">
+            {headerRight}
+            <motion.button
+              whileTap={{ scale: 0.95 }}
               type="button"
-              className="h-11 w-11 flex items-center justify-center rounded-[18px] bg-white shadow-[0_4px_14px_rgba(0,0,0,0.06)] active:scale-95 transition-all text-slate-800 border border-gray-50/50"
+              className="h-10 w-10 flex items-center justify-center rounded-[14px] bg-white border border-slate-100 shadow-sm transition-all text-slate-600 hover:text-slate-900"
               aria-label="사이드바 열기"
               onClick={toggleWorkerDrawer}
             >
-              <LayoutGrid size={22} strokeWidth={2.5} />
-            </button>
+              <LayoutGrid size={20} strokeWidth={2.5} />
+            </motion.button>
           </div>
         </header>
 

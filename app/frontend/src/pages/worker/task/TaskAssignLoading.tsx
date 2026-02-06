@@ -105,8 +105,8 @@ export default function TaskAssignLoading() {
           const task = normalizeTask(response.data.payload);
           const nextItem = response.data.nextItem;
 
-          // 대기 통계 (UI용)
-          await taskService.addWaitingTasks(task.itemCount || 1);
+          // 대기 통계 (UI용): 작업이 할당되었으므로 1개 추가
+          await taskService.addWaitingTasks(1);
 
           navigate("/worker/task/scan-start", {
             replace: true,
