@@ -16,7 +16,7 @@ export interface CancelRequest {
     reason: "TIMEOUT" | "MISTAKE";
 }
 
-export type CallStatus = "IDLE" | "WAITING" | "INCOMING" | "ACTIVE" | "ENDED";
+export type CallStatus = "IDLE" | "WAITING" | "INCOMING" | "ACTIVE" | "ENDED" | "CONNECTING";
 
 export interface ApiResponse<T> {
     success: boolean;

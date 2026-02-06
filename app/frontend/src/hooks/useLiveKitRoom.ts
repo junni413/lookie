@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import {
     Room,
     RoomEvent,
@@ -13,6 +13,7 @@ interface UseLiveKitRoomOptions {
     url: string;
     token: string | null;
     onConnected?: () => void;
+    onReconnecting?: () => void;
     onDisconnected?: () => void;
     onError?: (error: Error) => void;
 }
@@ -24,52 +25,54 @@ interface UseLiveKitRoomReturn {
     remoteParticipant: RemoteParticipant | undefined;
     isConnecting: boolean;
     error: Error | null;
+    disconnect: () => Promise<void>;
 }
 
 /**
- * LiveKit Room 연결을 관리하는 커스텀 훅
- * 
- * @param options - LiveKit 연결 옵션
- * @returns Room 상태 및 트랙 정보
- * 
- * @example
- * const { room, localTrack, remoteTrack } = useLiveKitRoom({
- *   url: 'wss://livekit.example.com',
- *   token: 'your-token',
- *   onConnected: () => console.log('Connected!'),
- * });
+ * LiveKit Room 연결을 관리하는 커스텀 훅 (Refactored for Stability & Idempotency)
  */
 export function useLiveKitRoom(options: UseLiveKitRoomOptions): UseLiveKitRoomReturn {
-    const { url, token, onConnected, onDisconnected, onError } = options;
+    const { url, token, onConnected, onReconnecting, onDisconnected, onError } = options;
 
-    // useRef로 콜백 저장 (의존성 배열에서 제외하기 위함)
+    // Callbacks Ref (to remove from dependency array)
     const onConnectedRef = useRef(onConnected);
+    const onReconnectingRef = useRef(onReconnecting);
     const onDisconnectedRef = useRef(onDisconnected);
     const onErrorRef = useRef(onError);
 
-    // 콜백 업데이트
     useEffect(() => {
         onConnectedRef.current = onConnected;
+        onReconnectingRef.current = onReconnecting;
         onDisconnectedRef.current = onDisconnected;
         onErrorRef.current = onError;
-    }, [onConnected, onDisconnected, onError]);
+    }, [onConnected, onReconnecting, onDisconnected, onError]);
 
+    // State
     const [room, setRoom] = useState<Room | null>(null);
+    const [isConnecting, setIsConnecting] = useState(false);
+    const [error, setError] = useState<Error | null>(null);
+    
     const [localTrack, setLocalTrack] = useState<LocalVideoTrack | undefined>();
     const [remoteTrack, setRemoteTrack] = useState<RemoteVideoTrack | undefined>();
     const [remoteParticipant, setRemoteParticipant] = useState<RemoteParticipant | undefined>();
-    const [isConnecting, setIsConnecting] = useState(false);
-    const [error, setError] = useState<Error | null>(null);
 
+    // Refs for Stability
+    const roomRef = useRef<Room | null>(null);
+    const sessionIdRef = useRef<string | null>(null);
+
+    // Connect Effect
     useEffect(() => {
-        if (!token) return;
+        if (!token || !url) return;
 
-        let aborted = false;
-        setIsConnecting(true);
-        setError(null);
+        // 1. Session & Cancel Flag
+        const sessionId = Math.random().toString(36).substring(7);
+        sessionIdRef.current = sessionId;
+        let cancelled = false;
 
-        // 1. Create Room
-        const newRoom = new Room({
+        console.log(`🔒 [LiveKit] Starting Session ${sessionId}`);
+
+        // 2. Create Local Room Instance
+        const room = new Room({
             videoCaptureDefaults: {
                 resolution: VideoPresets.h720.resolution,
             },
@@ -77,100 +80,178 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions): UseLiveKitRoomRe
             dynacast: true,
         });
 
-        setRoom(newRoom);
+        // Update ref for external access (disconnect button)
+        roomRef.current = room;
+        setRoom(room);
 
-        // 2. Event Listeners
-        newRoom
-            .on(RoomEvent.Connected, () => {
-                console.log('✅ [LiveKit] Connected to Room:', newRoom.name);
-                onConnectedRef.current?.();
-            })
-            .on(RoomEvent.Disconnected, () => {
-                console.log('🚫 [LiveKit] Disconnected');
-                onDisconnectedRef.current?.();
-            })
-            .on(RoomEvent.ParticipantConnected, (participant) => {
-                console.log('👤 [LiveKit] Participant Connected:', participant.identity);
-                setRemoteParticipant(participant);
-            })
-            .on(RoomEvent.ParticipantDisconnected, (participant) => {
-                console.log('👋 [LiveKit] Participant Left:', participant.identity);
-                setRemoteParticipant(undefined);
-                setRemoteTrack(undefined);
-            })
-            .on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
-                console.log('🎥 [LiveKit] Track Subscribed:', track.kind, participant.identity);
-                if (track.kind === Track.Kind.Video) {
-                    setRemoteTrack(track as RemoteVideoTrack);
-                    setRemoteParticipant(participant);
-                }
-                if (track.kind === Track.Kind.Audio) {
-                    // Audio track must be attached to play
-                    track.attach();
-                }
-            })
-            .on(RoomEvent.TrackUnsubscribed, (track) => {
-                console.log('❌ [LiveKit] Track Unsubscribed:', track.kind);
-                if (track.kind === Track.Kind.Video) {
-                    setRemoteTrack(undefined);
-                }
-                if (track.kind === Track.Kind.Audio) {
-                    track.detach();
-                }
-            })
-            .on(RoomEvent.LocalTrackPublished, (publication) => {
-                console.log('📤 [LiveKit] Local Track Published:', publication.kind, publication.source);
-                if (publication.kind === Track.Kind.Video && publication.source === Track.Source.Camera) {
-                    if (publication.track) {
-                        setLocalTrack(publication.track as LocalVideoTrack);
+        // 3. Enhanced Logging & Event Handlers
+        const handleConnected = () => {
+            if (cancelled) return;
+            console.log(`✅ [LiveKit] Connected (Session ${sessionId})`);
+            onConnectedRef.current?.();
+            setIsConnecting(false);
+            
+            // Safe Publish
+            room.localParticipant.enableCameraAndMicrophone()
+                .catch(e => {
+                    if (!cancelled) console.error("Failed to publish tracks:", e);
+                });
+
+            // Initial Sync
+            if (room.remoteParticipants.size > 0) {
+                const p = Array.from(room.remoteParticipants.values())[0];
+                setRemoteParticipant(p);
+                p.trackPublications.forEach((pub) => {
+                    if (pub.kind === Track.Kind.Video && pub.track) {
+                        setRemoteTrack(pub.track as RemoteVideoTrack);
                     }
-                }
-            });
+                });
+            }
+        };
 
-        // 3. Connect
-        newRoom
-            .connect(url, token)
-            .then(async () => {
-                if (aborted) return;
-
-                setIsConnecting(false);
-
-                // 4. Publish Local Camera & Mic
-                console.log('📸 [LiveKit] Publishing Camera & Mic...');
-                await newRoom.localParticipant.enableCameraAndMicrophone();
-
-                // 이미 방에 있는 참가자 확인
-                if (newRoom.remoteParticipants.size > 0) {
-                    const participant = Array.from(newRoom.remoteParticipants.values())[0];
-                    setRemoteParticipant(participant);
-
-                    // 이미 비디오를 켜둔 경우 트랙 찾기
-                    participant.trackPublications.forEach((pub) => {
-                        if (pub.kind === Track.Kind.Video && pub.track) {
-                            setRemoteTrack(pub.track as RemoteVideoTrack);
-                        }
-                    });
-                }
-            })
-            .catch((e) => {
-                if (!aborted) {
-                    console.error('❌ [LiveKit] Connection Failed:', e);
-                    setError(e);
-                    setIsConnecting(false);
-                    onErrorRef.current?.(e);
-                }
-            });
-
-        // Cleanup
-        return () => {
-            aborted = true;
-            newRoom.disconnect();
-            setRoom(null);
+        const handleDisconnected = (reason?: any) => {
+            if (cancelled) {
+                console.log(`🔇 [LiveKit] Disconnected ignored (Stale Session ${sessionId})`);
+                return;
+            }
+            console.log(`🚫 [LiveKit] Disconnected (Session ${sessionId}) reason =`, reason);
+            console.log(`🚫 [LiveKit] State: ${room.state}`);
+            
+            onDisconnectedRef.current?.();
+            setIsConnecting(false);
             setLocalTrack(undefined);
             setRemoteTrack(undefined);
             setRemoteParticipant(undefined);
         };
-    }, [url, token]); // 콜백 함수들을 의존성에서 제거!
+
+        const handleReconnecting = () => {
+             if (cancelled) return;
+             console.log(`⚠️ [LiveKit] Reconnecting (Session ${sessionId})...`);
+             onReconnectingRef.current?.();
+        };
+
+        const handleReconnected = () => {
+             if (cancelled) return;
+             console.log(`✅ [LiveKit] Reconnected (Session ${sessionId})`);
+        };
+
+        const handleConnectionStateChanged = (state: any) => {
+             if (cancelled) return;
+             console.log(`📡 [LiveKit] ConnectionStateChanged: ${state}`);
+        };
+
+        const handleMediaDevicesError = (e: any) => {
+             if (cancelled) return;
+             console.error(`🎤📷 [LiveKit] MediaDevicesError:`, e);
+        };
+
+        const handleParticipantConnected = (participant: RemoteParticipant) => {
+            if (cancelled) return;
+            console.log('👤 [LiveKit] Participant Connected:', participant.identity);
+            setRemoteParticipant(participant);
+        };
+
+        const handleParticipantDisconnected = (participant: RemoteParticipant) => {
+             if (cancelled) return;
+             console.log('👋 [LiveKit] Participant Left:', participant.identity);
+             if (remoteParticipant?.identity === participant.identity) {
+                 setRemoteParticipant(undefined);
+                 setRemoteTrack(undefined);
+             }
+        };
+
+        const handleTrackSubscribed = (track: Track, _pub: any, participant: RemoteParticipant) => {
+             if (cancelled) return;
+             console.log('🎥 [LiveKit] Track Subscribed:', track.kind, participant.identity);
+             if (track.kind === Track.Kind.Video) {
+                 setRemoteTrack(track as RemoteVideoTrack);
+                 setRemoteParticipant(participant);
+             }
+             if (track.kind === Track.Kind.Audio) {
+                 track.attach();
+             }
+        };
+
+        const handleTrackUnsubscribed = (track: Track) => {
+            if (cancelled) return;
+            console.log('❌ [LiveKit] Track Unsubscribed:', track.kind);
+            if (track.kind === Track.Kind.Video) {
+                setRemoteTrack(undefined);
+            }
+            if (track.kind === Track.Kind.Audio) {
+                track.detach();
+            }
+        };
+
+        const handleLocalTrackPublished = (pub: any) => {
+             if (cancelled) return;
+             console.log('📤 [LiveKit] Local Track Published:', pub.kind);
+             if (pub.kind === Track.Kind.Video && pub.track) {
+                 setLocalTrack(pub.track as LocalVideoTrack);
+             }
+        };
+
+        // Attach Listeners
+        room
+            .on(RoomEvent.Connected, handleConnected)
+            .on(RoomEvent.Disconnected, handleDisconnected)
+            .on(RoomEvent.Reconnecting, handleReconnecting)
+            .on(RoomEvent.Reconnected, handleReconnected)
+            .on(RoomEvent.ConnectionStateChanged, handleConnectionStateChanged)
+            .on(RoomEvent.MediaDevicesError, handleMediaDevicesError)
+            .on(RoomEvent.ParticipantConnected, handleParticipantConnected)
+            .on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected)
+            .on(RoomEvent.TrackSubscribed, handleTrackSubscribed)
+            .on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed)
+            .on(RoomEvent.LocalTrackPublished, handleLocalTrackPublished);
+
+        // 4. Connect with Cancellation Check
+        setIsConnecting(true);
+        setError(null);
+            
+        (async () => {
+            try {
+                console.log(`🚀 [LiveKit] Connecting inside Effect (Session ${sessionId})...`);
+                await room.connect(url, token);
+                
+                if (cancelled) {
+                    console.log(`🛑 [LiveKit] Connected after cleanup. Disconnecting immediately (Session ${sessionId})`);
+                    room.disconnect(); 
+                    return;
+                }
+            } catch (e) {
+                if (cancelled) return;
+                console.error("❌ [LiveKit] connect failed:", e);
+                setError(e instanceof Error ? e : new Error(String(e)));
+                setIsConnecting(false);
+                onErrorRef.current?.(e instanceof Error ? e : new Error(String(e)));
+            }
+        })();
+
+        // 5. Cleanup Function
+        return () => {
+            console.log(`🔓 [LiveKit] Cleaning up Session ${sessionId}`);
+            cancelled = true;
+            
+            if (sessionIdRef.current === sessionId) {
+                sessionIdRef.current = null;
+            }
+
+            // Clean up this specific room instance
+            room.removeAllListeners();
+            room.disconnect();
+        };
+    }, [url, token]);
+
+    // Explicit Disconnect Function for UI "End Call"
+    const disconnect = useCallback(async () => {
+        if (roomRef.current) {
+            console.log("🛑 [LiveKit] User initiated User Disconnect");
+            // Invalidate current session to prevent any further updates from this session
+            sessionIdRef.current = null; 
+            await roomRef.current.disconnect();
+        }
+    }, []);
 
     return {
         room,
@@ -179,5 +260,6 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions): UseLiveKitRoomRe
         remoteParticipant,
         isConnecting,
         error,
+        disconnect,
     };
 }
