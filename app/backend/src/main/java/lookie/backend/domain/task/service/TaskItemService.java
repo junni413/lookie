@@ -10,6 +10,8 @@ import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
 import lookie.backend.domain.product.vo.ProductVO;
+import lookie.backend.domain.task.event.TaskItemCompletedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +27,7 @@ public class TaskItemService {
     private final TaskItemMapper taskItemMapper;
     private final ProductMapper productMapper;
     private final InventoryService inventoryService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 상품 바코드 스캔 및 매칭되는 아이템 조회
@@ -81,14 +84,17 @@ public class TaskItemService {
 
         // 4. 재고 차감 이벤트 발행 (정상 집품 확정)
         inventoryService.recordEvent(
-            "PICK_NORMAL",
-            item.getProductId(),
-            item.getLocationId(),
-            -item.getRequiredQty(), // 음수 = 재고 감소
-            "TASK_ITEM",
-            itemId,
-            null // workerId는 TaskWorkflowFacade에서 얻을 수 있지만, 여기서는 null
+                "PICK_NORMAL",
+                item.getProductId(),
+                item.getLocationId(),
+                -item.getRequiredQty(), // 음수 = 재고 감소
+                "TASK_ITEM",
+                itemId,
+                null // workerId는 TaskWorkflowFacade에서 얻을 수 있지만, 여기서는 null
         );
+
+        // 5. [Event] 아이템 완료 이벤트 발행 (Redis 집계용)
+        eventPublisher.publishEvent(new TaskItemCompletedEvent(item.getBatchTaskItemId(), item.getBatchTaskId()));
 
         return taskItemMapper.findById(itemId);
     }
@@ -116,6 +122,12 @@ public class TaskItemService {
     @Transactional
     public void markAsIssue(Long itemId) {
         taskItemMapper.updateStatus(itemId, "ISSUE");
+
+        // [Event] 아이템 이슈 완료 이벤트 발행 (Redis 집계용)
+        TaskItemVO item = taskItemMapper.findById(itemId);
+        if (item != null) {
+            eventPublisher.publishEvent(new TaskItemCompletedEvent(item.getBatchTaskItemId(), item.getBatchTaskId()));
+        }
     }
 
     /**

@@ -135,4 +135,31 @@
         JOIN zone_locations l ON i.location_id = l.location_id
         WHERE i.batch_task_id = #{batchTaskId}
     </select>
+
+    <!-- [집계] Task 내 전체 아이템 수 -->
+    <select id="countAllItemsByTaskId" resultType="int">
+        SELECT COUNT(*)
+        FROM batch_task_items
+        WHERE batch_task_id = #{batchTaskId}
+    </select>
+
+    <!-- [집계] 배치+구역 기준 전체 아이템 수 -->
+    <select id="countItemsByBatchAndZone" resultType="int">
+        SELECT COUNT(*)
+        FROM batch_task_items bti
+        JOIN batch_tasks bt ON bti.batch_task_id = bt.batch_task_id
+        WHERE bt.batch_id = #{batchId}
+          AND bt.zone_id = #{zoneId}
+    </select>
+
+    <!-- [집계] 배치+구역 기준 완료(DONE/ISSUE)된 아이템 수 -->
+    <select id="countCompletedItemsByBatchAndZone" resultType="int">
+        SELECT COUNT(*)
+        FROM batch_task_items bti
+        JOIN batch_tasks bt ON bti.batch_task_id = bt.batch_task_id
+        WHERE bt.batch_id = #{batchId}
+          AND bt.zone_id = #{zoneId}
+          AND bti.status != 'PENDING'
+    </select>
+
 </mapper>

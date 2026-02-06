@@ -36,4 +36,7 @@ public interface TaskMapper {
         int updateActionStatus(
                         @Param("batchTaskId") Long batchTaskId,
                         @Param("actionStatus") TaskActionStatus actionStatus);
+
+        // [조회] 배치 내 진행 중인 Task 개수 조회
+        int countInProgressTasksByBatch(@Param("batchId") Long batchId);
 }

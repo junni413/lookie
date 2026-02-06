@@ -10,8 +10,15 @@ import lookie.backend.domain.user.service.UserService;
 import lookie.backend.domain.user.vo.UserVO;
 import lookie.backend.global.common.type.ZoneType;
 import lookie.backend.global.util.WorkerNameFormatter;
+import lookie.backend.domain.batch.mapper.BatchMapper;
+import lookie.backend.domain.batch.vo.BatchVO;
+import lookie.backend.domain.task.mapper.TaskItemMapper;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import java.util.concurrent.TimeUnit;
+import java.util.Map;
+import java.util.HashMap;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -32,6 +39,9 @@ public class WorkerMonitoringServiceRedisImpl implements WorkerMonitoringService
     private final ControlRedisRepository redisRepository;
     private final ControlMapper controlMapper; // DB Fallback용
     private final UserService userService; // 실시간 상태 주입용
+    private final BatchMapper batchMapper;
+    private final TaskItemMapper taskItemMapper;
+    private final StringRedisTemplate stringRedisTemplate;
 
     /**
      * 구역별 현황 조회 (Cache-Aside 패턴)
@@ -41,6 +51,9 @@ public class WorkerMonitoringServiceRedisImpl implements WorkerMonitoringService
      */
     @Override
     public List<ZoneOverviewDto> getZoneOverviews() {
+        // [Lazy Init] Redis 초기화 보장
+        ensureRedisInitialized();
+
         log.debug("[Redis Service] Zone Overviews 조회 시작");
 
         // 1. Redis 조회 시도
@@ -115,6 +128,9 @@ public class WorkerMonitoringServiceRedisImpl implements WorkerMonitoringService
      */
     @Override
     public DashboardSummaryDto getDashboardSummary() {
+        // [Lazy Init] Redis 초기화 보장
+        ensureRedisInitialized();
+
         log.debug("[Redis Service] Dashboard Summary 조회 시작");
 
         // 1. Redis 조회 시도
@@ -264,5 +280,71 @@ public class WorkerMonitoringServiceRedisImpl implements WorkerMonitoringService
                             .build();
                 })
                 .toList();
+    }
+
+    /**
+     * [Lazy Initialization]
+     * 상위 배치가 진행 중일 때, 해당 배치에 대한 Redis 관제 스냅샷이 없으면 초기화 수행.
+     * SETNX를 사용하여 다중 서버/스레드 환경에서도 1회만 실행되도록 보장 (멱등성).
+     */
+    private void ensureRedisInitialized() {
+        try {
+            BatchVO currentBatch = batchMapper.findCurrentInProgress();
+            if (currentBatch == null) {
+                return; // 진행 중인 배치가 없으면 초기화 불필요
+            }
+
+            String initKey = "lookie:control:batch:" + currentBatch.getBatchId() + ":initialized";
+            // 24시간 TTL 설정 (배치 길이에 따라 조정 가능)
+            Boolean isNew = stringRedisTemplate.opsForValue().setIfAbsent(initKey, "true", 24, TimeUnit.HOURS);
+
+            if (Boolean.TRUE.equals(isNew)) {
+                log.info("[Redis Service] 초기화 시작: batchId={}", currentBatch.getBatchId());
+                initializeZoneProgress(currentBatch.getBatchId());
+            }
+        } catch (Exception e) {
+            log.error("[Redis Service] 초기화 중 오류 발생 (무시하고 진행)", e);
+        }
+    }
+
+    /**
+     * 실제 초기화 로직
+     * - DB에서 현재 상태(Total, Completed)를 조회하여 Redis에 스냅샷 저장
+     */
+    private void initializeZoneProgress(Long batchId) {
+        // 모든 Zone 조회
+        List<ZoneOverviewDto> zones = controlMapper.selectZoneOverviews();
+
+        for (ZoneOverviewDto zone : zones) {
+            Long zoneId = zone.getZoneId();
+
+            // DB 집계 (Total, Completed) - 결정사항 1번
+            int total = taskItemMapper.countItemsByBatchAndZone(batchId, zoneId);
+            int completed = taskItemMapper.countCompletedItemsByBatchAndZone(batchId, zoneId);
+            double progressRate = (total > 0) ? (double) completed * 100 / total : 0.0;
+            // 소수점 1자리 포맷팅 (선택사항이나 깔끔하게 처리)
+            progressRate = Math.round(progressRate * 10.0) / 10.0;
+
+            // Redis 저장 Key
+            String progressKey = "lookie:control:zone:" + zoneId + ":progress";
+
+            Map<String, String> data = new HashMap<>();
+            data.put("batchId", String.valueOf(batchId));
+            data.put("total", String.valueOf(total));
+            data.put("completed", String.valueOf(completed));
+            data.put("progressRate", String.valueOf(progressRate));
+
+            stringRedisTemplate.opsForHash().putAll(progressKey, data);
+
+            // Overview 키에도 진행률 반영 (Cache-Aside 로직과 호환성 유지)
+            // 참고: WorkerMonitoringService가 캐시 미스 시 DB값을 덮어쓸 수 있으므로(Cache-Aside),
+            // 여기서는 ProgressRate만 업데이트하거나, Overview DTO 자체를 캐시 워밍할 수도 있음.
+            // 이번 구현에서는 "화면용 집계"인 progressKey를 메인으로 하고,
+            // Overview DTO 캐시는 Cache-Aside 흐름에 맡기되, 진행률 값 갱신이 필요하면 별도로 처리.
+            // 일단 progressKey 생성이 핵심.
+
+            log.info("[Redis Service] Zone Init: zoneId={}, total={}, completed={}, rate={}",
+                    zoneId, total, completed, progressRate);
+        }
     }
 }

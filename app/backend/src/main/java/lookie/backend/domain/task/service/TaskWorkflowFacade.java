@@ -13,7 +13,9 @@ import lookie.backend.domain.task.exception.TaskNotFoundException;
 import lookie.backend.domain.task.exception.TaskNotReleasableException;
 import lookie.backend.domain.task.exception.WorkerAlreadyHasTaskException;
 import lookie.backend.domain.task.event.TaskCompletedEvent;
+
 import lookie.backend.domain.task.mapper.TaskMapper;
+import lookie.backend.domain.batch.mapper.BatchMapper;
 import lookie.backend.domain.task.vo.TaskActionStatus;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
@@ -36,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskWorkflowFacade {
 
     private final TaskMapper taskMapper;
+    private final BatchMapper batchMapper;
     private final TaskItemService taskItemService;
     private final ToteService toteService;
     private final LocationService locationService;
@@ -185,6 +188,14 @@ public class TaskWorkflowFacade {
                 task.getBatchTaskId(),
                 task.getWorkerId(),
                 task.getZoneId()));
+
+        // [Batch] 배치 내 모든 Task가 완료되었는지 확인하고 Batch 상태 업데이트
+        int remainingTasks = taskMapper.countInProgressTasksByBatch(task.getBatchId());
+        if (remainingTasks == 0) {
+            log.info("[TaskWorkflow] All tasks completed for batch {}. Updating batch status to COMPLETED.",
+                    task.getBatchId());
+            batchMapper.updateStatus(task.getBatchId(), "COMPLETED");
+        }
     }
 
     /**
