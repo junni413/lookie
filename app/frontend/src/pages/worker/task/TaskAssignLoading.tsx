@@ -62,6 +62,16 @@ export default function TaskAssignLoading() {
           : null;
 
       if (!toteBarcode) {
+        // [Fix] 토트 바코드가 없더라도, DB상 상태가 SCAN_TOTE라면 복구 시도
+        if (payload.actionStatus === "SCAN_TOTE" || nextAction === "SCAN_TOTE") {
+          console.log("⚠️ Tote missing but actionStatus is SCAN_TOTE -> Redirecting to scan-start");
+          navigate("/worker/task/scan-start", {
+            replace: true,
+            state: { task, nextItem },
+          });
+          return;
+        }
+
         alert("토트 정보가 없어 작업을 복구할 수 없습니다. 홈에서 다시 시작해주세요.");
         navigate("/worker/home", { replace: true });
         return;
@@ -117,7 +127,7 @@ export default function TaskAssignLoading() {
 
         const msg = response.errorCode
           ? TASK_ERROR_MESSAGES[response.errorCode as TaskErrorCode] ||
-            response.message
+          response.message
           : response.message || "작업 할당에 실패했습니다.";
 
         throw new Error(msg);
@@ -148,7 +158,7 @@ export default function TaskAssignLoading() {
         console.error("Task assign error:", error);
         alert(
           error?.message ||
-            "작업을 할당받지 못했습니다. 잠시 후 다시 시도해주세요."
+          "작업을 할당받지 못했습니다. 잠시 후 다시 시도해주세요."
         );
         navigate("/worker/home", { replace: true });
       }
