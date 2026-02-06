@@ -41,4 +41,13 @@ public interface TaskItemMapper {
 
         // [목록] 작업 전체 아이템 목록 조회
         List<TaskItemVO> findAllByTaskId(@Param("batchTaskId") Long batchTaskId);
+
+        // [집계] Task 내 전체 아이템 수
+        int countAllItemsByTaskId(@Param("batchTaskId") Long batchTaskId);
+
+        // [집계] 배치+구역 기준 전체 아이템 수
+        int countItemsByBatchAndZone(@Param("batchId") Long batchId, @Param("zoneId") Long zoneId);
+
+        // [집계] 배치+구역 기준 완료(DONE/ISSUE)된 아이템 수
+        int countCompletedItemsByBatchAndZone(@Param("batchId") Long batchId, @Param("zoneId") Long zoneId);
 }
