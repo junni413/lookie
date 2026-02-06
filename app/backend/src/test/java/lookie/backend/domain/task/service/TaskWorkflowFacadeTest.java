@@ -185,9 +185,11 @@ class TaskWorkflowFacadeTest {
         mockTask.setBatchTaskId(taskId);
         mockTask.setActionStatus(TaskActionStatus.SCAN_ITEM); // 상태 설정
         mockTask.setToteBarcode("TOTE-1234"); // 토트 바코드 설정 (가정)
+        mockTask.setCurrentLocationId(100L); // [Fix] 현재 위치 설정
 
         TaskItemVO mockNextItem = new TaskItemVO();
         mockNextItem.setProductImage("http://img.url"); // 이미지 URL 설정
+        mockNextItem.setLocationId(100L); // [Fix] 다음 아이템 위치를 현재 위치와 동일하게 설정 (그래야 SCAN_ITEM 유지)
 
         // 1. 진행 중 작업 조회
         when(taskMapper.findInProgressByWorkerId(workerId)).thenReturn(mockTask);
