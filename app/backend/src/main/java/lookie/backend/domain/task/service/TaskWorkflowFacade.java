@@ -129,8 +129,8 @@ public class TaskWorkflowFacade {
 
         TaskItemVO item = taskItemService.scanAndGetItem(taskId, task.getCurrentLocationId(), barcode);
 
-        // 스캔 시 기본 1개 증가 처리 (자동 완료 제거로 인해 DONE 여부 체크 불필요)
-        TaskItemVO updatedItem = taskItemService.updateQuantityAtomic(item.getBatchTaskItemId(), 1);
+        // 스캔 시 수량 자동 증가 없음 (0) - 사용자 수동 입력 유도
+        TaskItemVO updatedItem = taskItemService.updateQuantityAtomic(item.getBatchTaskItemId(), 0);
 
         // 스캔 후에는 무조건 수량 조정 단계로 간주하고 DB 상태도 동기화
         taskMapper.updateActionStatus(taskId, TaskActionStatus.ADJUST_QUANTITY);

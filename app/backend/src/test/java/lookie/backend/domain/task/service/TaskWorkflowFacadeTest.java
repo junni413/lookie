@@ -144,18 +144,18 @@ class TaskWorkflowFacadeTest {
         TaskItemVO updatedItem = new TaskItemVO();
         updatedItem.setBatchTaskItemId(500L);
         updatedItem.setRequiredQty(1);
-        updatedItem.setPickedQty(1);
+        updatedItem.setPickedQty(0);
         updatedItem.setStatus("PENDING"); // 자동 완료 안됨
 
         when(taskMapper.findById(taskId)).thenReturn(task);
         when(taskItemService.scanAndGetItem(taskId, 10L, barcode)).thenReturn(item);
-        when(taskItemService.updateQuantityAtomic(500L, 1)).thenReturn(updatedItem);
+        when(taskItemService.updateQuantityAtomic(500L, 0)).thenReturn(updatedItem);
 
         // when
         TaskResponse<TaskItemVO> response = taskWorkflowFacade.scanItem(taskId, barcode);
 
         // then
-        verify(taskItemService).updateQuantityAtomic(500L, 1);
+        verify(taskItemService).updateQuantityAtomic(500L, 0);
         verify(taskMapper).updateActionStatus(taskId, TaskActionStatus.ADJUST_QUANTITY);
         assertEquals(NextAction.ADJUST_QUANTITY, response.getNextAction());
     }
