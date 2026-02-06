@@ -144,17 +144,26 @@ public class IssueService {
         String issueType = request.getIssueType();
         String imageUrl = request.getImageUrl();
 
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                try {
-                    log.info("[IssueService] Transaction committed. Sending AI request for issueId={}", issueIdForAi);
-                    requestAiAnalysisSafe(issueIdForAi, item, issueType, imageUrl);
-                } catch (Exception e) {
-                    log.error("[IssueService] Failed to request AI analysis after commit. issueId={}", issueIdForAi, e);
-                }
+        Runnable aiTask = () -> {
+            try {
+                log.info("[IssueService] Transaction committed (or mocked). Sending AI request for issueId={}",
+                        issueIdForAi);
+                requestAiAnalysisSafe(issueIdForAi, item, issueType, imageUrl);
+            } catch (Exception e) {
+                log.error("[IssueService] Failed to request AI analysis. issueId={}", issueIdForAi, e);
             }
-        });
+        };
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    aiTask.run();
+                }
+            });
+        } else {
+            aiTask.run();
+        }
 
         return response;
     }
@@ -271,22 +280,31 @@ public class IssueService {
         // 6. TaskItemVO 조회 (ProductId 필요)
         TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
 
-        // 7. [Fix] AI 재요청도 트랜잭션 커밋 후에 실행
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                try {
-                    log.info("[IssueService] Transaction committed. Sending Retake request for issueId={}", issueId);
-                    AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
-                            issueId,
-                            item != null ? item.getProductId() : 0L,
-                            imageUrl);
-                    aiAnalysisClient.requestAnalysis(aiRequest);
-                } catch (Exception e) {
-                    log.error("[IssueService] Failed to request Retake analysis after commit. issueId={}", issueId, e);
-                }
+        // 7. [Fix] AI 재요청도 트랜잭션 커밋 후에 실행 (또는 즉시 실행)
+        Runnable retakeTask = () -> {
+            try {
+                log.info("[IssueService] Transaction committed (or mocked). Sending Retake request for issueId={}",
+                        issueId);
+                AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
+                        issueId,
+                        item != null ? item.getProductId() : 0L,
+                        imageUrl);
+                aiAnalysisClient.requestAnalysis(aiRequest);
+            } catch (Exception e) {
+                log.error("[IssueService] Failed to request Retake analysis. issueId={}", issueId, e);
             }
-        });
+        };
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    retakeTask.run();
+                }
+            });
+        } else {
+            retakeTask.run();
+        }
     }
 
     /**
