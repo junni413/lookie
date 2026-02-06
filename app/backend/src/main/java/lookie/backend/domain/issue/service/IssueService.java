@@ -109,7 +109,7 @@ public class IssueService {
 
         // 6. Response 먼저 반환 (트랜잭션 커밋됨)
         IssueResponse response = IssueResponse.from(issue);
-        
+
         // 7. AI 서버로 판정 요청 (트랜잭션 커밋 후)
         // NOTE: 트랜잭션이 끝난 후 실행되도록 별도 메서드로 분리
         Long issueIdForAi = issue.getIssueId();
@@ -117,7 +117,7 @@ public class IssueService {
 
         return response;
     }
-    
+
     /**
      * AI 분석 요청 (트랜잭션 외부에서 실행)
      * - 새로운 트랜잭션에서 실행되므로 createIssue()의 커밋 후 실행됨
@@ -138,7 +138,7 @@ public class IssueService {
             TaskItemVO item,
             String issueType,
             String imageUrl) {
-        
+
         // DAMAGED 케이스: 이미지만 전달
         if ("DAMAGED".equals(issueType)) {
             return AiAnalysisRequest.create(
@@ -148,26 +148,26 @@ public class IssueService {
                     imageUrl,
                     null);
         }
-        
+
         // OUT_OF_STOCK 케이스: 재고 상태 조회 및 전달
         if ("OUT_OF_STOCK".equals(issueType)) {
             // 재고 상태 조회
             Map<String, Object> inventoryState = inventoryService.getInventoryState(
                     item.getProductId(),
                     item.getLocationId());
-            
+
             // InventoryStateDto 생성
-            lookie.backend.infra.ai.dto.InventoryStateDto inventoryStateDto = 
-                    lookie.backend.infra.ai.dto.InventoryStateDto.builder()
+            lookie.backend.infra.ai.dto.InventoryStateDto inventoryStateDto = lookie.backend.infra.ai.dto.InventoryStateDto
+                    .builder()
                     .availableQty((Integer) inventoryState.get("availableQty"))
                     .damagedTempQty((Integer) inventoryState.get("damagedTempQty"))
                     .scannedLocation(item.getLocationCode())
                     .expectedLocation(item.getLocationCode())
                     .lastEventType((String) inventoryState.get("lastEventType"))
                     .build();
-            
+
             log.info("[IssueService] OUT_OF_STOCK detected. inventoryState={}", inventoryStateDto);
-            
+
             return AiAnalysisRequest.create(
                     issueId,
                     item.getProductId(),
@@ -175,7 +175,7 @@ public class IssueService {
                     null, // OUT_OF_STOCK은 이미지 없음
                     inventoryStateDto);
         }
-        
+
         // 기타 타입은 기본 처리 (DAMAGED 방식)
         log.warn("[IssueService] Unknown issue type: {}. Using DAMAGED default.", issueType);
         return AiAnalysisRequest.create(
@@ -576,9 +576,10 @@ public class IssueService {
      * 작업자 다음 행동 계산 (분기표 WorkerNextAction 컬럼 기준)
      */
     private WorkerNextAction calculateWorkerNextAction(IssueVO issue, AiJudgmentVO judgment) {
-        // 이미지가 필요한 상황인지 체크 (OUT_OF_STOCK + AdminRequired + NoImage)
-        if (isImageRequiredButMissing(issue)) {
-            return WorkerNextAction.UPLOAD_REPORT_IMAGE;
+        // [수정] BLOCKING 상태면 최우선으로 WAIT_ADMIN (재고있음 등 관리자 필수 케이스)
+        // 관리자와 먼저 연결을 시도하고, 실패 시 NON_BLOCKING으로 바뀌면 그때 사진/다음단계 진행
+        if ("BLOCKING".equals(issue.getIssueHandling())) {
+            return WorkerNextAction.WAIT_ADMIN;
         }
 
         // RETAKE 케이스
@@ -586,9 +587,10 @@ public class IssueService {
             return WorkerNextAction.UPLOAD_IMAGE;
         }
 
-        // BLOCKING 상태면 WAIT_ADMIN
-        if ("BLOCKING".equals(issue.getIssueHandling())) {
-            return WorkerNextAction.WAIT_ADMIN;
+        // 이미지가 필요한 상황인지 체크 (OUT_OF_STOCK + AdminRequired + NoImage)
+        // NOTE: BLOCKING이 아닐 때(예: 관리자 부재로 넘어감) 이미지가 없으면 증빙 촬영 요구
+        if (isImageRequiredButMissing(issue)) {
+            return WorkerNextAction.UPLOAD_REPORT_IMAGE;
         }
 
         // MOVE_LOCATION 케이스
@@ -807,16 +809,15 @@ public class IssueService {
             TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
             if (item != null) {
                 inventoryService.recordEvent(
-                    "PICK_DAMAGED_TEMP",
-                    item.getProductId(),
-                    item.getLocationId(),
-                    -1, // 파손 1개 임시 차감
-                    "ISSUE",
-                    issueId,
-                    issue.getWorkerId()
-                );
-                log.info("[IssueService] PICK_DAMAGED_TEMP event recorded. issueId={}, product={}, location={}", 
-                    issueId, item.getProductId(), item.getLocationId());
+                        "PICK_DAMAGED_TEMP",
+                        item.getProductId(),
+                        item.getLocationId(),
+                        -1, // 파손 1개 임시 차감
+                        "ISSUE",
+                        issueId,
+                        issue.getWorkerId());
+                log.info("[IssueService] PICK_DAMAGED_TEMP event recorded. issueId={}, product={}, location={}",
+                        issueId, item.getProductId(), item.getLocationId());
             }
         }
     }
@@ -880,27 +881,26 @@ public class IssueService {
                 if (AdminDecision.DAMAGED.equals(adminDecision)) {
                     // 파손 확정 (마킹용, qty=0)
                     inventoryService.recordEvent(
-                        "PICK_DAMAGED_FINAL",
-                        item.getProductId(),
-                        item.getLocationId(),
-                        0, // 추가 차감 없음 (TEMP에서 이미 차감됨)
-                        "ISSUE",
-                        issueId,
-                        null // adminId는 별도 파라미터로 받아야 하지만 생략
+                            "PICK_DAMAGED_FINAL",
+                            item.getProductId(),
+                            item.getLocationId(),
+                            0, // 추가 차감 없음 (TEMP에서 이미 차감됨)
+                            "ISSUE",
+                            issueId,
+                            null // adminId는 별도 파라미터로 받아야 하지만 생략
                     );
                     log.info("[IssueService] PICK_DAMAGED_FINAL event recorded. issueId={}", issueId);
-                    
+
                 } else if (AdminDecision.NORMAL.equals(adminDecision)) {
                     // 파손 취소/복구 (TEMP 복원)
                     inventoryService.recordEvent(
-                        "REVERT_DAMAGED",
-                        item.getProductId(),
-                        item.getLocationId(),
-                        +1, // 재고 복구
-                        "ISSUE",
-                        issueId,
-                        null
-                    );
+                            "REVERT_DAMAGED",
+                            item.getProductId(),
+                            item.getLocationId(),
+                            +1, // 재고 복구
+                            "ISSUE",
+                            issueId,
+                            null);
                     log.info("[IssueService] REVERT_DAMAGED event recorded. issueId={}", issueId);
                 }
             }
