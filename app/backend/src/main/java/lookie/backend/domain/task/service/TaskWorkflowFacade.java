@@ -218,6 +218,18 @@ public class TaskWorkflowFacade {
         // 현재 DB 상태에 맞는 NextAction 유추
         NextAction nextAction = resolveNextAction(fullTask.getActionStatus());
 
+        // [BugFix] 현재 지번과 다음 아이템의 지번이 다르면 SCAN_LOCATION으로 강제 변경
+        if (nextItem != null) {
+            Long currentLocId = fullTask.getCurrentLocationId();
+            Long nextLocId = nextItem.getLocationId();
+
+            // 현재 지번이 없거나(초기상태), 다음 아이템 지번과 다르면 -> 지번 스캔부터 해야 함
+            if (currentLocId == null || !currentLocId.equals(nextLocId)) {
+                nextAction = NextAction.SCAN_LOCATION;
+                // 필요하다면 DB의 action status도 동기화할 수 있으나, 조회 메서드이므로 응답만 보정
+            }
+        }
+
         return TaskResponse.of(fullTask, nextAction, nextItem);
     }
 

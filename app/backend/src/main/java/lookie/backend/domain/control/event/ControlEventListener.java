@@ -68,4 +68,55 @@ public class ControlEventListener {
             log.error("[ControlEvent] Error handling TaskItemCompletedEvent", e);
         }
     }
+
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleTaskItemReverted(lookie.backend.domain.task.event.TaskItemRevertedEvent event) {
+        try {
+            Long taskId = event.getBatchTaskId();
+            TaskVO task = taskMapper.findById(taskId);
+
+            if (task == null) {
+                log.warn("[ControlEvent] Task not found for ID: {}", taskId);
+                return;
+            }
+
+            Long zoneId = task.getZoneId();
+            String eventKey = "lookie:control:item:processed:" + event.getBatchTaskItemId();
+
+            // 멱등성 키 삭제 (다시 완료 처리 가능하도록)
+            Boolean deleted = redisTemplate.delete(eventKey);
+            if (Boolean.FALSE.equals(deleted)) {
+                log.info("[ControlEvent] Item was not processed or already reverted: {}", event.getBatchTaskItemId());
+                // 이미 키가 없다면 집계에서도 이미 빠졌을 가능성이 높으므로 건너띌지,
+                // 아니면 강제로 -1 할지 결정해야 함.
+                // 안전을 위해 키가 있었던 경우에만 감소시키는 것이 꼬임을 방지함.
+                return;
+            }
+
+            // Redis Key
+            String progressKey = "lookie:control:zone:" + zoneId + ":progress";
+
+            // 1. Completed 감소
+            Long completed = redisTemplate.opsForHash().increment(progressKey, "completed", -1);
+            if (completed < 0) {
+                completed = 0L;
+                redisTemplate.opsForHash().put(progressKey, "completed", "0");
+            }
+
+            // 2. ProgressRate 재계산
+            String totalStr = (String) redisTemplate.opsForHash().get(progressKey, "total");
+            int total = (totalStr != null) ? Integer.parseInt(totalStr) : 0;
+
+            double rate = (total > 0) ? (double) completed * 100 / total : 0.0;
+            rate = Math.round(rate * 10.0) / 10.0;
+
+            redisTemplate.opsForHash().put(progressKey, "progressRate", String.valueOf(rate));
+
+            log.info("[ControlEvent] Zone {} Progress Reverted: {}/{} ({}%)", zoneId, completed, total, rate);
+
+        } catch (Exception e) {
+            log.error("[ControlEvent] Error handling TaskItemRevertedEvent", e);
+        }
+    }
 }

@@ -47,6 +47,7 @@ public class LiveKitService {
     private final io.livekit.server.RoomServiceClient roomServiceClient;
     private final SimpMessagingTemplate messagingTemplate;
     private final UserMapper userMapper;
+    private final lookie.backend.domain.issue.service.IssueService issueService;
 
     private static final String STATUS_BUSY = "BUSY";
 
@@ -74,6 +75,11 @@ public class LiveKitService {
      */
     @Transactional
     public WebRtcDto.CallResponse makeCall(WebRtcDto.CallRequest request) {
+        // [New] 이슈 관련 연결일 경우, Task 상태 검증 (완료된 작업이면 화상 연결 불가)
+        if (request.getIssueId() != null) {
+            issueService.validateIssueForCall(request.getIssueId());
+        }
+
         // [NEW] calleeId 자동 선택 로직
         Long calleeId = request.getCalleeId();
         if (calleeId == null) {

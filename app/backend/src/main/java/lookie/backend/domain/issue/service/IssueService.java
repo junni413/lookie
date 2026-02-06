@@ -58,6 +58,34 @@ public class IssueService {
     private final InventoryService inventoryService;
 
     /**
+     * [WebRTC] 화상 연결 전 이슈 상태 검증
+     * - Task가 이미 완료(Next Task 진행 중)되었다면 연결 차단
+     *
+     * @throws ApiException(ISSUE_TASK_ALREADY_DONE)
+     */
+    @Transactional(readOnly = true)
+    public void validateIssueForCall(Long issueId) {
+        if (issueId == null)
+            return;
+
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 1. Task 상태 조회
+        TaskVO task = taskMapper.findById(issue.getBatchTaskId());
+        if (task == null) {
+            return; // Task가 없으면 검증 패스 (예외 상황)
+        }
+
+        // 2. Task가 이미 DONE(완료) 상태라면 호출 차단
+        if ("DONE".equals(task.getStatus())) {
+            throw new ApiException(ErrorCode.ISSUE_TASK_ALREADY_DONE);
+        }
+    }
+
+    /**
      * 이슈 생성
      * - AI 판정 요청 성공 시 호출
      * - Issue, IssueImage, AiJudgment 초기 데이터 생성
@@ -103,9 +131,9 @@ public class IssueService {
         judgment.setAiDecision("UNKNOWN"); // AI 결과 대기 중
         issueMapper.insertAiJudgment(judgment);
 
-        // 5. TaskItem 상태를 ISSUE로 변경
-        taskItemService.markAsIssue(item.getBatchTaskItemId());
-        log.info("[IssueService] TaskItem marked as ISSUE. itemId={}", item.getBatchTaskItemId());
+        // 5. TaskItem 상태를 ISSUE_PENDING(보류)으로 변경
+        taskItemService.markAsIssuePending(item.getBatchTaskItemId());
+        log.info("[IssueService] TaskItem marked as ISSUE_PENDING. itemId={}", item.getBatchTaskItemId());
 
         // 6. Response 먼저 반환 (트랜잭션 커밋됨)
         IssueResponse response = IssueResponse.from(issue);
@@ -347,6 +375,9 @@ public class IssueService {
         log.info("[IssueService] Issue updated by AI result. issueId={}, status={}, reasonCode={}",
                 issueId, issue.getStatus(), issue.getReasonCode());
 
+        // [NEW] TaskItem 상태 동기화 (부활 vs 완료 vs 보류)
+        syncTaskItemStatus(issue, request.getAiDecision(), request.getReasonCode());
+
         // 6. nextAction 계산
         IssueNextAction issueNextAction = calculateNextAction(issue);
         List<String> availableActions = generateAvailableActions(issue);
@@ -360,6 +391,41 @@ public class IssueService {
         log.info("[IssueService] AI result signaled via WebSocket. issueId={}", issueId);
 
         return response;
+    }
+
+    /**
+     * AI 결과/관리자 조치에 따라 TaskItem 상태(부활/완료/유지) 동기화
+     */
+    private void syncTaskItemStatus(IssueVO issue, String aiDecision, String reasonCode) {
+        Long itemId = issue.getBatchTaskItemId();
+
+        // 1. 지번 이동 (MOVE_LOCATION) -> 지번 변경 후 부활
+        if ("MOVE_LOCATION".equals(reasonCode)) {
+            taskItemService.updateItemLocation(itemId, issue.getNewLocationId());
+            taskItemService.reviveItem(itemId);
+            log.info("[IssueService] Item Location Updated & Revived. itemId={}", itemId);
+            return;
+        }
+
+        // 2. 정상 (PASS) or 자동 해결 (AUTO_RESOLVED) -> 부활
+        // D1(PASS) 케이스: 관리자 사후 확인이 필요하지만(NON_BLOCKING), 작업자는 계속 진행(CONTINUE_PICKING)해야
+        // 함.
+        if ("PASS".equals(aiDecision) || "AUTO_RESOLVED".equals(reasonCode)) {
+            taskItemService.reviveItem(itemId);
+            log.info("[IssueService] Item Revived (PASS/AUTO). itemId={}", itemId);
+            return;
+        }
+
+        // 3. 파손 확정 (FAIL) -> 최종 완료 처리
+        // D8(FAIL) 케이스: 파손 확정이므로 아이템은 죽이고 다음으로 넘어감
+        if ("FAIL".equals(aiDecision) || "DAMAGED".equals(reasonCode)) {
+            taskItemService.markAsIssueFinal(itemId);
+            log.info("[IssueService] Item Finalized (FAIL/DAMAGED). itemId={}", itemId);
+            return;
+        }
+
+        // 4. 그 외 (NEED_CHECK, RETAKE, STOCK_EXISTS 등)
+        // -> ISSUE_PENDING 상태 유지 (관리자 연결 대기 or 재촬영 대기)
     }
 
     /**
@@ -576,6 +642,13 @@ public class IssueService {
      * 작업자 다음 행동 계산 (분기표 WorkerNextAction 컬럼 기준)
      */
     private WorkerNextAction calculateWorkerNextAction(IssueVO issue, AiJudgmentVO judgment) {
+        // [NEW] 아이템이 PENDING(부활됨) 상태인지 확인
+        // PENDING이면 무조건 하던 작업 계속 (CONTINUE_PICKING)
+        TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
+        if (item != null && "PENDING".equals(item.getStatus())) {
+            return WorkerNextAction.CONTINUE_PICKING;
+        }
+
         // [수정] BLOCKING 상태면 최우선으로 WAIT_ADMIN (재고있음 등 관리자 필수 케이스)
         // 관리자와 먼저 연결을 시도하고, 실패 시 NON_BLOCKING으로 바뀌면 그때 사진/다음단계 진행
         if ("BLOCKING".equals(issue.getIssueHandling())) {
@@ -593,13 +666,13 @@ public class IssueService {
             return WorkerNextAction.UPLOAD_REPORT_IMAGE;
         }
 
-        // MOVE_LOCATION 케이스
+        // MOVE_LOCATION 케이스 (이미 PENDING 체크에서 걸러지겠지만, 안전장치)
         if ("RESOLVED".equals(issue.getStatus()) && "MOVE_LOCATION".equals(issue.getReasonCode())) {
             return WorkerNextAction.MOVE_LOCATION;
         }
 
-        // 기본값: CONTINUE_PICKING
-        return WorkerNextAction.CONTINUE_PICKING;
+        // 기본값: NEXT_ITEM (아이템이 PENDING이 아니므로 죽은 상태)
+        return WorkerNextAction.NEXT_ITEM;
     }
 
     private boolean isImageRequiredButMissing(IssueVO issue) {
@@ -747,7 +820,13 @@ public class IssueService {
 
         // 4. Issue 업데이트
         issueMapper.updateIssueStatus(issue);
-        log.info("[IssueService] WebRTC CONNECTED processed. issueId={}, urgency=5, adminRequired=false",
+
+        // [NEW] WebRTC 연결 성공 -> 아이템 부활 (작업자는 하던거 계속)
+        // 관리자가 "이건 안돼"라고 하면 별도 API로 죽여야겠지만,
+        // 일단 연결되면 작업자는 "관리자가 보고 있으니 진행해"라는 의미로 CONTINUE 처리
+        taskItemService.reviveItem(issue.getBatchTaskItemId());
+
+        log.info("[IssueService] WebRTC CONNECTED processed & Item Revived. issueId={}, urgency=5, adminRequired=false",
                 issueId);
     }
 

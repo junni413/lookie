@@ -121,7 +121,7 @@ class IssueServiceTest {
         assertEquals(request.getImageUrl(), capturedJudgment.getImageUrl());
 
         // TaskItem 상태 변경 검증
-        verify(taskItemService).markAsIssue(itemId);
+        verify(taskItemService).markAsIssuePending(itemId);
 
         // AI 분석 요청 검증 추가
         verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
@@ -256,7 +256,7 @@ class IssueServiceTest {
         verify(issueMapper, never()).insertIssue(any());
         verify(issueMapper, never()).insertIssueImage(any());
         verify(issueMapper, never()).insertAiJudgment(any());
-        verify(taskItemService, never()).markAsIssue(any());
+        verify(taskItemService, never()).markAsIssuePending(any());
         verify(aiAnalysisClient, never()).requestAnalysis(any());
     }
 
@@ -298,7 +298,7 @@ class IssueServiceTest {
         verify(issueMapper, never()).insertIssue(any());
         verify(issueMapper, never()).insertIssueImage(any());
         verify(issueMapper, never()).insertAiJudgment(any());
-        verify(taskItemService, never()).markAsIssue(any());
+        verify(taskItemService, never()).markAsIssuePending(any());
     }
 
     @Test
@@ -332,7 +332,7 @@ class IssueServiceTest {
         inOrder.verify(issueMapper).insertIssue(any(IssueVO.class));
         inOrder.verify(issueMapper).insertIssueImage(any(IssueImageVO.class));
         inOrder.verify(issueMapper).insertAiJudgment(any(AiJudgmentVO.class));
-        inOrder.verify(taskItemService).markAsIssue(200L);
+        inOrder.verify(taskItemService).markAsIssuePending(200L);
 
         // requestAnalysis는 비동기 호출이므로 InOrder에서 제외될 수도 있지만 일단 마지막에 검증
         verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
@@ -1003,9 +1003,10 @@ class IssueServiceTest {
 
         assertEquals(ErrorCode.ISSUE_ALREADY_RESOLVED, exception.getErrorCode());
         // verify TaskItem update if FIXED
-        verify(taskItemService, never()).markAsIssue(any()); // Assuming markAsIssue is not called or needed for FIXED?
-                                                             // Actually it might be handled by frontend flow or
-                                                             // separate logic.
+        verify(taskItemService, never()).markAsIssuePending(any()); // Assuming markAsIssue is not called or needed for
+                                                                    // FIXED?
+        // Actually it might be handled by frontend flow or
+        // separate logic.
         // For OUT_OF_STOCK FIXED, usually means admin solved it.
     }
 

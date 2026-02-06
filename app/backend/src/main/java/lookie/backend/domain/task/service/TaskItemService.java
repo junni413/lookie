@@ -116,18 +116,56 @@ public class TaskItemService {
     }
 
     /**
-     * [이슈] 아이템 상태를 ISSUE로 변경
-     * - 작업 흐름상 완료로 간주됨 (DONE과 동일)
+     * [이슈] 아이템 상태를 ISSUE_PENDING(보류)으로 변경
+     * - 작업 흐름상 다음 아이템으로 넘어가도록 유도 (할일 카운트에서 제외됨)
+     * - 하지만 pickedQty는 유지하여 나중에 복귀 가능
      */
     @Transactional
-    public void markAsIssue(Long itemId) {
-        taskItemMapper.updateStatus(itemId, "ISSUE");
-
-        // [Event] 아이템 이슈 완료 이벤트 발행 (Redis 집계용)
+    public void markAsIssuePending(Long itemId) {
+        taskItemMapper.updateStatus(itemId, "ISSUE_PENDING");
+        // NOTE: ISSUE_PENDING은 가완료 상태이므로 TaskItemCompletedEvent를 발행하여
+        // Redis 집계에 반영하고, 프론트가 다음 아이템으로 넘어가게 해야 함.
         TaskItemVO item = taskItemMapper.findById(itemId);
         if (item != null) {
             eventPublisher.publishEvent(new TaskItemCompletedEvent(item.getBatchTaskItemId(), item.getBatchTaskId()));
         }
+    }
+
+    /**
+     * [이슈] 아이템 상태를 ISSUE(최종 완료)로 확정
+     * - 파손 확정, 재고 없음 등으로 완전히 죽은 상태
+     */
+    @Transactional
+    public void markAsIssueFinal(Long itemId) {
+        taskItemMapper.updateStatus(itemId, "ISSUE");
+        // 이미 PENDING -> ISSUE_PENDING 갈 때 이벤트를 발행했으므로
+        // 여기서는 중복 발행할 필요가 있는지 체크 필요.
+        // 현재 로직상 ISSUE_PENDING도 '완료' 취급이므로 추가 발행 불필요
+    }
+
+    /**
+     * [이슈] 아이템 부활 (정상 복귀)
+     * - ISSUE_PENDING -> PENDING
+     * - pickedQty 등은 그대로 유지됨
+     */
+    @Transactional
+    public void reviveItem(Long itemId) {
+        taskItemMapper.updateStatus(itemId, "PENDING");
+
+        // Redis 집계 정합성을 위해 Reverted 이벤트 발행 (-1 처리)
+        TaskItemVO item = taskItemMapper.findById(itemId);
+        if (item != null) {
+            eventPublisher.publishEvent(new lookie.backend.domain.task.event.TaskItemRevertedEvent(
+                    item.getBatchTaskItemId(), item.getBatchTaskId()));
+        }
+    }
+
+    /**
+     * [이슈] 지번 이동 처리
+     */
+    @Transactional
+    public void updateItemLocation(Long itemId, Long newLocationId) {
+        taskItemMapper.updateLocationOfItem(itemId, newLocationId);
     }
 
     /**

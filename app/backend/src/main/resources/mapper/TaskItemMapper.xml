@@ -47,7 +47,9 @@
           AND i.location_id = #{locationId}
     </select>
 
-    <!-- [조회] 해당 작업 내 아직 완료되지 않은(PENDING) 아이템의 총 개수 -->
+    <!-- [조회] 해당 작업 내 아직 완료되지 않은(PENDING, ISSUE_PENDING 제외) 아이템의 총 개수 -->
+    <!-- [수정] ISSUE_PENDING은 "보류" 상태이므로 남은 작업 수(할 일)에는 포함하지 않음. 
+         즉, ISSUE_PENDING 상태가 되면 다음 단계(Next Item)로 넘어갈 수 있게 함. -->
     <select id="countPendingItemsByTaskId" resultType="int">
         SELECT COUNT(*)
         FROM batch_task_items
@@ -90,7 +92,14 @@
         UPDATE batch_task_items
         SET 
             status = #{status},
-            completed_at = CASE WHEN #{status} = 'DONE' THEN NOW() ELSE completed_at END
+            completed_at = CASE WHEN #{status} = 'DONE' OR #{status} = 'ISSUE' THEN NOW() ELSE completed_at END
+        WHERE batch_task_item_id = #{batchTaskItemId}
+    </update>
+
+    <!-- [수정] 지번 이동 시 아이템의 location_id 변경 -->
+    <update id="updateLocationOfItem">
+        UPDATE batch_task_items
+        SET location_id = #{newLocationId}
         WHERE batch_task_item_id = #{batchTaskItemId}
     </update>
 
@@ -153,6 +162,7 @@
     </select>
 
     <!-- [집계] 배치+구역 기준 완료(DONE/ISSUE)된 아이템 수 -->
+    <!-- [수정] ISSUE_PENDING도 "완료된 것 처럼" 취급하여 집계 (잔여 작업 X) -->
     <select id="countCompletedItemsByBatchAndZone" resultType="int">
         SELECT COUNT(*)
         FROM batch_task_items bti
