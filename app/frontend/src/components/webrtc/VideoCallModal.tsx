@@ -156,8 +156,7 @@ function ActiveView({
     const [isMicOn, setIsMicOn] = useState(true);
     const [isCamOn, setIsCamOn] = useState(true);
 
-    // const [liveKitUrl] = useState(import.meta.env.VITE_LIVEKIT_URL || "wss://lookie-of5j44vq.livekit.cloud");
-    const liveKitUrl = import.meta.env.VITE_LIVEKIT_URL ?? "wss://lookie-of5j44vq.livekit.cloud";
+    const [liveKitUrl] = useState(import.meta.env.VITE_LIVEKIT_URL || "wss://lookie-of5j44vq.livekit.cloud");
 
     // LiveKit Room 연결 (커스텀 훅 사용)
     const { room, localTrack, remoteTrack, remoteParticipant } = useLiveKitRoom({
