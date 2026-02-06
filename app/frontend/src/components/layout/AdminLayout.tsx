@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import AdminSidebar from "./AdminSidebar";
 import { useCallStore } from "@/stores/callStore";
-import VideoCallModal from "@/components/webrtc/VideoCallModal";
 
 export default function AdminLayout() {
   const listenForIncomingCalls = useCallStore((state) => state.listenForIncomingCalls);
@@ -30,9 +29,7 @@ export default function AdminLayout() {
           </main>
         </div>
       </div>
-
-      {/* Global Call Modal */}
-      <VideoCallModal />
+      
     </div>
   );
 }
