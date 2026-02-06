@@ -72,14 +72,19 @@ export type ActiveTaskPayload = {
   batchId: number;
   zoneId: number;
   workerId: number;
-  toteId: number;
+
+  toteId: number | null;          // ✅ null 가능
+  toteBarcode: string | null;     // ✅ 추가 (null 가능)
+
   status: string;
   startedAt: string;
   completedAt: string | null;
   currentLocationId: number | null;
+
   toteScannedAt: string | null;
   toteReleasedAt: string | null;
-  actionStatus: string; // "SCAN_LOCATION" 등
+
+  actionStatus: string;           // "SCAN_LOCATION" 등
   locationScannedAt: string | null;
 };
 
@@ -96,6 +101,7 @@ export type ActiveTaskNextItem =
       completedAt: string | null;
       lastScannedAt: string | null;
       productName: string;
+      productImage?: string | null;  // ✅ 추가 (옵션)
       barcode: string;
       locationCode: string;
     }
@@ -180,7 +186,15 @@ export const taskService = {
 
   /** 작업 완료 */
   completeTask: async (taskId: number): Promise<ApiResponse<{}>> => {
-    return requestJSON(`/api/tasks/${taskId}/complete`, { method: "POST" });
+    const res = await requestJSON<ApiResponse<{}>>(`/api/tasks/${taskId}/complete`, { method: "POST" });
+    if (res.success) {
+      const stats = getStats();
+      stats.done += 1;
+      // 대기 중인 작업이 있으면 하나 감소 (일반적으로 1개씩 할당되므로)
+      if (stats.waiting > 0) stats.waiting -= 1;
+      setStats(stats);
+    }
+    return res;
   },
 
   /** 작업 아이템 목록 조회 */
@@ -208,10 +222,8 @@ export const taskService = {
   },
 
   /** 내 이슈 목록 조회 */
-  getMyIssues: async (): Promise<Issue[]> => {
-    // Mock: 실제로는 GET /api/issues/me 호출
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    return [];
+  getMyIssues: async (): Promise<any[]> => {
+    return requestJSON(`/api/issues/my`, { method: "GET" });
   },
 
   /** 이슈 이미지 업로드 */
@@ -249,7 +261,27 @@ export const taskService = {
 
   /** 홈화면 통계 조회(UI용) */
   getWorkStats: async (): Promise<WorkStats> => {
-    return getStats();
+    // 1) waiting/done은 당장 없으면 로컬값 유지
+    const local = getStats();
+
+    try {
+      // 2) issue는 서버에서 가져온 내 이슈 중 '오늘' 발생한 것만 필터링
+      const issuesRes = await requestJSON<{ success: boolean; data: any[] }>(`/api/issues/my`, { method: "GET" });
+      
+      const today = new Date().toISOString().split('T')[0]; // "2026-02-06"
+      const todayIssues = Array.isArray(issuesRes.data) 
+        ? issuesRes.data.filter(iss => iss.createdAt && iss.createdAt.startsWith(today))
+        : [];
+
+      return {
+        ...local,
+        issue: todayIssues.length,
+      };
+    } catch (err) {
+      console.warn("Failed to fetch server stats, using local fallbacks:", err);
+      // 서버 에러 시 로컬 카운트라도 표시
+      return local;
+    }
   },
 
   /** 통계 초기화(퇴근 버튼 클릭 시 사용) */

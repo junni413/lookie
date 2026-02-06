@@ -79,15 +79,15 @@ export default function WorkerDrawer() {
 
       {/* Sidebar Panel */}
       <aside
-        className={`relative h-full w-[280px] max-w-[85vw] bg-white shadow-2xl rounded-l-[32px] flex flex-col overflow-hidden animate-in slide-in-from-right duration-300`}
+        className={`relative h-full w-[320px] max-w-[85vw] bg-white shadow-2xl rounded-l-[40px] flex flex-col overflow-hidden animate-in slide-in-from-right duration-300`}
       >
         {/* Header Section */}
-        <div className="pt-8 px-6 pb-6 flex items-start justify-between">
-          <div className="flex flex-col gap-1">
-            <span className="text-[22px] font-black text-slate-900 tracking-tight leading-none">
+        <div className="pt-10 px-8 pb-8 flex items-start justify-between">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[28px] font-black text-slate-900 tracking-tight leading-none">
               {user?.name || "작업자"}님
             </span>
-            <span className="text-[13px] font-semibold text-slate-400">
+            <span className="text-[16px] font-bold text-slate-400">
               오늘도 안전하게 화이팅!
             </span>
           </div>
@@ -95,13 +95,13 @@ export default function WorkerDrawer() {
             onClick={closeWorkerDrawer}
             className="p-2 -mr-2 rounded-full text-slate-400 hover:bg-slate-50 transition-colors"
           >
-            <X size={24} strokeWidth={2.5} />
+            <X size={28} strokeWidth={2.5} />
           </button>
         </div>
 
         {/* Menu List */}
-        <div className="flex-1 overflow-y-auto px-2">
-          <div className="space-y-1">
+        <div className="flex-1 overflow-y-auto px-4">
+          <div className="space-y-3">
             {MENUS.map((menu) => {
               const isActive = location.pathname === menu.to;
               const Icon = menu.icon;
@@ -110,28 +110,28 @@ export default function WorkerDrawer() {
                 <button
                   key={menu.to}
                   onClick={() => handleNavigate(menu.to)}
-                  className={`w-full group px-4 py-4 rounded-[20px] flex items-center transition-all duration-200 ${isActive
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-100"
+                  className={`w-full group px-5 py-5 rounded-[24px] flex items-center transition-all duration-300 ${isActive
+                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-200/50 scale-[1.02]"
                     : "text-slate-600 hover:bg-slate-50 active:scale-[0.98]"
                     }`}
                 >
-                  <div className={`p-2.5 rounded-xl flex items-center justify-center transition-colors ${isActive ? "bg-white/10" : "bg-slate-50 group-hover:bg-white"
+                  <div className={`p-3 rounded-2xl flex items-center justify-center transition-colors ${isActive ? "bg-white/20" : "bg-slate-50 group-hover:bg-white"
                     }`}>
-                    <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                    <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
                   </div>
 
-                  <div className="flex-1 ml-4 text-left">
-                    <p className={`text-[15px] font-bold ${isActive ? "text-white" : "text-slate-800"}`}>
+                  <div className="flex-1 ml-5 text-left">
+                    <p className={`text-[18px] font-black ${isActive ? "text-white" : "text-slate-800"}`}>
                       {menu.title}
                     </p>
-                    <p className={`text-[11px] mt-0.5 font-medium ${isActive ? "text-white/60" : "text-slate-400"}`}>
+                    <p className={`text-[13px] mt-1 font-bold ${isActive ? "text-white/70" : "text-slate-400"}`}>
                       {menu.desc}
                     </p>
                   </div>
 
                   <ChevronRight
-                    size={16}
-                    className={`transition-transform duration-200 ${isActive ? "text-white opacity-50" : "text-slate-300 group-hover:translate-x-1"
+                    size={20}
+                    className={`transition-transform duration-300 ${isActive ? "text-white opacity-70" : "text-slate-300 group-hover:translate-x-1"
                       }`}
                     strokeWidth={3}
                   />
@@ -142,12 +142,12 @@ export default function WorkerDrawer() {
         </div>
 
         {/* Footer Actions */}
-        <div className="p-6 border-t border-slate-50 bg-slate-50/50">
+        <div className="p-8 border-t border-slate-50 bg-slate-50/30">
           <button
             onClick={handleLogout}
-            className="w-full h-12 flex items-center justify-center gap-2 rounded-2xl text-slate-500 font-bold text-sm tracking-tight hover:text-red-500 hover:bg-red-50 transition-all duration-200"
+            className="w-full h-14 flex items-center justify-center gap-3 rounded-[20px] text-slate-500 font-black text-base tracking-tight hover:text-red-500 hover:bg-red-50 transition-all duration-200"
           >
-            <LogOut size={18} strokeWidth={2.5} />
+            <LogOut size={22} strokeWidth={2.5} />
             로그아웃
           </button>
         </div>

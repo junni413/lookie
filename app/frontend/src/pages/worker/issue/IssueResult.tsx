@@ -47,8 +47,6 @@ function ResultCard({ verdict }: { verdict: AiVerdict }) {
             <p className="text-sm font-extrabold">상품 파손 감지</p>
             <p className="mt-1 text-xs text-rose-900/70">
               파손 가능성이 높습니다.
-              <br />
-              관리자 확인이 필요합니다.
             </p>
           </div>
         </div>
@@ -280,7 +278,8 @@ export default function IssueResult() {
   };
 
   // Analyzing일 때는 버튼 비활성화
-  const isNextDisabled = analyzing || ((verdict === "DAMAGED" || verdict === "NEED_REVIEW" || verdict === "RETAKE") && !connectionAttempted);
+  // 'NEED_REVIEW'나 'RETAKE'인 경우에만 작업 이어 진행하기 비활성화 (관리자 확인 필수)
+  const isNextDisabled = analyzing || verdict === "NEED_REVIEW" || verdict === "RETAKE";
 
   return (
     <div className="space-y-4">
@@ -353,7 +352,7 @@ export default function IssueResult() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground mb-1">상세 상품 정보</p>
+        <p className="text-xs text-muted-foreground mb-1">상품명</p>
         <p className="text-sm font-bold truncate mb-3">{nav.product.productName}</p>
 
         {!analyzing && detail && (
@@ -378,7 +377,7 @@ export default function IssueResult() {
 
       {/* 버튼 */}
       <div className="grid gap-3">
-        {!analyzing && (verdict === "DAMAGED" || verdict === "NEED_REVIEW") && (
+        {!analyzing && (verdict === "DAMAGED" || verdict === "NEED_REVIEW" || verdict === "OK") && (
           <button
             type="button"
             onClick={connectAdmin}

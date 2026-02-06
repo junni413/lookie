@@ -1,5 +1,6 @@
+import { ChevronRight, CheckCircle2, AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import type { MobileLayoutContext } from "../../components/layout/MobileLayout";
 import { taskService } from "../../services/taskService";
@@ -9,15 +10,11 @@ import type { ApiResponse, WorkLogData, WorkLogStatus } from "@/services/attend.
 type WorkStatus = "WORKING" | "PAUSED";
 type Stats = { done: number; issue: number; waiting: number };
 
-
 function formatHHmm(isoLike: string) {
-
   const timePart = isoLike.split("T")[1] ?? "";
   const hhmmss = timePart.slice(0, 8); // "14:59:46"
-
   return hhmmss.length === 8 ? hhmmss : "—:—:—";
 }
-
 
 // ✅ 구역 표기 통일: assignedZoneId(1~4) => "Zone A"~"Zone D"
 function zoneLabelFromAssignedId(assignedZoneId: number | null | undefined) {
@@ -33,29 +30,22 @@ function mapBackendStatusToUi(status: WorkLogStatus): WorkStatus {
   return "WORKING"; // START/RESUME
 }
 
-// 구역 카드
+// ✅ 예전 디자인 ZoneCard 유지
 function ZoneCard({ zone }: { zone: string }) {
   return (
-    <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm font-extrabold text-slate-900">오늘 근무 구역</p>
-        </div>
-      </div>
-
-      <div className="mt-4 flex items-center gap-4">
-        <div className="flex-1">
-          <div className="text-[16px] font-black text-slate-900">{zone}</div>
-          <div className="mt-1 text-[12px] font-semibold text-slate-400">
-            작업 시작 전 구역이 맞는지 확인해주세요.
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 flex gap-2">
-        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[12px] font-bold text-emerald-700">
+    <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <p className="text-[17px] font-black text-slate-900">근무 구역</p>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
           배정 완료
         </span>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between pl-4">
+        <div className="text-[24px] font-black text-blue-600 tracking-tight">{zone}</div>
+        <p className="text-[12px] font-semibold text-slate-400">
+          지정된 구역에서 작업을 진행하세요.
+        </p>
       </div>
     </section>
   );
@@ -64,10 +54,11 @@ function ZoneCard({ zone }: { zone: string }) {
 export default function Home() {
   const { setTitle } = useOutletContext<MobileLayoutContext>();
   const navigate = useNavigate();
+  const location = useLocation(); // ✅ 새 기능: 라우트 재진입 시 stats 갱신
   const user = useAuthStore((s) => s.user);
 
   const [workStatus, setWorkStatus] = useState<WorkStatus>("WORKING");
-  const [savedTime, setSavedTime] = useState<string>("— —");
+  const [savedTime, setSavedTime] = useState<string>("—:—:—");
   const [stats, setStats] = useState<Stats>({ done: 0, issue: 0, waiting: 0 });
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -78,10 +69,10 @@ export default function Home() {
   const [isTaskChecking, setIsTaskChecking] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
 
+  // ✅ 1) 홈 진입 시 출근/시간/구역/상태 + 진행중 작업 동기화 (기능 유지)
   useEffect(() => {
     setTitle("홈");
 
-    // ✅ 1) 홈 진입 시 current로 출근 여부/시간/구역/상태 동기화
     (async () => {
       try {
         const res = await workLogApi.current();
@@ -93,11 +84,11 @@ export default function Home() {
           return;
         }
 
-        // ✅ 출근 시간은 startedAt 기준(항상 로컬 포맷으로)
+        // 출근 시간
         if (cur.startedAt) {
           const t = formatHHmm(cur.startedAt);
           setSavedTime(t);
-          localStorage.setItem("worker_attend_time", t); // fallback
+          localStorage.setItem("worker_attend_time", t);
         } else {
           const t = localStorage.getItem("worker_attend_time");
           if (t) setSavedTime(t);
@@ -108,10 +99,10 @@ export default function Home() {
         setWorkStatus(uiStatus);
         setZoneStatusText(uiStatus === "WORKING" ? "근무중" : "근무중단");
 
-        // ✅ 구역: "Zone A" 형태로 표시
+        // 구역
         setZoneLabel(zoneLabelFromAssignedId(cur.assignedZoneId));
 
-        // ✅ 1-2) 출근 상태가 정상일 때만 "진행중 작업" 조회
+        // ✅ 진행중 작업 조회
         setIsTaskChecking(true);
         try {
           const active = await taskService.getMyActiveTask();
@@ -128,7 +119,6 @@ export default function Home() {
             setActiveTaskId(null);
           }
         } catch {
-          // active task 조회 실패/없음(404 등) => 없음 처리
           setActiveTaskId(null);
         } finally {
           setIsTaskChecking(false);
@@ -141,26 +131,26 @@ export default function Home() {
           return;
         }
 
-        // current 실패 시: 로컬 저장값이라도 표시
         const t = localStorage.getItem("worker_attend_time");
         if (t) setSavedTime(t);
 
         console.error("근무 상태 조회 실패:", e);
       }
     })();
+  }, [setTitle, navigate]);
 
-    // ✅ 2) 통계 로드
+  // ✅ 2) 통계 로드: 새 코드 기능 유지(라우트 재진입 시 갱신)
+  useEffect(() => {
     taskService
       .getWorkStats()
       .then(setStats)
       .catch((err) => console.error("통계 로드 실패:", err));
-  }, [setTitle, navigate]);
+  }, [location.key]);
 
   const workStats = useMemo(
     () => [
-      { id: "done", label: "처리한 작업", value: stats.done, icon: "📦" },
-      { id: "issue", label: "전체 이슈", value: stats.issue, icon: "🧾" },
-      { id: "waiting", label: "처리 대기 중", value: stats.waiting, icon: "⏳" },
+      { id: "done", label: "완료 작업", value: stats.done, icon: <CheckCircle2 className="w-5 h-5 text-emerald-500" /> },
+      { id: "issue", label: "전체 이슈", value: stats.issue, icon: <AlertCircle className="w-5 h-5 text-rose-500" /> },
     ],
     [stats]
   );
@@ -170,7 +160,7 @@ export default function Home() {
     navigate("/worker/task/loading");
   };
 
-  // ✅ 중단/재개는 백 반영
+  // ✅ 중단/재개는 백 반영 (기능 유지)
   const onPause = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
@@ -213,7 +203,7 @@ export default function Home() {
     }
   };
 
-  // ✅ 퇴근 처리
+  // ✅ 퇴근 처리 (기능 유지)
   const onCheckout = async () => {
     if (isProcessing) return;
     if (!window.confirm("정말 퇴근하시겠습니까?\n오늘의 통계가 초기화됩니다.")) return;
@@ -225,10 +215,8 @@ export default function Home() {
       localStorage.removeItem("worker_attend_time");
       localStorage.removeItem("work_stats");
 
-      setSavedTime("— —");
+      setSavedTime("—:—:—");
       setStats({ done: 0, issue: 0, waiting: 0 });
-
-      // ✅ 퇴근하면 "진행중 작업"도 의미 없으니 리셋
       setActiveTaskId(null);
 
       alert("퇴근 처리가 완료되었습니다.");
@@ -259,82 +247,97 @@ export default function Home() {
     ? "작업 이어서하기"
     : "새로운 작업 시작";
 
+  // ✅ 새 코드의 안내문구 규칙 유지(예전 UI에서는 helpText 비워도 되지만 기능 그대로 둠)
   const taskHelpText = isPaused
-    ? "근무가 중단된 상태에서는 작업을 진행할 수 없어요."
+    ? "근무 중단 상태에서는 작업을 진행할 수 없습니다."
     : !isTaskChecking && hasActiveTask
-    ? "진행 중인 작업이 있어요. 이어서 진행할 수 있어요."
-    : "";
+    ? "진행 중인 작업이 있습니다. 이어서 진행하세요."
+    : "새로운 작업을 할당 받으세요.";
 
   return (
-    <div className="space-y-4">
-      {/* 인사 */}
+    <div className="space-y-4 pb-4">
       <div className="px-1 pt-2">
         <h1 className="text-[26px] font-black tracking-tight text-slate-900">
           {user?.name ?? "작업자"}님
         </h1>
-        <p className="mt-1 text-[13px] font-semibold text-slate-400">
+        <p className="mt-1 text-[15px] font-semibold text-slate-400 pl-2">
           안녕하세요! 오늘의 작업을 시작하세요.
         </p>
       </div>
 
+      {/* 출근 카드 (예전 디자인) */}
       <section
         className="
-          rounded-[28px]
-          bg-blue-600
-          p-5
-          shadow-[0_20px_40px_rgba(37,99,235,0.35)]
+          rounded-[32px]
+          bg-gradient-to-br from-blue-600 to-blue-700
+          p-7
+          shadow-[0_20px_40px_rgba(37,99,235,0.25)]
+          relative
+          overflow-hidden
         "
       >
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-white/20 text-lg">
-              ⏱️
-            </div>
-            <div>
-              <p className="text-sm font-extrabold text-blue-100">오늘의 출근 시간</p>
-              <p className="mt-1 text-[28px] font-black leading-none tracking-tight text-white">
-                {savedTime}
-              </p>
-            </div>
+        {/* Subtle decorative background element */}
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/5 blur-3xl" />
+        
+        <div className="flex items-start justify-between relative z-10">
+          <div className="flex flex-col">
+            <p className="text-[15px] font-bold text-blue-100/80 mb-1">출근 시간</p>
+            <p className="text-[38px] font-black leading-none tracking-tight text-white tabular-nums">
+              {savedTime}
+            </p>
           </div>
 
-          <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold text-white">
+          <div 
+            className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-[13px] font-black shadow-sm transition-colors duration-500 ${
+              workStatus === "WORKING" 
+              ? "bg-emerald-400 text-white" 
+              : "bg-amber-400 text-white"
+            }`}
+          >
+            <div className={`h-2 w-2 rounded-full bg-white ${workStatus === "WORKING" ? "animate-pulse" : ""}`} />
             {zoneStatusText}
-          </span>
+          </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="mt-8 grid grid-cols-2 gap-3 relative z-10">
           <button
             type="button"
-            className="
-              h-11
-              rounded-[18px]
-              bg-white
-              text-sm
+            className={`
+              h-13
+              py-3
+              rounded-2xl
+              text-[15px]
               font-black
-              text-blue-700
-              active:scale-[0.99]
-              transition
+              transition-all
+              active:scale-[0.98]
               disabled:opacity-50
-            "
+              ${workStatus === "WORKING" 
+                ? "bg-white/10 text-white hover:bg-white/20 border border-white/10" 
+                : "bg-white text-blue-700 shadow-xl"
+              }
+            `}
             onClick={workStatus === "WORKING" ? onPause : onResume}
             disabled={isProcessing}
           >
-            {workStatus === "WORKING" ? "중단" : "재개"}
+            {workStatus === "WORKING" ? "중단" : "다시 시작"}
           </button>
 
           <button
             type="button"
             className="
-              h-11
-              rounded-[18px]
-              bg-white/20
-              text-sm
+              h-13
+              py-3
+              rounded-2xl
+              bg-white/10
+              text-[15px]
               font-black
-              text-white
-              active:scale-[0.99]
-              transition
+              text-white/90
+              hover:bg-red-500/20
+              hover:text-white
+              transition-all
+              active:scale-[0.98]
               disabled:opacity-50
+              border border-white/5
             "
             onClick={onCheckout}
             disabled={isProcessing}
@@ -344,50 +347,69 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 근무 구역 */}
+      {/* 근무 구역 (예전 디자인) */}
       <ZoneCard zone={zoneLabel} />
 
-      {/* 작업 통계 */}
+      {/* 작업 통계 (예전 디자인) */}
       <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-[18px] font-black text-slate-900">오늘의 작업</h2>
+          <h2 className="text-[17px] font-black text-slate-900">작업 통계량</h2>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-3">
+
+        <div className="mt-4 grid grid-cols-2 gap-4">
           {workStats.map((s) => (
-            <div key={s.id} className="rounded-[22px] bg-slate-50 p-3 text-center">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[14px] bg-white text-base">
-                {s.icon}
+            <div key={s.id} className="group relative rounded-[28px] bg-white p-5 border border-slate-100/80 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-current opacity-20" style={{ color: s.id === 'done' ? '#10b981' : '#f43f5e' }} />
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`p-2 rounded-xl ${s.id === 'done' ? 'bg-emerald-50' : 'bg-rose-50'}`}>
+                    {s.icon}
+                </div>
+                <p className="text-[13px] font-black text-slate-400 tracking-tight">{s.label}</p>
               </div>
-              <p className="mt-3 text-[26px] font-black leading-none text-slate-900">
-                {s.value}
-              </p>
-              <p className="mt-2 text-[12px] font-bold text-slate-500">{s.label}</p>
+              <div className="flex items-baseline gap-1">
+                <p className="text-[32px] font-black text-slate-900 leading-none tracking-tighter">
+                    {s.value}
+                </p>
+                <p className="text-[13px] font-bold text-slate-300">건</p>
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ✅ 작업 시작/이어하기 */}
+      {/* 작업 시작/이어하기 (예전 디자인) */}
       <div className="space-y-2">
         <button
           type="button"
           onClick={onTaskButtonClick}
-          className="flex h-14 w-full items-center justify-between rounded-[22px] border border-slate-100 bg-white px-5 text-left shadow-sm active:scale-[0.99] transition disabled:opacity-60"
+          className={`flex h-20 w-full items-center justify-between rounded-[24px] px-6 text-left shadow-lg transition-all active:scale-[0.98] disabled:opacity-60 ${
+            taskBtnDisabled 
+            ? "bg-slate-100 border border-slate-200" 
+            : "bg-slate-800 text-white shadow-slate-200"
+          }`}
           disabled={taskBtnDisabled}
         >
-          <span
-            className={`text-sm font-extrabold ${
-              taskBtnDisabled ? "text-slate-400" : "text-slate-900"
-            }`}
-          >
-            {taskBtnLabel}
-          </span>
-          <span className="text-[22px] text-slate-300">›</span>
+          <div className="flex flex-col">
+            <span className={`text-lg font-black ${taskBtnDisabled ? "text-slate-400" : "text-white"}`}>
+              {taskBtnLabel}
+            </span>
+            <span className={`text-[11px] font-bold opacity-80 ${taskBtnDisabled ? "text-slate-400" : "text-white"}`}>
+              {hasActiveTask ? "진행 중인 업무를 확인하세요" : "새로운 업무를 배정받으세요"}
+            </span>
+          </div>
+          <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${taskBtnDisabled ? "bg-slate-200" : "bg-white/20"}`}>
+            <ChevronRight className={`w-6 h-6 ${taskBtnDisabled ? "text-slate-400" : "text-white"}`} strokeWidth={3} />
+          </div>
         </button>
 
-        {taskHelpText && (
-          <p className="px-1 text-[12px] font-semibold text-slate-400">{taskHelpText}</p>
-        )}
+        <div className="flex flex-col items-center justify-center h-full">
+          {taskHelpText && (
+            <p className="px-10 text-[12px] font-semibold text-slate-400 text-center">
+              {taskHelpText}
+            </p>
+          )}
+        </div>
+
       </div>
     </div>
   );

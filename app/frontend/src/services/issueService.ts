@@ -47,7 +47,7 @@ export type CreateIssueRequest = {
   batchTaskId: number;
   batchTaskItemId: number;
   issueType: string; // "DAMAGED" | "OUT_OF_STOCK"
-  imageUrl?: string; // Optional: DAMAGED는 필수, OUT_OF_STOCK은 null 가능
+  imageUrl?: string;
 };
 
 export type CreateIssueResponseData = {
@@ -106,9 +106,20 @@ export const issueService = {
     status?: "OPEN" | "RESOLVED"
   ): Promise<ApiResponse<MyIssueResponse[]>> => {
     const qs = status ? `?status=${status}` : "";
-    return requestJSON(`/api/issues/my${qs}`, {
+    const response = await requestJSON<ApiResponse<MyIssueResponse[]>>(`/api/issues/my${qs}`, {
       method: "GET",
     });
+
+    if (response.success && Array.isArray(response.data)) {
+      return {
+        ...response,
+        data: response.data.map((it: any) => ({
+          ...it,
+          issueType: it.issueType || it.type,
+        })),
+      };
+    }
+    return response;
   },
 
   /** ✅ 재촬영 요청 (AI 재분석) */

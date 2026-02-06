@@ -24,6 +24,7 @@ export interface TaskVO {
     batchTaskId: number;
     batchId: number;
     zoneId: number;
+    assignedZoneId?: number; // UI 매핑용 (Home과 통일)
     workerId?: number;
     toteId?: number;
     status: TaskStatus;
@@ -80,6 +81,7 @@ export interface TaskItemVO {
     completedAt?: string;
     lastScannedAt?: string;
     productName: string;
+    productImage?: string;
     barcode: string;
     locationCode: string;
 }
