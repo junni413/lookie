@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import WorkerDrawer from "@/components/layout/WorkerDrawer";
 import { useUIStore } from "@/stores/uiStore";
 import { useCallStore } from "@/stores/callStore"; // Import callStore
-import { LayoutGrid, ChevronLeft } from "lucide-react";
+import { Bell, LayoutGrid, ChevronLeft } from "lucide-react";
 
 export type MobileLayoutContext = { 
   setTitle: (t: string) => void;
