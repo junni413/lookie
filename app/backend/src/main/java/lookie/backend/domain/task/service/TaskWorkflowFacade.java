@@ -264,10 +264,14 @@ public class TaskWorkflowFacade {
     private NextAction determineNextActionAfterPick(TaskItemVO item) {
         log.debug("[TaskWorkflow] Determining next action for item {}. Status={}", item.getBatchTaskItemId(),
                 item.getStatus());
-        if ("DONE".equals(item.getStatus())) {
+
+        // [Fix] DONE 뿐만 아니라 이슈(ISSUE/ISSUE_PENDING) 상태도 해당 아이템 처리는 끝난 것으로 간주
+        if ("DONE".equals(item.getStatus()) || "ISSUE".equals(item.getStatus())
+                || "ISSUE_PENDING".equals(item.getStatus())) {
             int totalPending = taskItemService.countPendingItems(item.getBatchTaskId());
-            log.info("[TaskWorkflow] Item DONE. Total pending items for task {}: {}", item.getBatchTaskId(),
-                    totalPending);
+            log.info("[TaskWorkflow] Item Finished ({}). Total pending items for task {}: {}",
+                    item.getStatus(), item.getBatchTaskId(), totalPending);
+
             if (totalPending == 0) {
                 return NextAction.COMPLETE_TASK;
             }
