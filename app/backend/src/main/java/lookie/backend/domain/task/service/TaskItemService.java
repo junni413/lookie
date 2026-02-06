@@ -138,6 +138,22 @@ public class TaskItemService {
     @Transactional
     public void markAsIssueFinal(Long itemId) {
         taskItemMapper.updateStatus(itemId, "ISSUE");
+
+        // [Inventory] 파손 확정 시 재고 차감 (결손 처리)
+        // picked_qty와 무관하게 할당된 요구 수량 전체를 파손으로 간주하고 차감
+        TaskItemVO item = taskItemMapper.findById(itemId);
+        if (item != null) {
+            inventoryService.recordEvent(
+                    "PICK_DAMAGED_FINAL",
+                    item.getProductId(),
+                    item.getLocationId(),
+                    -item.getRequiredQty(),
+                    "TASK_ITEM",
+                    itemId,
+                    null // 시스템/관리자 확정이므로 workerId는 생략
+            );
+        }
+
         // 이미 PENDING -> ISSUE_PENDING 갈 때 이벤트를 발행했으므로
         // 여기서는 중복 발행할 필요가 있는지 체크 필요.
         // 현재 로직상 ISSUE_PENDING도 '완료' 취급이므로 추가 발행 불필요
