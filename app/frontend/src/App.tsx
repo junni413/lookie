@@ -46,6 +46,8 @@ import VideoCallModal from "./components/webrtc/VideoCallModal";
 // ✅ Toast
 import { ToastContainer } from "./components/ui/toast";
 
+import Promo from "./pages/auth/Promo";
+
 // ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -98,7 +100,7 @@ export default function App() {
       <Routes>
         {/* 기본 진입 */}
         <Route path="/" element={<IndexRedirect />} />
-
+        <Route path="/auth/promo" element={<Promo />} />
         {/* Auth */}
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />

@@ -2,8 +2,10 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { Lock, Phone } from "lucide-react";
+import LogoAnimation from "../../components/auth/LogoAnimation";
 
 type LoginRole = "WORKER" | "ADMIN";
+// ... (rest of imports and types)
 
 type ApiResponse<T> = {
   success: boolean;
@@ -31,12 +33,23 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
 
-  const data = await res.json().catch(() => ({}));
+  // ✅ 응답이 JSON이 아닐 수도 있어서 text -> json 파싱
+  const text = await res.text();
+  const data = (() => {
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      return { raw: text };
+    }
+  })();
+
+  // ✅ HTTP 에러면 throw (catch에서 alert)
   if (!res.ok) {
     const err: any = new Error("API Error");
     err.response = { status: res.status, data };
     throw err;
   }
+
   return data as T;
 }
 
@@ -66,8 +79,15 @@ export default function Login() {
         password: pw,
       });
 
-      if (!res.success) {
-        alert(res.message);
+      // ✅ 서버가 success=false로 내려주는 케이스
+      if (!res?.success) {
+        alert(res?.message ?? "로그인에 실패했습니다.");
+        return;
+      }
+
+      // ✅ 응답 방어
+      if (!res?.data?.accessToken) {
+        alert("로그인 응답이 올바르지 않습니다.");
         return;
       }
 
@@ -93,6 +113,17 @@ export default function Login() {
       navigate(d.role === "WORKER" ? "/worker/attend" : "/admin/dashboard", {
         replace: true,
       });
+    } catch (e: any) {
+      // ✅ throw 난 케이스(401/400/500 등) 여기서 alert
+      const status = e?.response?.status;
+      const serverMsg = e?.response?.data?.message;
+
+      if (status === 401) alert(serverMsg ?? "아이디 또는 비밀번호가 올바르지 않습니다.");
+      else if (status === 400) alert(serverMsg ?? "요청 값이 올바르지 않습니다.");
+      else if (status === 403) alert(serverMsg ?? "세션이 만료되었습니다. 다시 로그인해주세요.");
+      else alert(serverMsg ?? "로그인 중 오류가 발생했습니다.");
+
+      console.error("login error:", e);
     } finally {
       setLoading(false);
     }
@@ -102,12 +133,7 @@ export default function Login() {
     <div className="min-h-dvh bg-white flex items-center justify-center px-4">
       <div className="w-full max-w-[420px] text-center">
         {/* Logo */}
-        <h1 className="mb-2 text-[40px] font-black tracking-tight text-blue-600">
-          Lookie
-        </h1>
-        <p className="mb-10 text-sm font-semibold text-slate-400">
-          아이디와 비밀번호를 입력해 주세요
-        </p>
+        <LogoAnimation />
 
         {/* ✅ ENTER 제출을 위해 form 사용 */}
         <form
@@ -119,7 +145,7 @@ export default function Login() {
           {/* Login Card */}
           <div className="overflow-hidden rounded-[22px] border border-slate-100 bg-white shadow-sm text-left">
             <FieldRow
-              icon={<Phone size={18} />}
+              icon={<Phone size={20} />}
               placeholder="아이디(전화번호)"
               value={id}
               onChange={setId}
@@ -129,7 +155,7 @@ export default function Login() {
             />
             <Divider />
             <FieldRow
-              icon={<Lock size={18} />}
+              icon={<Lock size={20} />}
               placeholder="비밀번호"
               value={pw}
               onChange={setPw}

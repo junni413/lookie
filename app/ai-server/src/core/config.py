@@ -36,7 +36,7 @@ PRODUCT_CONFIG = {
         "gate_class_id": 46,
         "model_path": "model/best.onnx"
     },
-    2001: {
+    1003: {
         "target_name": "banana",
         "gate_class_id": 46,
         "model_path": "model/best.onnx"

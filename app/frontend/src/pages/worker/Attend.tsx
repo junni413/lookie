@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
+import { motion } from "framer-motion";
 import { workLogApi } from "@/services/attend.api";
 import type { ApiResponse, WorkLogData, WorkLogStatus } from "@/services/attend.api";
 
@@ -121,26 +122,65 @@ export default function AttendPage() {
   }
 
   return (
-    <div className="h-full flex items-center justify-center px-5">
-      <button
-        type="button"
-        onClick={handleAttend}
-        disabled={loading}
-        className={`
-          w-[240px] h-[180px]
-          rounded-[32px]
-          bg-blue-600 text-white
-          flex flex-col items-center justify-center gap-3
-          shadow-[0_20px_40px_rgba(37,99,235,0.35)]
-          transition-all duration-200
-          active:scale-[0.97]
-          disabled:opacity-60 disabled:pointer-events-none
-        `}
+    <div className="h-full relative flex flex-col items-center justify-center px-5 overflow-hidden">
+      {/* Background Sensory Element */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-blue-50/50 rounded-full blur-3xl -z-10" />
+      
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.6 }}
+        className="text-center mb-10"
       >
-        <span className="text-[22px] font-black tracking-tight">
-          {loading ? "처리 중..." : "출근하기"}
-        </span>
-      </button>
+        <h2 className="text-[28px] font-black tracking-tighter text-slate-800 leading-tight">
+          오늘의 작업을<br />시작할 준비가 되셨나요?
+        </h2>
+        <p className="mt-3 text-[13px] font-bold text-slate-400">
+          근무를 시작하려면 아래 버튼을 눌러주세요
+        </p>
+      </motion.div>
+
+      <div className="relative">
+        {/* Pulsating Ring */}
+        <motion.div
+          animate={{ scale: [1, 1.15, 1], opacity: [0.15, 0.05, 0.15] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute inset-0 bg-blue-600 rounded-[44px]"
+        />
+
+        <motion.button
+          type="button"
+          onClick={handleAttend}
+          disabled={loading}
+          whileTap={{ scale: 0.96 }}
+          className={`
+            relative z-10
+            w-[240px] h-[240px]
+            rounded-[48px]
+            bg-gradient-to-br from-blue-600 to-indigo-700
+            text-white
+            flex flex-col items-center justify-center gap-4
+            shadow-[0_25px_50px_rgba(37,99,235,0.4)]
+            transition-all duration-300
+            disabled:opacity-60 disabled:pointer-events-nonegroup
+          `}
+        >
+          <div className="text-center">
+            <span className="block text-[24px] font-black tracking-tight leading-none mb-1">
+              {loading ? "인증 중..." : "출근하기"}
+            </span>
+          </div>
+        </motion.button>
+      </div>
+
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.4 }}
+        transition={{ delay: 1 }}
+        className="absolute bottom-10 text-[11px] font-black text-slate-300 tracking-[0.3em] uppercase"
+      >
+        Lookie
+      </motion.p>
     </div>
   );
 }

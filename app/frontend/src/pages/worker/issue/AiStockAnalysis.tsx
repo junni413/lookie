@@ -24,7 +24,11 @@ type AiResultData = {
 
 export default function AiStockAnalysis() {
     const { setTitle } = useOutletContext<MobileLayoutContext>();
-    const nav = useLocation().state as NavState | undefined;
+    const location = useLocation();
+    const nav = (location.state as NavState | undefined) || (
+        // ✅ 세션 복구 1순위: localStorage fallback (React Router state 유실 대비)
+        JSON.parse(localStorage.getItem("latest_issue_state") || "null") as NavState | null
+    );
     const navigate = useNavigate();
     const { toast } = useToast();
 
@@ -34,9 +38,9 @@ export default function AiStockAnalysis() {
 
     useEffect(() => {
         if (!nav || !nav.product) {
-            navigate("/worker/home", { replace: true });
+            console.error("❌ [AiStockAnalysis] Missing navigation state");
         }
-    }, [nav, navigate]);
+    }, [nav]);
 
     useEffect(() => {
         setTitle(""); // Header title hidden like in image
@@ -53,10 +57,9 @@ export default function AiStockAnalysis() {
         try {
             // 1. 이슈 생성 (OUT_OF_STOCK, 이미지 없이)
             const issueRes = await issueService.createIssue({
-                batchTaskId: nav.product.batchTaskId,
-                batchTaskItemId: nav.product.batchTaskItemId,
+                batchTaskId: nav?.product?.batchTaskId || 0,
+                batchTaskItemId: nav?.product?.batchTaskItemId || 0,
                 issueType: "OUT_OF_STOCK",
-                // imageUrl는 생략 (Optional)
             });
 
             if (!issueRes.success) {
@@ -114,6 +117,23 @@ export default function AiStockAnalysis() {
             setStep("REQUEST");
         }
     };
+
+    if (!nav || !nav.product) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full p-10 text-center space-y-6">
+                <div className="p-4 bg-amber-50 rounded-full">
+                    <MapPin className="w-12 h-12 text-amber-500" />
+                </div>
+                <div>
+                    <p className="text-xl font-black text-gray-900">분석 정보가 없습니다.</p>
+                    <p className="mt-2 text-sm text-gray-400 font-medium">작업 정보를 불러올 수 없습니다.</p>
+                </div>
+                <button onClick={() => navigate(-1)} className="w-full max-w-[200px] h-14 bg-slate-900 text-white rounded-2xl font-black text-base shadow-lg active:scale-95 transition-all">
+                    이전으로 돌아가기
+                </button>
+            </div>
+        );
+    }
 
     if (step === "LOADING") {
         return (

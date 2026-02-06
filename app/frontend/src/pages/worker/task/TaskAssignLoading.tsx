@@ -4,6 +4,8 @@ import type { MobileLayoutContext } from "../../../components/layout/MobileLayou
 import { taskService } from "@/services/taskService";
 import { TASK_ERROR_MESSAGES, type TaskErrorCode } from "@/types/task";
 
+type NextAction = "SCAN_TOTE" | "SCAN_LOCATION" | string;
+
 export default function TaskAssignLoading() {
   const navigate = useNavigate();
   const { setTitle } = useOutletContext<MobileLayoutContext>();
@@ -15,42 +17,81 @@ export default function TaskAssignLoading() {
     if (didRunRef.current) return;
     didRunRef.current = true;
 
-    const goWorkDetailWithActive = (active: Awaited<ReturnType<typeof taskService.getMyActiveTask>>) => {
-      const payload = active.data.payload;
-
-      // ✅ WorkDetail이 state.task + state.toteBarcode를 강제하므로 최소값을 만들어서 전달
-      const task = {
+    const normalizeTask = (payload: any) => {
+      // WorkDetail / ScanStart에서 쓰는 최소 task shape
+      return {
         batchTaskId: payload.batchTaskId,
         batchId: payload.batchId,
         zoneId: payload.zoneId,
         workerId: payload.workerId,
         toteId: payload.toteId,
+        toteBarcode: payload.toteBarcode,
         status: payload.status,
         startedAt: payload.startedAt,
-        // WorkDetail이 task.itemCount 같은 걸 쓰면 여기에 넣어야 함 (없으면 생략)
+        completedAt: payload.completedAt,
+        currentLocationId: payload.currentLocationId,
+        actionStatus: payload.actionStatus,
       } as any;
+    };
 
-      const toteBarcode = `TOTE-00${payload.toteId}`; // 서버가 barcode 문자열을 안 주므로 임시 대체
+    const goByNextAction = (
+      active: Awaited<ReturnType<typeof taskService.getMyActiveTask>>
+    ) => {
+      const payload = active.data.payload;
+      const task = normalizeTask(payload);
+      const nextItem = active.data.nextItem;
+
+      const nextAction: NextAction =
+        (active.data.nextAction as any) ??
+        (payload.actionStatus as any) ??
+        "SCAN_LOCATION";
+
+      // ✅ 1) 토트 스캔 필요 → WorkDetail 금지 (scan-start로 복구)
+      if (nextAction === "SCAN_TOTE") {
+        navigate("/worker/task/scan-start", {
+          replace: true,
+          state: { task, nextItem },
+        });
+        return;
+      }
+
+      // ✅ 2) WorkDetail로 가려면 toteBarcode가 있어야 함 (이제 API에서 내려줌)
+      const toteBarcode =
+        payload.toteBarcode && String(payload.toteBarcode).trim().length > 0
+          ? payload.toteBarcode
+          : null;
+
+      if (!toteBarcode) {
+        alert("토트 정보가 없어 작업을 복구할 수 없습니다. 홈에서 다시 시작해주세요.");
+        navigate("/worker/home", { replace: true });
+        return;
+      }
 
       navigate("/worker/task/work-detail", {
         replace: true,
         state: {
           task,
           toteBarcode,
-          nextAction: (active.data.nextAction as any) ?? (payload.actionStatus as any) ?? "SCAN_LOCATION",
+          nextAction,
+          nextItem,
         },
       });
     };
 
     const fetchTask = async () => {
       try {
-        // ✅ 1) 먼저 진행중 작업 확인 -> 있으면 work-detail로 (state까지 맞춰서)
+        // ✅ 1) 먼저 진행중 작업 확인
         try {
           const active = await taskService.getMyActiveTask();
           const payload = active?.data?.payload;
 
-          if (active.success && payload && typeof payload.batchTaskId === "number" && payload.batchTaskId > 0) {
-            goWorkDetailWithActive(active);
+          if (
+            active.success &&
+            payload &&
+            typeof payload.batchTaskId === "number" &&
+            payload.batchTaskId > 0
+          ) {
+            goByNextAction(active);
             return;
           }
         } catch {
@@ -61,25 +102,27 @@ export default function TaskAssignLoading() {
         const response = await taskService.startTask();
 
         if (response.success && response.data) {
-          const task = response.data.payload;
+          const task = normalizeTask(response.data.payload);
+          const nextItem = response.data.nextItem;
 
-          // 대기 통계 (UI용)
-          await taskService.addWaitingTasks(task.itemCount || 1);
+          // 대기 통계 (UI용): 작업이 할당되었으므로 1개 추가
+          await taskService.addWaitingTasks(1);
 
           navigate("/worker/task/scan-start", {
             replace: true,
-            state: { task },
+            state: { task, nextItem },
           });
           return;
         }
 
         const msg = response.errorCode
-          ? TASK_ERROR_MESSAGES[response.errorCode as TaskErrorCode] || response.message
+          ? TASK_ERROR_MESSAGES[response.errorCode as TaskErrorCode] ||
+            response.message
           : response.message || "작업 할당에 실패했습니다.";
 
         throw new Error(msg);
       } catch (error: any) {
-        // ✅ 3) 백이 "이미 진행 중인 작업"이라고 막으면 -> active 재조회 후 work-detail 복구
+        // ✅ 3) 이미 진행 중(409) → active 재조회로 복구
         const msg = String(error?.message ?? "");
         const status = error?.response?.status ?? error?.status;
 
@@ -88,17 +131,25 @@ export default function TaskAssignLoading() {
             const active = await taskService.getMyActiveTask();
             const payload = active?.data?.payload;
 
-            if (active.success && payload && typeof payload.batchTaskId === "number" && payload.batchTaskId > 0) {
-              goWorkDetailWithActive(active);
+            if (
+              active.success &&
+              payload &&
+              typeof payload.batchTaskId === "number" &&
+              payload.batchTaskId > 0
+            ) {
+              goByNextAction(active);
               return;
             }
           } catch {
-            // 재조회 실패하면 아래 fallback
+            // 재조회 실패 시 fallback
           }
         }
 
         console.error("Task assign error:", error);
-        alert(error?.message || "작업을 할당받지 못했습니다. 잠시 후 다시 시도해주세요.");
+        alert(
+          error?.message ||
+            "작업을 할당받지 못했습니다. 잠시 후 다시 시도해주세요."
+        );
         navigate("/worker/home", { replace: true });
       }
     };
@@ -112,7 +163,9 @@ export default function TaskAssignLoading() {
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
       </div>
       <p className="text-sm font-semibold text-gray-900">작업 확인 중</p>
-      <p className="text-xs font-medium text-gray-400">진행 중 작업이 있으면 자동으로 복구합니다.</p>
+      <p className="text-xs font-medium text-gray-400">
+        진행 중 작업이 있으면 자동으로 복구합니다.
+      </p>
     </div>
   );
 }

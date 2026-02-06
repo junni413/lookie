@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { MobileLayoutContext } from "@/components/layout/MobileLayout";
 import { issueService, type IssueDetailData as IssueDetailType } from "@/services/issueService";
-import { MapPin, Package, Calendar, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { MapPin, Package, Calendar, AlertCircle, CheckCircle2, Clock, Hash, Loader2 } from "lucide-react";
 
 export default function IssueDetail() {
     const { setTitle } = useOutletContext<MobileLayoutContext>();
@@ -57,58 +57,93 @@ export default function IssueDetail() {
         fetchIssue();
     }, [state, navigate]);
 
+    // ✅ Helper: issueType code -> label & style
+    const getIssueTypeConfig = (type?: string) => {
+        switch (type) {
+            case "DAMAGED":
+                return { label: "상품 파손", color: "bg-red-50 text-red-600 border-red-200" };
+            case "OUT_OF_STOCK":
+                return { label: "재고 없음", color: "bg-amber-50 text-amber-600 border-amber-200" };
+            default:
+                return { label: "알 수 없는 이슈", color: "bg-gray-50 text-gray-500 border-gray-200" };
+        }
+    };
+
     if (loading) {
-        return <div className="flex justify-center items-center h-full text-gray-400">Loading details...</div>;
+        return (
+            <div className="flex flex-col items-center justify-center h-full space-y-4">
+                <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+                <p className="text-sm font-medium text-gray-400">이슈 상세 정보를 불러오는 중...</p>
+            </div>
+        );
     }
 
-    if (!issue) return <div className="text-center py-10">이슈 정보를 찾을 수 없습니다.</div>;
+    if (!issue) return <div className="text-center py-20 text-gray-400 font-bold">이슈 정보를 찾을 수 없습니다.</div>;
 
     const isDone = issue.status === "RESOLVED" || issue.status === "DONE";
+    const config = getIssueTypeConfig(issue.issueType || issue.type);
 
     return (
-        <div className="flex flex-col h-full space-y-6 pb-10">
-            {/* Header Status Card */}
-            <div className={`rounded-3xl p-6 flex items-center justify-between border transition-all ${isDone ? 'bg-blue-50/50 border-blue-100' : 'bg-gray-50/50 border-gray-100'}`}>
-                <div className="flex items-center gap-3">
-                    {isDone ? (
-                        <CheckCircle2 className="w-6 h-6 text-blue-600" />
-                    ) : (
-                        <Clock className="w-6 h-6 text-orange-500" />
-                    )}
-                    <div>
-                        <p className={`text-sm font-bold ${isDone ? 'text-blue-600' : 'text-gray-500'}`}>
-                            {isDone ? "처리 완료" : "대기 중"}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">#{issue.issueId}</p>
-                    </div>
-                </div>
-                <div className="text-right text-[11px] font-bold text-gray-400">
-                    <Calendar className="w-3 h-3 inline mr-1" />
-                    {issue.createdAt ? new Date(issue.createdAt).toLocaleDateString() : ""}
-                </div>
-            </div>
-
-            {/* Product & Issue Info */}
-            <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-6">
-                <div className="flex items-start gap-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center flex-shrink-0">
-                        <Package className="w-8 h-8 text-gray-300" />
-                    </div>
-                    <div className="min-w-0">
-                        <h3 className="text-lg font-black text-gray-900 truncate">{issue.productName || "상품명 없음"}</h3>
-                        <p className="text-sm font-medium text-gray-400 mt-0.5 tracking-tight">{issue.sku || "-"}</p>
-                        <div className="flex items-center gap-1.5 mt-2 bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg w-fit">
-                            <MapPin className="w-3.5 h-3.5" />
-                            <span className="text-xs font-bold">{issue.locationCode || issue.locationCode || "-"}</span>
+        <div className="flex flex-col h-full space-y-6 pb-10 px-1">
+            {/* Header: Status & Type */}
+            <div className="flex flex-col gap-4">
+                <div className={`rounded-[32px] p-6 flex items-center justify-between border transition-all ${isDone ? 'bg-blue-50/50 border-blue-100' : 'bg-gray-50/50 border-gray-100'}`}>
+                    <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-2xl ${isDone ? 'bg-blue-600' : 'bg-orange-500'} text-white shadow-sm`}>
+                            {isDone ? <CheckCircle2 className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
+                        </div>
+                        <div>
+                            <p className={`text-sm font-black ${isDone ? 'text-blue-600' : 'text-orange-600'}`}>
+                                {isDone ? "조치 완료" : "조치 대기 중"}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5 text-gray-400 font-bold text-xs">
+                                <Hash className="w-3 h-3" />
+                                {issue.issueId}
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="pt-6 border-t border-gray-50 flex flex-col gap-4">
-                    <div className="flex justify-between items-center">
-                        <span className="text-sm font-bold text-gray-400">신고 유형</span>
-                        <span className="text-sm font-black text-gray-900">{issue.type || issue.issueType}</span>
+                <div className={`rounded-2xl border p-4 flex items-center justify-between ${config.color.split(' ').slice(0, 2).join(' ')} ${config.color.split(' ')[2]}`}>
+                    <span className="text-sm font-black">신고 유형</span>
+                    <span className="text-sm font-black underline underline-offset-4">{config.label}</span>
+                </div>
+            </div>
+
+            {/* Product & Location Info */}
+            <div className="bg-white rounded-[32px] border border-gray-100 p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] space-y-6">
+                <div className="space-y-5">
+                    <div className="flex items-start gap-4">
+                        <div className="p-3 rounded-2xl bg-slate-50 text-slate-400">
+                            <Package className="w-6 h-6" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tighter">상품명</p>
+                            <h3 className="text-[18px] font-black text-slate-900 leading-tight mt-0.5">{issue.productName || "상품명 없음"}</h3>
+                        </div>
                     </div>
+
+                    <div className="h-px bg-gray-50" />
+
+                    <div className="flex items-start gap-4">
+                        <div className="p-3 rounded-2xl bg-blue-50 text-blue-400">
+                            <MapPin className="w-6 h-6" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tighter">지번 위치</p>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[20px] font-black text-blue-600 font-mono">{issue.locationCode || "-"}</span>
+                                {issue.zoneName && (
+                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-500 rounded text-[11px] font-black">{issue.zoneName}구역</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-4 border-t border-gray-50 text-gray-400">
+                    <Calendar className="w-4 h-4" />
+                    <span className="text-xs font-bold">접수 일시: {issue.createdAt ? new Date(issue.createdAt).toLocaleString() : "-"}</span>
                 </div>
             </div>
 
@@ -120,31 +155,45 @@ export default function IssueDetail() {
                         AI 분석 결과
                     </h4>
                     <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
-                        {issue.aiResult && (
-                            <div className="space-y-2">
-                                <p className="text-xs font-bold text-gray-400">재고 분석 상태</p>
-                                <div className="text-[17px] font-black text-blue-600">
-                                    {issue.aiResult === "MISSING" && "재고 없음 (결손 처리)"}
-                                    {issue.aiResult === "WAIT" && "원복 대기 (재고 보충 예정)"}
-                                    {issue.aiResult === "ADMIN" && "관리자 개입 필요"}
-                                    {issue.aiResult === "LOCATION_MOVE" && "지번 이동 확인"}
-                                    {!["MISSING", "WAIT", "ADMIN", "LOCATION_MOVE"].includes(issue.aiResult) && issue.aiResult}
-                                </div>
+                        {/* 1) 판정 결과 (파손 여부 중심) */}
+                        <div className="space-y-2">
+                            <p className="text-xs font-bold text-gray-400">분석 판정</p>
+                            <div className="text-[17px] font-black">
+                                {(() => {
+                                    const res = issue.aiResult || issue.verdict;
+                                    if (res === "FAIL" || res === "DAMAGED") {
+                                        return <span className="text-red-500">❌ 파손 감지</span>;
+                                    }
+                                    if (res === "PASS" || res === "OK") {
+                                        return <span className="text-blue-600">✅ 정상 상품</span>;
+                                    }
+                                    if (res === "NEED_CHECK" || res === "NEED_REVIEW") {
+                                        return <span className="text-amber-500">⚠️ 애매 (관리자 확인 필요)</span>;
+                                    }
+                                    if (res === "RETAKE") {
+                                        return <span className="text-slate-500">📸 재촬영 필요</span>;
+                                    }
+                                    // 2) 재고 특화 결과 (기존 로직 유지)
+                                    if (res === "MISSING") return <span className="text-amber-500">재고 없음 (결손 처리)</span>;
+                                    if (res === "WAIT") return <span className="text-slate-500">원복 대기 (재고 보충 예정)</span>;
+                                    if (res === "ADMIN") return <span className="text-amber-500">관리자 개입 필요</span>;
+                                    if (res === "LOCATION_MOVE") return <span className="text-blue-600">지번 이동 확인</span>;
+                                    
+                                    return <span className="text-gray-600">{res}</span>;
+                                })()}
                             </div>
-                        )}
-                        {issue.verdict && (
-                            <div className="space-y-2">
-                                <p className="text-xs font-bold text-gray-400">파손 판정 결과</p>
-                                <div className={`text-[17px] font-black ${issue.verdict === 'DAMAGED' ? 'text-red-500' : 'text-blue-600'}`}>
-                                    {issue.verdict === "OK" && "정상 (파손 아님)"}
-                                    {issue.verdict === "DAMAGED" && "파손 확인 (관리자 검토)"}
-                                    {issue.verdict === "NEED_REVIEW" && "판단 불가 (수동 확인 필요)"}
-                                    {!["OK", "DAMAGED", "NEED_REVIEW"].includes(issue.verdict) && issue.verdict}
-                                </div>
-                            </div>
-                        )}
+                        </div>
+
                         {issue.confidence && (
-                            <p className="text-xs text-gray-400 mt-2">신뢰도: {(issue.confidence * 100).toFixed(1)}%</p>
+                            <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-50 flex justify-between items-center">
+                                <span>분석 신뢰도</span>
+                                <span className="font-bold text-gray-600">{(issue.confidence * 100).toFixed(1)}%</span>
+                            </p>
+                        )}
+                        {issue.summary && (
+                            <p className="text-xs text-slate-500 mt-2 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                {issue.summary}
+                            </p>
                         )}
                     </div>
                 </div>
