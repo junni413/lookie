@@ -116,7 +116,6 @@ export const useCallStore = create<CallStore>((set, get) => ({
                             toast.success("통화가 연결되었습니다.");
 
                             const { timeoutId } = get();
-                            console.log("타임아웃 ID:", timeoutId);
                             if (timeoutId) clearTimeout(timeoutId);
 
                             set({ status: "ACTIVE", timeoutId: null });
@@ -211,26 +210,15 @@ export const useCallStore = create<CallStore>((set, get) => ({
     },
 
     acceptCall: async () => {
-        const { callId, timeoutId, status } = get();
+        const { callId, timeoutId } = get();
         if (!callId) return;
-
-        // Global Call Guard: Prevent double execution
-        if (status === 'ACTIVE' || status === "CONNECTING") {
-            console.warn("⚠️ [CallStore] acceptCall blocked: already active/connecting");
-            return;
-        }
 
         if (timeoutId) clearTimeout(timeoutId);
 
         try {
-            // Lock state immediately
-            set({ status: "CONNECTING" });
-
             const token = await webrtcService.acceptCall(callId);
             set({ status: "ACTIVE", token, timeoutId: null });
         } catch (error) {
-            // Revert state on error (back to INCOMING or WAITING? probably reset or error handling)
-            // Error handling usually resets or shows toast.
             get().handleError(error);
         }
     },
