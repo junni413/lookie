@@ -29,6 +29,9 @@ import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -853,7 +856,7 @@ public class IssueService {
      * 
      * @param issueId Issue ID
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handleWebRtcMissed(Long issueId) {
         log.info("[IssueService] handleWebRtcMissed started. issueId={}", issueId);
 
