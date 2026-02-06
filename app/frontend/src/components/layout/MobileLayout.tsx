@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import WorkerDrawer from "@/components/layout/WorkerDrawer";
 import { useUIStore } from "@/stores/uiStore";
 import { useCallStore } from "@/stores/callStore"; // Import callStore
-import VideoCallModal from "@/components/webrtc/VideoCallModal"; // Import VideoCallModal
 import { Bell, LayoutGrid, ChevronLeft } from "lucide-react";
 
 export type MobileLayoutContext = { setTitle: (t: string) => void };
@@ -27,8 +26,6 @@ export default function MobileLayout() {
   return (
     <div className="min-h-dvh bg-gray-50 flex justify-center">
       <div className="w-full max-w-[430px] min-h-dvh bg-white shadow-sm flex flex-col relative">
-        {/* Video Call Modal */}
-        <VideoCallModal />
 
         <header className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-4 py-3">
           {/* left */}
