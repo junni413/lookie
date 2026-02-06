@@ -440,6 +440,8 @@ class IssueServiceTest {
         issue.setStatus("OPEN");
         issue.setAdminRequired(true); // 관리자 연결 필요
         issue.setIssueHandling("NON_BLOCKING"); // WebRTC 부재 시 NON_BLOCKING으로 전환됨
+        // NOTE: BLOCKING 상태라면 WAIT_ADMIN이 우선되므로, NON_BLOCKING 상태일 때만
+        // UPLOAD_REPORT_IMAGE가 반환됨
 
         // 이미지가 없는 상태의 AiJudgment
         AiJudgmentVO judgment = new AiJudgmentVO();
