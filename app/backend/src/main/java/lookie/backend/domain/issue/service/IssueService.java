@@ -35,6 +35,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import lookie.backend.domain.issue.dto.AdminDecision;
 
 import lookie.backend.domain.issue.dto.IssueStatus;
@@ -85,12 +88,7 @@ public class IssueService {
         }
     }
 
-    /**
-     * 이슈 생성
-     * - AI 판정 요청 성공 시 호출
-     * - Issue, IssueImage, AiJudgment 초기 데이터 생성
-     * - TaskItem 상태를 ISSUE로 변경
-     */
+    // AI 판정 요청 성공 시 호출
     @Transactional
     public IssueResponse createIssue(Long workerId, CreateIssueRequest request) {
         log.info("[IssueService] createIssue started. workerId={}, itemId={}",
@@ -135,31 +133,39 @@ public class IssueService {
         taskItemService.markAsIssuePending(item.getBatchTaskItemId());
         log.info("[IssueService] TaskItem marked as ISSUE_PENDING. itemId={}", item.getBatchTaskItemId());
 
-        // 6. Response 먼저 반환 (트랜잭션 커밋됨)
+        // 6. Response 생성
         IssueResponse response = IssueResponse.from(issue);
 
-        // 7. AI 서버로 판정 요청 (트랜잭션 커밋 후)
-        // NOTE: 트랜잭션이 끝난 후 실행되도록 별도 메서드로 분리
+        // 7. [Fix] AI 서버 요청은 트랜잭션 커밋 "후"에 실행 (Race Condition 방지)
         Long issueIdForAi = issue.getIssueId();
-        requestAiAnalysisAfterCommit(issueIdForAi, item, request.getIssueType(), request.getImageUrl());
+        String issueType = request.getIssueType();
+        String imageUrl = request.getImageUrl();
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    log.info("[IssueService] Transaction committed. Sending AI request for issueId={}", issueIdForAi);
+                    requestAiAnalysisSafe(issueIdForAi, item, issueType, imageUrl);
+                } catch (Exception e) {
+                    log.error("[IssueService] Failed to request AI analysis after commit. issueId={}", issueIdForAi, e);
+                }
+            }
+        });
 
         return response;
     }
 
     /**
-     * AI 분석 요청 (트랜잭션 외부에서 실행)
-     * - 새로운 트랜잭션에서 실행되므로 createIssue()의 커밋 후 실행됨
+     * AI 분석 요청 (트랜잭션 없음 - 커밋 후 실행됨)
      */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
-    public void requestAiAnalysisAfterCommit(Long issueId, TaskItemVO item, String issueType, String imageUrl) {
+    public void requestAiAnalysisSafe(Long issueId, TaskItemVO item, String issueType, String imageUrl) {
         AiAnalysisRequest aiRequest = buildAiAnalysisRequest(issueId, item, issueType, imageUrl);
         aiAnalysisClient.requestAnalysis(aiRequest);
     }
 
     /**
      * 이슈 타입에 따라 적절한 AI 분석 요청 생성
-     * - DAMAGED: imageUrl 필수, inventoryState 불필요
-     * - OUT_OF_STOCK: imageUrl null, inventoryState 필수
      */
     private AiAnalysisRequest buildAiAnalysisRequest(
             Long issueId,
@@ -216,8 +222,6 @@ public class IssueService {
 
     /**
      * AI 재분석 요청 (재촬영)
-     * - AI 판정이 RETAKE인 경우, 새 이미지로 다시 분석 요청
-     * - 기존 Issue는 유지하고, AI 판정 상태만 초기화 (UNKNOWN)
      */
     @Transactional
     public void retakeIssue(Long workerId, Long issueId, String imageUrl) {
@@ -229,22 +233,17 @@ public class IssueService {
             throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
         }
 
-        // 2. 권한 검증 (본인 이슈인지)
+        // 2. 권한 검증
         if (!workerId.equals(issue.getWorkerId())) {
-            // NOTE: 관리자 개입 등으로 workerId가 달라질 수 있으나,
-            // 기본적으로는 본인이 생성한 이슈만 재촬영 가능하도록 제한
             log.warn("[IssueService] Unauthorized retake attempt. workerId={}, issueWorkerId={}",
                     workerId, issue.getWorkerId());
             throw new ApiException(ErrorCode.ISSUE_TASK_NOT_ASSIGNED);
         }
 
-        // 3. 현재 AI 판정 상태 확인 (RETAKE 여부)
+        // 3. AI 판정 상태 확인
         AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
-        // NOTE: 기획상 RETAKE 상태일 때만 재촬영이 가능하다고 했으므로 검증 추가
-        // 하지만 현장 상황에 따라 FAIL 등에서도 재촬영이 필요할 수 있으니,
-        // 일단은 "AI 판정이 존재할 때" 덮어쓰기 허용으로 유연하게 가되, 주로 RETAKE에서 사용됨.
         if (judgment == null) {
-            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND); // AI 판정 자체가 없는 경우는 비정상
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
         }
 
         log.info("[IssueService] Retaking issue. Original decision={}", judgment.getAiDecision());
@@ -256,27 +255,35 @@ public class IssueService {
         issueMapper.insertIssueImage(image);
         log.info("[IssueService] New image saved for retake.", imageUrl);
 
-        // 5. AI 판정 상태 리셋 (UNKNOWN) & 이미지 URL 교체
-        // 기존 레코드를 업데이트하여 processAiResult의 중복 방지 로직(UNKNOWN 체크)을 통과하도록 함
+        // 5. AI 판정 상태 리셋 (UNKNOWN)
         judgment.setImageUrl(imageUrl);
         judgment.setAiDecision("UNKNOWN");
         judgment.setConfidence(null);
-        judgment.setAiResult(null); // 이전 결과 날림
+        judgment.setAiResult(null);
         judgment.setSummary(null);
 
         issueMapper.updateAiJudgment(judgment);
         log.info("[IssueService] AiJudgment reset to UNKNOWN for retake.");
 
-        // 6. TaskItemVO 조회를 통한 ProductId 획득 (AI 재요청용)
+        // 6. TaskItemVO 조회 (ProductId 필요)
         TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
 
-        // 7. AI 서버로 재분석 요청 (비동기)
-        AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
-                issueId,
-                item != null ? item.getProductId() : 0L, // 안전장치
-                imageUrl);
-        aiAnalysisClient.requestAnalysis(aiRequest);
-        log.info("[IssueService] Re-analysis requested.");
+        // 7. [Fix] AI 재요청도 트랜잭션 커밋 후에 실행
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    log.info("[IssueService] Transaction committed. Sending Retake request for issueId={}", issueId);
+                    AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
+                            issueId,
+                            item != null ? item.getProductId() : 0L,
+                            imageUrl);
+                    aiAnalysisClient.requestAnalysis(aiRequest);
+                } catch (Exception e) {
+                    log.error("[IssueService] Failed to request Retake analysis after commit. issueId={}", issueId, e);
+                }
+            }
+        });
     }
 
     /**
@@ -348,7 +355,7 @@ public class IssueService {
             return AiResultResponse.from(issue, calculateNextAction(issue),
                     generateAvailableActions(issue),
                     existing.getAiDecision(), existing.getSummary(),
-                    existing.getConfidence(), existing.getAiResult());
+                    existing.getConfidence(), existing.getAiResult(), existing.getImageUrl());
         }
 
         // 2. AI 판정 결과 업데이트
@@ -358,6 +365,12 @@ public class IssueService {
         judgment.setConfidence(request.getConfidence());
         judgment.setSummary(request.getSummary());
         judgment.setAiResult(request.getAiResult());
+
+        // [Fix] 기존 이미지 URL 유지 (재촬영 등으로 이미지가 업데이트된 경우 보존)
+        if (existing != null) {
+            judgment.setImageUrl(existing.getImageUrl());
+        }
+
         issueMapper.updateAiJudgment(judgment);
 
         // 3. newLocation 처리 (MOVE_LOCATION 케이스)
@@ -382,9 +395,10 @@ public class IssueService {
         IssueNextAction issueNextAction = calculateNextAction(issue);
         List<String> availableActions = generateAvailableActions(issue);
 
+        // [Fix] Response에 이미지 URL 포함
         AiResultResponse response = AiResultResponse.from(issue, issueNextAction, availableActions,
                 judgment.getAiDecision(), judgment.getSummary(),
-                judgment.getConfidence(), judgment.getAiResult());
+                judgment.getConfidence(), judgment.getAiResult(), judgment.getImageUrl());
 
         // [WebSocket] AI 판정 결과 통보
         messagingTemplate.convertAndSend("/topic/issues/" + issueId, response);
