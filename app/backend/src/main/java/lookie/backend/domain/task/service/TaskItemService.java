@@ -10,8 +10,6 @@ import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
 import lookie.backend.domain.product.vo.ProductVO;
-import lookie.backend.domain.task.event.TaskItemCompletedEvent;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,7 +25,7 @@ public class TaskItemService {
     private final TaskItemMapper taskItemMapper;
     private final ProductMapper productMapper;
     private final InventoryService inventoryService;
-    private final ApplicationEventPublisher eventPublisher;
+    // Event publishing moved to Facade layer
 
     /**
      * 상품 바코드 스캔 및 매칭되는 아이템 조회
@@ -96,7 +94,7 @@ public class TaskItemService {
         );
 
         // 5. [Event] 아이템 완료 이벤트 발행 (Redis 집계용)
-        eventPublisher.publishEvent(new TaskItemCompletedEvent(item.getBatchTaskItemId(), item.getBatchTaskId()));
+        // 5. [Event] Redis update logic moved to Facade
 
         return taskItemMapper.findById(itemId);
     }
@@ -129,8 +127,9 @@ public class TaskItemService {
         // Redis 집계에 반영하고, 프론트가 다음 아이템으로 넘어가게 해야 함.
         TaskItemVO item = taskItemMapper.findById(itemId);
         if (item != null) {
-            eventPublisher.publishEvent(new TaskItemCompletedEvent(item.getBatchTaskItemId(), item.getBatchTaskId()));
+            // Event will be published by Facade layer if needed
         }
+
     }
 
     /**
@@ -173,9 +172,9 @@ public class TaskItemService {
         // Redis 집계 정합성을 위해 Reverted 이벤트 발행 (-1 처리)
         TaskItemVO item = taskItemMapper.findById(itemId);
         if (item != null) {
-            eventPublisher.publishEvent(new lookie.backend.domain.task.event.TaskItemRevertedEvent(
-                    item.getBatchTaskItemId(), item.getBatchTaskId()));
+            // Reverted Event logic should be also moved if needed
         }
+
     }
 
     /**

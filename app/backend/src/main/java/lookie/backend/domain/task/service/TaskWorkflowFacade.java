@@ -160,6 +160,17 @@ public class TaskWorkflowFacade {
     public TaskResponse<TaskItemVO> completeItem(Long itemId) {
         TaskItemVO item = taskItemService.completeItemManual(itemId);
 
+        // [Event] Facade layer publishes event with full context (zoneId, batchId)
+        // This prevents listener from fetching Task/Zone again from DB
+        TaskVO task = taskMapper.findById(item.getBatchTaskId());
+        if (task != null) {
+            eventPublisher.publishEvent(new lookie.backend.domain.task.event.TaskItemCompletedEvent(
+                    item.getBatchTaskItemId(),
+                    item.getBatchTaskId(),
+                    task.getZoneId(),
+                    task.getBatchId()));
+        }
+
         NextAction nextAction = determineNextActionAfterPick(item);
         updateTaskStatusIfNecessary(item.getBatchTaskId(), nextAction);
 
@@ -187,7 +198,8 @@ public class TaskWorkflowFacade {
         eventPublisher.publishEvent(new TaskCompletedEvent(
                 task.getBatchTaskId(),
                 task.getWorkerId(),
-                task.getZoneId()));
+                task.getZoneId(),
+                task.getBatchId()));
 
         // [Batch] 배치 내 모든 Task가 완료되었는지 확인하고 Batch 상태 업데이트
         int remainingTasks = taskMapper.countInProgressTasksByBatch(task.getBatchId());

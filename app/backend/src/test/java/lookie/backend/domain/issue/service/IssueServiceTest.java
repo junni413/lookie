@@ -52,6 +52,9 @@ class IssueServiceTest {
     @Mock
     private lookie.backend.domain.inventory.service.InventoryService inventoryService;
 
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private IssueService issueService;
 

@@ -99,5 +99,17 @@ public interface ControlMapper {
         /**
          * 가장 적은 수의 활성 작업자가 있는 구역 ID 조회 (자동 배정용)
          */
+        /**
+         * 가장 적은 수의 활성 작업자가 있는 구역 ID 조회 (자동 배정용)
+         */
         Long selectZoneIdWithFewestWorkers();
+
+        /**
+         * AI 또는 TEMP 배정 이력 생성 (동적 파라미터)
+         */
+        void insertAiAssignmentHistory(@Param("workerId") Long workerId,
+                        @Param("zoneId") Long zoneId,
+                        @Param("type") String type,
+                        @Param("source") String source,
+                        @Param("reason") String reason);
 }

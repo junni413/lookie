@@ -195,4 +195,9 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
                 })
                 .toList();
     }
+
+    @Override
+    public void incrementZoneProgress(Long zoneId, Long batchId) {
+        // DB Implementation does not support real-time redis increment
+    }
 }

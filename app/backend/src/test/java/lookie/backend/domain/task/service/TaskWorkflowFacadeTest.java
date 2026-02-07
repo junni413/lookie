@@ -33,6 +33,8 @@ class TaskWorkflowFacadeTest {
     private ToteService toteService;
     @Mock
     private LocationService locationService;
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
     // @Mock private ZoneAssignmentMapper zoneAssignmentMapper; // Removed
 
     @InjectMocks
