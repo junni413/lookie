@@ -317,7 +317,27 @@ export default function WorkDetail() {
         setItems(itms => itms.map((it) => it.batchTaskItemId === updatedPayload.batchTaskItemId ? updatedPayload : it));
       }
 
-      setCurrentIndex((i) => i + 1);
+      // [Fix] 백엔드가 지정한 다음 아이템(nextItem)으로 이동하도록 수정 (건너뛰기/복구 대응)
+      // 기존: setCurrentIndex((i) => i + 1); -> 순차 이동만 가능하여 마지막 아이템 처리 후 문제 발생
+      const nextItemFromServer = completeRes.data?.nextItem;
+      if (nextItemFromServer) {
+        const nextIndex = items.findIndex(it => it.batchTaskItemId === nextItemFromServer.batchTaskItemId);
+        if (nextIndex !== -1) {
+          if (nextIndex < currentIndex) {
+            toast({ title: "알림", description: "미완료된 이전 작업 항목으로 이동합니다." });
+          }
+          setCurrentIndex(nextIndex);
+          return;
+        }
+      }
+
+      // nextItem이 없거나 못 찾은 경우 (예: 순차 진행)
+      if (currentIndex < items.length - 1) {
+        setCurrentIndex((i) => i + 1);
+      } else {
+        // 더 이상 갈 곳이 없는데 COMPLETE_TASK도 아닌 경우 (예외 상황)
+        console.warn("No next item found but task not completed.");
+      }
       setNextAction(nextActionFromServer || "SCAN_LOCATION");
     } catch (err: any) {
       toast({ title: "오류", description: err?.message, variant: "destructive" });
