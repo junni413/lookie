@@ -998,6 +998,17 @@ public class IssueService {
         log.info("[IssueService] Admin confirmed. issueId={}, adminDecision={}",
                 issueId, adminDecision);
 
+        // [Fix] NORMAL 판정 시, 작업 진행 중(IN_PROGRESS)이면 아이템 상태 PENDING 복구
+        // 작업자가 해당 상품을 다시 집품할 수 있도록 되돌림
+        if (AdminDecision.NORMAL.equals(adminDecision)) {
+            TaskVO task = taskMapper.findById(issue.getBatchTaskId());
+            if (task != null && "IN_PROGRESS".equals(task.getStatus())) {
+                taskItemService.reviveItem(issue.getBatchTaskItemId());
+                log.info("[IssueService] TaskItem revived to PENDING. issueId={}, itemId={}", issueId,
+                        issue.getBatchTaskItemId());
+            }
+        }
+
         // 6. Inventory Event 기록 (DAMAGED 타입)
         if ("DAMAGED".equals(issue.getIssueType())) {
             TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
