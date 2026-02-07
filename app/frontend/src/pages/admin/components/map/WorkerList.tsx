@@ -153,7 +153,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                                         <div className="text-center">
                                             <div className="text-slate-400 text-[10px] font-medium">작업률</div>
                                             <div className="font-semibold text-slate-700">
-                                                {worker.workRate || 0}%
+                                                {Math.floor(worker.workRate || 0)}%
                                             </div>
                                         </div>
                                         <div className="text-center">

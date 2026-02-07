@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { X, Wand2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -77,36 +76,41 @@ export default function AiReallocationModal({
 
     if (!isOpen) return null;
 
-    return createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <Card className="w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden bg-slate-50 border-0 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+    return (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full mx-6 h-[85vh] max-h-[52rem] flex flex-col overflow-hidden border-0 animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out">
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 bg-white border-b shrink-0">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                            {isLoading ? <Loader2 className="animate-spin" size={24} /> : <Wand2 size={24} />}
+                <div className="flex items-center justify-between px-6 py-4 bg-white shrink-0 border-b border-slate-100">
+                    <div className="flex items-center">
+                        <div className="w-10 h-10 rounded-xl bg-primary-soft flex items-center justify-center text-primary mr-3 shadow-sm border border-primary-soft">
+                            {isLoading ? <Loader2 className="animate-spin" size={20} strokeWidth={2.5} /> : <Wand2 size={20} strokeWidth={2.5} />}
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-slate-900">AI 추천 재배치</h2>
-                            <p className="text-sm text-slate-500">
+                            <h2 className="text-xl font-bold text-slate-800 tracking-tight">AI 추천 재배치</h2>
+                            <p className="text-xs text-slate-500 mt-0.5 font-medium">
                                 {isLoading ? "AI가 최적의 배치를 분석하고 있습니다..." : "AI가 제안한 배치를 확인하고 수정할 수 있습니다."}
                             </p>
                         </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={onClose}>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onClose}
+                        className="h-8 w-8 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                    >
                         <X size={20} />
                     </Button>
                 </div>
 
                 {/* Simulation Area */}
-                <div className="flex-1 overflow-x-auto p-6 bg-slate-100/50">
+                <div className="flex-1 overflow-x-auto p-4 bg-slate-100/50">
                     {isLoading ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-4">
                             <Loader2 className="animate-spin" size={48} />
                             <p>AI 분석 중...</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-full min-w-[1000px] lg:min-w-0">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 h-full min-w-[1000px] lg:min-w-0">
                             {zoneStats.map(stat => (
                                 <ManageZoneColumn
                                     key={stat.zoneId}
@@ -131,21 +135,24 @@ export default function AiReallocationModal({
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 bg-white border-t flex justify-end gap-3 shrink-0">
-                    <Button variant="outline" onClick={onClose}>
+                <div className="p-4 bg-white border-t flex justify-end gap-2 shrink-0">
+                    <Button 
+                        variant="ghost" 
+                        onClick={onClose}
+                        className="rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100/80 h-9 px-4 transition-all"
+                    >
                         취소
                     </Button>
                     <Button
-                        className="bg-primary hover:bg-primary/90 text-white gap-2 px-6"
+                        className="bg-[#304FFF] hover:bg-[#304FFF]/90 text-white gap-2 px-6 h-9 rounded-full shadow-lg shadow-indigo-500/20 font-bold hover:scale-105 active:scale-95 transition-all duration-200"
                         onClick={() => onApply(simulatedWorkers, recommendation?.moves)}
                         disabled={isLoading}
                     >
-                        <Wand2 size={16} />
+                        <Wand2 size={16} className="text-white/90" />
                         AI 추천 재배치 적용하기
                     </Button>
                 </div>
             </Card>
-        </div>,
-        document.body
+        </div>
     );
 }

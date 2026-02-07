@@ -64,7 +64,7 @@ export default function ZoneGrid({ zones, onZoneClick }: { zones: ZoneItem[], on
                     <span>진행률</span>
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <span className={cn("text-3xl font-bold tracking-tight", style.itemValue)}>{z.workRate}</span>
+                    <span className={cn("text-3xl font-bold tracking-tight", style.itemValue)}>{Math.floor(z.workRate)}</span>
                     <span className={cn("text-sm font-medium opacity-60", style.itemValue)}>%</span>
                   </div>
                 </div>

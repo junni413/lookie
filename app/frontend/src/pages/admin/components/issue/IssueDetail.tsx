@@ -4,7 +4,10 @@ import type { IssueDetailData } from "@/types/issue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Phone, X } from "lucide-react";
+import { 
+    X, 
+    Box
+} from "lucide-react";
 import { useCallStore } from "@/stores/callStore";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/components/ui/toast";
@@ -127,76 +130,104 @@ export default function IssueDetail({ issueId, onUpdate, onClose, initialWorkerI
         <Card className="h-full border-l-0 rounded-l-none shadow-none md:border-l md:rounded-l-xl md:shadow-sm flex flex-col overflow-hidden">
             <CardContent className="p-0 h-full flex flex-col">
                 {/* Header */}
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b bg-card z-10 h-14 min-h-[3.5rem]">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        {/* Type Badge */}
-                        <span className={cn(
-                            "px-2 py-0.5 rounded text-[10px] font-bold border shrink-0",
+                <div className="flex items-center justify-between p-6 border-b bg-white shrink-0">
+                    <div className="flex items-center gap-4">
+                        <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center border transition-shadow shadow-sm",
                             issueType === "OUT_OF_STOCK" 
-                                ? "bg-indigo-50 text-indigo-700 border-indigo-100"
-                                : "bg-rose-50 text-rose-700 border-rose-200"
+                                ? "bg-indigo-50 border-indigo-100 text-indigo-600"
+                                : "bg-rose-50 border-rose-100 text-rose-600"
                         )}>
-                            {issueType === "OUT_OF_STOCK" ? "재고" : "파손"}
-                        </span>
+                            <Box className="w-5 h-5" />
+                        </div>
                         
-                        {/* Info */}
-                        <div className="flex flex-col min-w-0">
-                            <span className="text-xs font-bold text-slate-700 truncate">
+                        <div className="flex flex-col">
+                            <h2 className="text-sm font-bold text-slate-800 leading-tight">
                                 {issue.productName || "상품정보 없음"}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                                {issue.createdAt ? timeAgo(issue.createdAt) : "-"}
-                            </span>
+                            </h2>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className={cn(
+                                    "px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-tight",
+                                    issueType === "OUT_OF_STOCK" 
+                                        ? "bg-indigo-50 text-indigo-700 border-indigo-100"
+                                        : "bg-rose-50 text-rose-700 border-rose-200"
+                                )}>
+                                    {issueType === "OUT_OF_STOCK" ? "Stock" : "Damage"}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium">
+                                    {issue.createdAt ? timeAgo(issue.createdAt) : "-"}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-1 shrink-0">
-                        {isResolved && <Badge variant="secondary" className="text-[10px] h-5 px-1.5 mr-1">완료</Badge>}
+                    <div className="flex items-center gap-2">
+                        {isResolved ? (
+                            <Badge className={cn(
+                                "font-bold text-[10px] px-2.5 py-1 rounded-lg border shadow-sm",
+                                issue.adminDecision === "NORMAL" 
+                                    ? "bg-teal-50 text-teal-600 border-teal-100" 
+                                    : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                            )}>
+                                {getResolvedText()}
+                            </Badge>
+                        ) : (
+                            <Badge className="bg-amber-50 text-amber-600 border-amber-100 font-bold text-[10px] px-2.5 py-1 rounded-lg border shadow-sm">승인 대기</Badge>
+                        )}
                         {onClose && (
-                            <Button variant="ghost" size="icon" onClick={onClose} className="h-7 w-7">
-                                <X className="h-3.5 w-3.5" />
+                            <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-lg text-slate-400 hover:bg-slate-50 transition-colors">
+                                <X className="h-4 w-4" />
                             </Button>
                         )}
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-6 scrollbar-hidden">
                     {/* Image Area */}
-                    {/* Image Area */}
-                    <div className="flex flex-col gap-3 mb-6">
-                        <div className="relative aspect-square w-4/5 mx-auto bg-slate-50 rounded-xl overflow-hidden group shadow-sm border border-slate-100">
+                    <div className="flex flex-col gap-4 mb-8">
+                        {/* ... existing content ... */}
+                         <div className="relative aspect-video w-full bg-slate-50 rounded-2xl overflow-hidden group shadow-inner border border-slate-100">
                             {activeImage ? (
                                 <img 
                                     src={activeImage} 
                                     alt="Issue" 
-                                    className="w-full h-full object-cover" 
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                                 />
                             ) : (
-                                <div className="flex items-center justify-center h-full text-muted-foreground flex-col gap-2 p-6 text-center">
-                                    <span className="font-medium text-slate-400">이미지가 등록되지 않았습니다</span>
-                                    <span className="text-xs text-slate-300">
+                                <div className="flex items-center justify-center h-full text-slate-400 flex-col gap-3 p-8 text-center bg-slate-50/50">
+                                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200/50">
+                                        <Box className="w-6 h-6 opacity-40" />
+                                    </div>
+                                    <h3 className="font-bold text-sm text-slate-600">이미지가 없습니다</h3>
+                                    <p className="text-[11px] text-slate-400 leading-relaxed">
                                         재고 부족 등 현장 상황에 따라<br/>이미지가 첨부되지 않을 수 있습니다.
-                                    </span>
+                                    </p>
                                 </div>
                             )}
 
-                            {/* Overlay info */}
-                            <div className="absolute top-4 right-4 bg-black/60 text-white px-3 py-1 rounded-full text-xs backdrop-blur-sm font-medium">
-                                긴급도: {issue.urgency <= 2 ? "HIGH" : issue.urgency === 3 ? "MID" : "LOW"}
+                            {/* Urgency Overlay */}
+                            <div className={cn(
+                                "absolute top-5 right-5 px-3 py-1.5 rounded-full text-[10px] font-bold backdrop-blur-md shadow-lg border",
+                                issue.urgency <= 2 
+                                    ? "bg-rose-500/80 text-white border-rose-400" 
+                                    : issue.urgency === 3 
+                                        ? "bg-amber-500/80 text-white border-amber-400" 
+                                        : "bg-slate-500/80 text-white border-slate-400"
+                            )}>
+                                {issue.urgency <= 2 ? "HIGH PRIORITY" : issue.urgency === 3 ? "MEDIUM PRIORITY" : "LOW PRIORITY"}
                             </div>
                         </div>
 
                         {/* Image Gallery Thumbnails */}
                         {images.length > 1 && (
-                            <div className="flex gap-2 pb-2 overflow-x-auto scroller-hide">
+                            <div className="flex gap-2.5 pb-2 overflow-x-auto scroller-hide px-1">
                                 {images.map((url, idx) => (
                                     <button
                                         key={idx}
                                         onClick={() => setSelectedImageIndex(idx)}
                                         className={cn(
-                                            "relative w-20 h-14 rounded-md overflow-hidden border-2 transition-all shrink-0",
-                                            selectedImageIndex === idx ? "border-primary shadow-sm" : "border-transparent opacity-60 hover:opacity-100"
+                                            "relative w-20 h-14 rounded-xl overflow-hidden border-2 transition-all shrink-0 shadow-sm",
+                                            selectedImageIndex === idx ? "border-blue-500 scale-105 z-10" : "border-slate-100 opacity-60 hover:opacity-100 hover:border-slate-200"
                                         )}
                                     >
                                         <img src={url} alt={`Issue ${idx + 1}`} className="w-full h-full object-cover" />
@@ -208,58 +239,87 @@ export default function IssueDetail({ issueId, onUpdate, onClose, initialWorkerI
 
                     {/* AI Analysis */}
                     {issue.aiResult && (
-                        <div className="mb-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                            <div className="text-sm font-semibold text-blue-800 mb-1">AI 분석 결과 ({issue.aiResult})</div>
-                            <div className="text-sm text-blue-600">
-                                {issue.summary || "특이사항 없음"}
+                        <div className="mb-8 border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                            <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">AI ANALYSIS Result</span>
+                                <span className={cn(
+                                    "px-2 py-0.5 rounded-full text-[9px] font-bold border transitions-colors",
+                                    issue.aiResult === "PASS" ? "bg-blue-50 text-blue-600 border-blue-100" : 
+                                    issue.aiResult === "FAIL" ? "bg-orange-50 text-orange-600 border-orange-100" :
+                                    "bg-violet-50 text-violet-600 border-violet-100"
+                                )}>
+                                    {issue.aiResult}
+                                </span>
+                            </div>
+                            <div className="p-4 bg-white">
+                                <p className="text-[13px] font-medium text-slate-600 leading-relaxed">
+                                    {issue.summary || "특이사항 없이 정상 확인되었습니다."}
+                                </p>
                             </div>
                         </div>
                     )}
 
                     {/* Status & Actions */}
-                    <div className="mt-auto space-y-4">
-                        {isResolved ? (
-                            <div className="text-center p-8 bg-muted/40 rounded-xl">
-                                <div className="text-xl font-bold mb-2">
-                                    {getResolvedText()}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
+                    {!isResolved && (
+                        <div className="mt-auto space-y-3.5">
+                            <div className="w-full">
+                                {issue.issueType === "OUT_OF_STOCK" ? (
                                     <Button
                                         size="lg"
-                                        className="w-full bg-green-600 hover:bg-green-700 text-white shadow-sm"
-                                        onClick={() => handleDecision("NORMAL")}
+                                        className="w-full h-12 rounded-full bg-primary hover:bg-primary/90 text-white font-bold shadow-sm transition-all active:scale-[0.98]"
+                                        onClick={() => handleDecision("FIXED")}
                                         disabled={processing}
                                     >
-                                        정상 (Normal)
+                                        승인
                                     </Button>
-                                    <Button
-                                        size="lg"
-                                        variant="destructive"
-                                        className="w-full shadow-sm"
-                                        onClick={() => handleDecision(issueType === "DAMAGED" ? "DAMAGED" : "FIXED")}
-                                        disabled={processing}
-                                    >
-                                        {issueType === "DAMAGED" ? "파손 확정" : "조치 완료"}
-                                    </Button>
-                                </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <Button
+                                            size="lg"
+                                            className="h-12 rounded-full bg-primary hover:bg-primary/90 text-white font-bold shadow-sm transition-all active:scale-[0.98]"
+                                            onClick={() => handleDecision("NORMAL")}
+                                            disabled={processing}
+                                        >
+                                            정상 확인
+                                        </Button>
+                                        <Button
+                                            size="lg"
+                                            variant="outline"
+                                            className="h-12 rounded-full border-slate-200 bg-white text-slate-700 font-bold hover:bg-slate-50 transition-all active:scale-[0.98]"
+                                            onClick={() => handleDecision(issueType === "DAMAGED" ? "DAMAGED" : "FIXED")}
+                                            disabled={processing}
+                                        >
+                                            {issueType === "DAMAGED" ? "파손 확정" : "조치 완료"}
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
-                        )}
 
-                        <Button 
-                            size="lg" 
-                            variant="outline" 
-                            className="w-full border-blue-200 hover:bg-blue-50 text-blue-700 font-bold flex items-center gap-2"
-                            onClick={handleWebRTCCall}
-                        >
-                            <Phone className="h-4 w-4" />
-                            화상 연결 (WebRTC)
-                        </Button>
-                    </div>
+                            <Button 
+                                size="lg" 
+                                variant="outline" 
+                                className="w-full h-[3.25rem] rounded-full border-[#304FFF]/30 bg-white text-[#304FFF] font-bold flex items-center justify-center gap-2.5 hover:bg-[#304FFF]/5 hover:border-[#304FFF]/50 hover:text-[#304FFF] shadow-[0_4px_12px_-4px_rgba(48,79,255,0.1)] transition-all duration-300 active:scale-[0.98]"
+                                onClick={handleWebRTCCall}
+                            >
+                                화상 통화 연결
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </CardContent>
+
+            {/* Custom Scrollbar Style - Completely Hidden */}
+            <style>{`
+                .scrollbar-hidden::-webkit-scrollbar {
+                    display: none;
+                    width: 0;
+                    height: 0;
+                }
+                .scrollbar-hidden {
+                    scrollbar-width: none;
+                    -ms-overflow-style: none;
+                }
+            `}</style>
         </Card>
     );
 }

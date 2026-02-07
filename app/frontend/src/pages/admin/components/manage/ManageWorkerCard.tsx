@@ -1,5 +1,4 @@
 import type { DB_Worker } from "@/types/db";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/utils/cn";
 import WorkerHoverCard from "../common/WorkerHoverCard";
 
@@ -14,38 +13,45 @@ export default function ManageWorkerCard({ worker, onDragStart, isMoved }: Manag
         <div
             draggable
             onDragStart={(e) => onDragStart(e, worker.userId)}
-            className="group cursor-grab active:cursor-grabbing hover:-translate-y-0.5 transition-transform duration-150"
+            className={cn(
+                "group cursor-grab active:cursor-grabbing hover:bg-slate-50/80 transition-colors p-3 border-b border-slate-100 last:border-0",
+                isMoved && "bg-primary-soft ring-1 ring-inset ring-primary/20"
+            )}
         >
-            <Card className={cn(
-                "p-2.5 border-0 shadow-sm hover:shadow-md transition-all bg-white rounded-lg",
-                isMoved && "ring-2 ring-primary ring-offset-1"
-            )}>
-                <div className="flex items-center justify-between gap-2">
-                    {/* 왼쪽: 이름 및 ID */}
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <div className="min-w-0 flex-1">
-                            <WorkerHoverCard workerId={worker.userId}>
-                                <h4 className="font-semibold text-sm text-slate-800 leading-tight truncate hover:text-blue-600 transition-colors cursor-help inline-block">
-                                    {worker.name}
-                                </h4>
-                            </WorkerHoverCard>
+            <div className="flex items-center gap-3">
+                {/* 정보 영역 */}
+                <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+                    <WorkerHoverCard workerId={worker.userId}>
+                        <div className="font-bold text-xs text-slate-700 truncate hover:text-blue-600 transition-colors cursor-help inline-block align-middle">
+                            {worker.name}
+                        </div>
+                    </WorkerHoverCard>
+                    <div className="text-[10px] text-slate-400 font-medium truncate flex items-center gap-1">
+                        {!worker.currentZoneId && "대기중"}
+                        {worker.lineNumber && `L${worker.lineNumber}`}
+                    </div>
+                </div>
+
+                {/* 통계 정보 */}
+                <div className="flex items-center gap-1.5 text-xs shrink-0">
+                    <div className="text-center min-w-[28px]">
+                        <div className="text-slate-300 text-[9px] font-semibold mb-0.5">건수</div>
+                        <div className="font-bold text-slate-700">{worker.todayWorkCount}</div>
+                    </div>
+                    <div className="w-px h-6 bg-slate-100" />
+                    <div className="text-center min-w-[28px]">
+                        <div className="text-slate-300 text-[9px] font-semibold mb-0.5">작업률</div>
+                        <div className="font-bold text-slate-700">
+                            {Math.floor(worker.workRate || 0)}%
                         </div>
                     </div>
-
-                    {/* 오른쪽: 작업 건수 및 구역 */}
-                    <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs font-bold text-slate-700">{worker.todayWorkCount}건</span>
+                    <div className="w-px h-6 bg-slate-100" />
+                    <div className="text-center min-w-[28px]">
+                        <div className="text-slate-300 text-[9px] font-semibold mb-0.5">속도</div>
+                        <div className="font-bold text-slate-700">{worker.processingSpeed || 0}</div>
                     </div>
                 </div>
-                
-                {/* 하단: 상세 스탯 (처리속도, 진행률) */}
-                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-                    <div className="flex gap-2">
-                        <span>속도 <span className="font-semibold text-slate-700">{worker.processingSpeed || 0}</span></span>
-                        <span>진행 <span className="font-semibold text-slate-700">{Math.floor(worker.currentTaskProgress || 0)}%</span></span>
-                    </div>
-                </div>
-            </Card>
+            </div>
         </div>
     );
 }
