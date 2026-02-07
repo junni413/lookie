@@ -143,7 +143,14 @@
           AND i.status = #{req.status}
         <choose>
             <when test="req.status.name() == 'OPEN'">
-                ORDER BY COALESCE(i.urgency, 5) ASC, i.created_at DESC
+                <choose>
+                    <when test="req.sortType.name() == 'URGENCY'">
+                        ORDER BY COALESCE(i.urgency, 5) ASC, i.created_at DESC
+                    </when>
+                    <otherwise>
+                        ORDER BY i.created_at DESC
+                    </otherwise>
+                </choose>
             </when>
             <otherwise>
                 ORDER BY i.resolved_at DESC
