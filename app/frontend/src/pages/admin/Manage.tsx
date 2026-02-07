@@ -3,6 +3,7 @@ import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 
 import { manageService } from "@/services/manageService";
+import { rebalanceService } from "@/services/rebalance.api"; // Import Rebalance Service
 import type { ZoneStat } from "@/types/db"; // Import from shared types
 import type { DB_Worker } from "@/types/db";
 import { DEFAULT_ZONES } from "@/utils/zoneUtils"; // Import shared constant
@@ -123,9 +124,44 @@ export default function Manage() {
         setIsAiModalOpen(true);
     };
 
-    const handleAiApply = (newWorkers: DB_Worker[]) => {
-        setWorkers(newWorkers);
+    const handleAiApply = async (newWorkers: DB_Worker[], moves?: any[]) => {
         setIsAiModalOpen(false);
+        setLoading(true);
+
+        if (moves && moves.length > 0) {
+            console.log("[Manage] Applying AI Rebalance with moves:", moves);
+            try {
+                // Use the explicit moves from AI if available (Matches Map Logic)
+                const success = await rebalanceService.apply(moves, "AI Recommendation Applied via Admin Manage");
+                
+                if (success) {
+                    console.log("[Manage] AI Rebalance Apply Success. Refreshing data...");
+                    alert("AI 추천 배치가 적용되었습니다.");
+                    await loadData(); // Refresh all data from DB
+                } else {
+                    console.error("[Manage] AI Rebalance Apply Failed.");
+                    alert("재배치 적용에 실패했습니다.");
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.error("Failed to apply AI rebalance", err);
+                alert("재배치 적용 중 오류가 발생했습니다.");
+                setLoading(false);
+            }
+        } else {
+            // Fallback: If no moves (e.g. manual adjustments in modal?), just update local state
+            // Or if user manually dragged in the AI modal (if we supported that)
+            // For now, let's treat it as draft if no explicit moves? 
+            // Actually, the modal sends moves from recommendation. 
+            // If user tampered with simulation manually, moves might not match.
+            // But AiReallocationModal doesn't support manual drag properly yet (onDrop updates simulatedWorkers but not moves).
+            // So for now, we trust 'moves' if present.
+            
+            setWorkers(newWorkers);
+            setLoading(false);
+            // Alert user that this is just a draft if not applied via API?
+            // "AI 추천 결과가 리스트에 반영되었습니다. '적용' 버튼을 눌러 저장하세요."
+        }
     };
 
     if (loading && stats.length === 0) {

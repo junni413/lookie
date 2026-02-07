@@ -67,6 +67,7 @@ export interface ZoneWorkerDto {
     processingSpeed: number;
     currentTaskProgress: number;
     status: string; // "WORKING", etc.
+    webrtcStatus?: string; // "ONLINE", "OFFLINE", "BUSY"
 }
 
 // Zone Map Worker DTO
