@@ -12,4 +12,8 @@ import lombok.Getter;
 public class TaskItemCompletedEvent {
     private Long batchTaskItemId;
     private Long batchTaskId;
+
+    // DB 부하 없는 Redis 업데이트를 위한 필드 추가
+    private Long zoneId;
+    private Long batchId;
 }

@@ -12,4 +12,11 @@ import lombok.Getter;
 public class TaskItemRevertedEvent {
     private Long batchTaskItemId;
     private Long batchTaskId;
+
+    /**
+     * Redis 최적화를 위해 zoneId, batchId를 이벤트에 포함
+     * (리스너에서 DB 조회 방지)
+     */
+    private Long zoneId;
+    private Long batchId;
 }

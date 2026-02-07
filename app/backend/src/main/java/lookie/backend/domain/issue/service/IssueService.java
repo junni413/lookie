@@ -2,6 +2,8 @@ package lookie.backend.domain.issue.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.task.event.TaskItemCompletedEvent;
+import lookie.backend.domain.task.event.TaskItemRevertedEvent;
 import lookie.backend.domain.inventory.service.InventoryService;
 import lookie.backend.domain.issue.dto.AiResultRequest;
 import lookie.backend.domain.issue.dto.AiResultResponse;
@@ -27,11 +29,10 @@ import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
 import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -62,6 +63,7 @@ public class IssueService {
     private final AiAnalysisClient aiAnalysisClient;
     private final SimpMessagingTemplate messagingTemplate;
     private final InventoryService inventoryService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * [WebRTC] 화상 연결 전 이슈 상태 검증
@@ -134,7 +136,18 @@ public class IssueService {
 
         // 5. TaskItem 상태를 ISSUE_PENDING(보류)으로 변경
         taskItemService.markAsIssuePending(item.getBatchTaskItemId());
-        log.info("[IssueService] TaskItem marked as ISSUE_PENDING. itemId={}", item.getBatchTaskItemId());
+
+        // [Event] ISSUE_PENDING도 실시간 집계에서는 '완료'와 유사하게 처리 (할일 목록 제외)
+        if (task != null) {
+            eventPublisher.publishEvent(new TaskItemCompletedEvent(
+                    item.getBatchTaskItemId(),
+                    item.getBatchTaskId(),
+                    task.getZoneId(),
+                    task.getBatchId()));
+        }
+
+        log.info("[IssueService] TaskItem marked as ISSUE_PENDING and event published. itemId={}",
+                item.getBatchTaskItemId());
 
         // 6. Response 생성
         IssueResponse response = IssueResponse.from(issue);
@@ -438,6 +451,10 @@ public class IssueService {
         if ("MOVE_LOCATION".equals(reasonCode)) {
             taskItemService.updateItemLocation(itemId, issue.getNewLocationId());
             taskItemService.reviveItem(itemId);
+
+            // [Event] 부활 시 Redis 집계 차감
+            publishRevertedEvent(issue);
+
             log.info("[IssueService] Item Location Updated & Revived. itemId={}", itemId);
             return;
         }
@@ -447,6 +464,10 @@ public class IssueService {
         // 함.
         if ("PASS".equals(aiDecision) || "AUTO_RESOLVED".equals(reasonCode)) {
             taskItemService.reviveItem(itemId);
+
+            // [Event] 부활 시 Redis 집계 차감
+            publishRevertedEvent(issue);
+
             log.info("[IssueService] Item Revived (PASS/AUTO). itemId={}", itemId);
             return;
         }
@@ -488,9 +509,6 @@ public class IssueService {
         }
     }
 
-    /**
-     * DAMAGED 타입 정책 (분기표 D1, D5, D8, D12 노드 기준)
-     */
     /**
      * DAMAGED 타입 정책 (분기표 D1, D5, D8, D12 노드 기준)
      */
@@ -1086,5 +1104,19 @@ public class IssueService {
     public List<MyIssueSummary> getMyIssueList(Long workerId, IssueStatus status) {
         log.info("[IssueService] getMyIssueList started. workerId={}, status={}", workerId, status);
         return issueMapper.findMyIssues(workerId, status);
+    }
+
+    /**
+     * Redis 집계 차감을 위한 Reverted 이벤트 발행 보조 메서드
+     */
+    private void publishRevertedEvent(IssueVO issue) {
+        TaskVO task = taskMapper.findById(issue.getBatchTaskId());
+        if (task != null) {
+            eventPublisher.publishEvent(new TaskItemRevertedEvent(
+                    issue.getBatchTaskItemId(),
+                    issue.getBatchTaskId(),
+                    task.getZoneId(),
+                    task.getBatchId()));
+        }
     }
 }

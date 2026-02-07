@@ -18,7 +18,6 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class TaskEventListener {
 
-    private final TaskMapper taskMapper;
     private final WorkerMonitoringService workerMonitoringService;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -38,16 +37,16 @@ public class TaskEventListener {
         try {
             Long batchTaskId = event.getBatchTaskId();
 
-            // 1. Task 정보 조회 (Zone ID 획득을 위해)
-            TaskVO task = taskMapper.findById(batchTaskId);
-            if (task != null) {
-                Long zoneId = task.getZoneId();
-                Long batchId = task.getBatchId();
+            // [Optimized] Get zoneId/batchId directly from event
+            Long zoneId = event.getZoneId();
+            Long batchId = event.getBatchId();
 
+            if (zoneId != null && batchId != null) {
                 // 2. Redis 진행률 갱신 (Atomic Increment)
                 workerMonitoringService.incrementZoneProgress(zoneId, batchId);
             } else {
-                log.warn("[EventListener] Task not found for item event. batchTaskId={}", batchTaskId);
+                log.warn("[EventListener] Missing context in event. batchTaskId={}, zoneId={}, batchId={}",
+                        event.getBatchTaskId(), zoneId, batchId);
             }
         } catch (Exception e) {
             log.error("[EventListener] Error updating zone progress", e);

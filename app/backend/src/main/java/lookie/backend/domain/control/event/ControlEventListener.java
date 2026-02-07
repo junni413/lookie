@@ -3,8 +3,7 @@ package lookie.backend.domain.control.event;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.task.event.TaskItemCompletedEvent;
-import lookie.backend.domain.task.mapper.TaskMapper;
-import lookie.backend.domain.task.vo.TaskVO;
+import lookie.backend.domain.task.event.TaskItemRevertedEvent;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -18,25 +17,19 @@ import java.time.Duration;
 @RequiredArgsConstructor
 public class ControlEventListener {
 
-    private final TaskMapper taskMapper;
     private final StringRedisTemplate redisTemplate;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleTaskItemCompleted(TaskItemCompletedEvent event) {
         try {
-            Long taskId = event.getBatchTaskId();
+            Long zoneId = event.getZoneId();
+            Long batchId = event.getBatchId();
 
-            // Task 정보를 조회하여 배치/구역 정보 획득
-            TaskVO task = taskMapper.findById(taskId);
-
-            if (task == null) {
-                log.warn("[ControlEvent] Task not found for ID: {}", taskId);
+            if (zoneId == null) {
+                log.warn("[ControlEvent] Missing zoneId in event for item: {}", event.getBatchTaskItemId());
                 return;
             }
-
-            Long batchId = task.getBatchId();
-            Long zoneId = task.getZoneId();
 
             // 멱등성 체크 (24시간)
             String eventKey = "lookie:control:item:processed:" + event.getBatchTaskItemId();
@@ -71,17 +64,14 @@ public class ControlEventListener {
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void handleTaskItemReverted(lookie.backend.domain.task.event.TaskItemRevertedEvent event) {
+    public void handleTaskItemReverted(TaskItemRevertedEvent event) {
         try {
-            Long taskId = event.getBatchTaskId();
-            TaskVO task = taskMapper.findById(taskId);
+            Long zoneId = event.getZoneId();
 
-            if (task == null) {
-                log.warn("[ControlEvent] Task not found for ID: {}", taskId);
+            if (zoneId == null) {
+                log.warn("[ControlEvent] Missing zoneId in event for item: {}", event.getBatchTaskItemId());
                 return;
             }
-
-            Long zoneId = task.getZoneId();
             String eventKey = "lookie:control:item:processed:" + event.getBatchTaskItemId();
 
             // 멱등성 키 삭제 (다시 완료 처리 가능하도록)
