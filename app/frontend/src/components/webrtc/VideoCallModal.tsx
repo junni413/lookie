@@ -66,7 +66,7 @@ function WaitingView({
             {/* Ripple Animation */}
             <div className="relative mb-12">
                 <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping opacity-20 duration-1000"></div>
-                <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping delay-150 opacity-10 duration-[1500ms]"></div>
+                <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping delay-150 opacity-10 [animation-duration:1500ms]"></div>
                 <div className="relative w-32 h-32 bg-white rounded-full flex items-center justify-center shadow-2xl z-10 p-1">
                     <div className="w-full h-full bg-slate-50 rounded-full flex items-center justify-center border border-slate-100">
                         <Phone className="w-12 h-12 text-[#304FFF] fill-current" />

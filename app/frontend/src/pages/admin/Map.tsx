@@ -88,24 +88,21 @@ export default function Map() {
         
         try {
             // Fetch real map data
-            const mapData = await import("@/services/adminService").then(m => m.getZoneMap(zoneId));
+            const adminServiceWrapper = await import("@/services/adminService");
+            const mapData = await adminServiceWrapper.getZoneMap(zoneId);
             
             // Convert DTO to DB_Worker format for UI
             // API Response: { zoneId, zoneName, lines, workers: [...] }
             const workersList = mapData.workers || [];
 
-            const parsedWorkers = workersList.map(dto => {
-                // Parse "A-01-001" to get bin number (last part) and line number (middle part)
-                const parts = dto.currentLocationCode ? dto.currentLocationCode.split('-') : [];
-                const binNum = parts.length > 0 ? parseInt(parts[parts.length - 1], 10) : 0;
-                // Assuming "A-01-001", parts[1] is line number
-                const lineNum = parts.length > 1 ? parseInt(parts[1], 10) : dto.lineId; // Fallback to dto.lineId if parse fails
+            const parsedWorkers = workersList.map((dto: any) => {
+                const { lineNumber, binNumber } = adminServiceWrapper.parseLocationCode(dto.currentLocationCode);
                 
                 return {
                     userId: dto.workerId,
                     name: dto.name,
-                    lineNumber: isNaN(lineNum) ? 0 : lineNum,
-                    binNumber: isNaN(binNum) ? 0 : binNum,
+                    lineNumber,
+                    binNumber,
                     isBottleneck: dto.isBottleneck,
                     workRate: dto.workRate || 0,
                     

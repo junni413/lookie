@@ -211,6 +211,25 @@ export async function getZoneMap(zoneId: number): Promise<ZoneMapResponse> {
     return response.data || { zoneId, zoneName: "", lines: [], workers: [] };
 }
 
+/**
+ * 위치 코드 파싱 유틸리티 (중앙 집중화)
+ * 예: "A-01-001" -> { lineNumber: 1, binNumber: 1 }
+ */
+export function parseLocationCode(code: string | null): { lineNumber: number; binNumber: number } {
+    if (!code) return { lineNumber: 0, binNumber: 0 };
+    
+    const parts = code.split('-');
+    // 마지막 파트가 binNumber ("001" -> 1)
+    const binNum = parts.length > 0 ? parseInt(parts[parts.length - 1], 10) : 0;
+    // 두 번째 파트가 lineNumber ("01" -> 1)
+    const lineNum = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+    
+    return {
+        lineNumber: isNaN(lineNum) ? 0 : lineNum,
+        binNumber: isNaN(binNum) ? 0 : binNum,
+    };
+}
+
 export const adminService = {
     getDashboardSummary,
     getZones,
@@ -219,6 +238,7 @@ export const adminService = {
     getWorkersByZone,
     getWorkerHoverInfo,
     getZoneMap,
+    parseLocationCode,
 };
 
 // ... (Existing interfaces)

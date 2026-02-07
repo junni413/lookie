@@ -91,28 +91,12 @@ export const useCallStore = create<CallStore>((set, get) => ({
     },
 
     handleCallEnd: (status: string, message?: string) => {
-        const { wsCleanup, status: currentStatus } = get();
+        const { status: currentStatus, cleanupSession } = get();
         
-        // Double notification check
-        if (currentStatus === 'IDLE') {
-             // If we have wsCleanup, we are the caller. If we are IDLE, we already reset.
-             if (wsCleanup) return;
-        }
+        // 이미 IDLE 상태라면 중복 처리를 방지합니다.
+        if (currentStatus === 'IDLE') return;
 
-        // Caller specific check for global events
-        if (wsCleanup && (status === 'ENDED' || status === 'CANCELED')) {
-             // This method is called by global listener too. If wsCleanup exists, ignore global ended/canceled.
-             // Wait, this methods is called by *internal* logic too.
-             // We need to differentiate internal calls vs external events?
-             // Actually, internal calls (e.g. timeout) naturally don't have this issue if called directly.
-             // The issue is *global listener* calling this method.
-             // Let's rely on the caller to check this? No, centralize is better.
-        }
-        
-        // Simplified Logic:
-        // If this is called, we assume it's a valid end event.
-        // except for the race condition we fixed earlier.
-        
+        // 알림 메시지 표시
         switch (status) {
             case 'ENDED': toast.info(message || "통화가 종료되었습니다."); break;
             case 'REJECTED': toast.warning(message || "통화가 거절되었습니다."); break;
@@ -120,7 +104,9 @@ export const useCallStore = create<CallStore>((set, get) => ({
             case 'NO_ANSWER': toast.warning(message || "응답이 없습니다."); break;
             case 'TIMEOUT': toast.info(message || "응답이 없어 종료되었습니다."); break;
         }
-        get().cleanupSession();
+
+        // 세션 정리 호출
+        cleanupSession();
     },
 
     startCall: async (callerId, calleeId, issueId, calleeName) => {
@@ -294,3 +280,12 @@ export const useCallStore = create<CallStore>((set, get) => ({
         set({ incomingCleanup: cleanup });
     }
 }));
+
+// [Fix] 로그아웃 시 WebRTC 세션 자동 정리
+// useAuthStore의 상태 변화를 구독하여 토큰이 없어지면 세션을 정리합니다.
+useAuthStore.subscribe((state, prevState) => {
+    if (prevState.token && !state.token) {
+        console.log("🔓 [CallStore] Logout detected, cleaning up WebRTC session...");
+        useCallStore.getState().cleanupSession();
+    }
+});
