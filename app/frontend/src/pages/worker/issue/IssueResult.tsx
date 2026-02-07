@@ -129,6 +129,7 @@ export default function IssueResult() {
 
   const { token, user } = useAuthStore();
   const startCall = useCallStore((s) => s.startCall); // Add startCall action
+  const callStatus = useCallStore((s) => s.status); // [Added]
   const [detail, setDetail] = useState<IssueDetail | null>(null);
   const [analyzing, setAnalyzing] = useState(true);
 
@@ -190,30 +191,39 @@ export default function IssueResult() {
       console.log("📨 [STOMP] Issue Result Received:", body);
       console.log(`🔍 [DEBUG] Before update - analyzing:`, analyzing);
       console.log(`🔍 [DEBUG] Received data - aiResult:`, body.aiResult, "reasonCode:", body.reasonCode);
-      
+
       setDetail((prev) => {
         const updated = {
           ...(prev || {}),
           ...body,
           // Support both new (issueNextAction) and old (nextAction) field names for robustness
           issueNextAction: body.issueNextAction || body.nextAction,
-          imageUrl: prev?.imageUrl || nav.imageUrl,
-          productName: prev?.productName || nav.product.productName,
-          locationCode: prev?.locationCode || nav.product.locationCode,
+          imageUrl: body.imageUrl || prev?.imageUrl || nav.imageUrl,
+          productName: body.productName || prev?.productName || nav.product.productName,
+          locationCode: body.locationCode || prev?.locationCode || nav.product.locationCode,
         } as IssueDetail;
         console.log(`✅ [DEBUG] Detail updated:`, updated);
         return updated;
       });
-      
+
       setAnalyzing(false);
       console.log(`✅ [DEBUG] analyzing set to false`);
-      
+
       // fetchInitialDetail() 제거: WebSocket 데이터를 신뢰
       // 백엔드 조회가 WebSocket보다 늦을 수 있어서 덮어쓰면 안 됨
     });
 
     return () => unsubscribe();
   }, [nav, navigate, token]);
+
+  // [New Effect] 통화 종료 감지 및 상태 갱신
+  useEffect(() => {
+    if (connectionAttempted && callStatus === "IDLE" && nav) {
+      issueService.getIssueDetail(nav.issueId).then((res) => {
+        if (res) setDetail(res);
+      });
+    }
+  }, [callStatus, connectionAttempted, nav?.issueId]);
 
   const handleImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { naturalWidth, naturalHeight } = e.currentTarget;
@@ -239,6 +249,16 @@ export default function IssueResult() {
       await startCall(user.userId, null, nav.issueId, "관리자");
     } catch (err) {
       console.error("Failed to start call:", err);
+    } finally {
+      // [Fix] API 완료 후(성공/실패 무관) 잠시 후 상태 갱신 (백엔드 처리 대기)
+      // callStatus가 IDLE 유지되는 경우(즉시 실패) 대비
+      setTimeout(() => {
+        if (nav) {
+          issueService.getIssueDetail(nav.issueId).then((res) => {
+            if (res) setDetail(res);
+          });
+        }
+      }, 500);
     }
   };
 
@@ -279,7 +299,10 @@ export default function IssueResult() {
 
   // Analyzing일 때는 버튼 비활성화
   // 'NEED_REVIEW'나 'RETAKE'인 경우에만 작업 이어 진행하기 비활성화 (관리자 확인 필수)
-  const isNextDisabled = analyzing || verdict === "NEED_REVIEW" || verdict === "RETAKE";
+  // [Modified] NON_BLOCKING이면 활성화
+  const isNextDisabled = analyzing ||
+    (verdict === "RETAKE") ||
+    (verdict === "NEED_REVIEW" && detail?.issueHandling !== "NON_BLOCKING");
 
   return (
     <div className="space-y-4">

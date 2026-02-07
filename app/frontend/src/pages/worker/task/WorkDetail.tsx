@@ -45,12 +45,32 @@ export default function WorkDetail() {
   }, [setHeaderCenter, setHeaderRight]);
 
   // ✅ 방어로직: 데이터가 없으면 홈으로 보냄 (단, 로딩 중에는 대기)
+  // ✅ 방어로직: 데이터가 없으면 홈으로 보냄 (단, 로딩 중에는 대기)
+  // [Fix] 토트 스캔 전(SCAN_TOTE) 상태면 튕기지 않음 (아래에서 리다이렉트 처리)
   useEffect(() => {
-    if (!loading && (!currentTask || !toteBarcode)) {
-      console.log("🚫 Missing task/tote - redirecting to home", { loading, hasTask: !!currentTask, hasTote: !!toteBarcode });
-      navigate("/worker/home", { replace: true });
+    if (!loading) {
+      if (!currentTask) {
+        console.log("🚫 No task found - redirecting to home");
+        navigate("/worker/home", { replace: true });
+        return;
+      }
+
+      // 토트 바코드가 없는데 스캔 단계도 아니면 문제 있음
+      if (!toteBarcode && nextAction !== "SCAN_TOTE") {
+        console.log("🚫 Missing toteBarcode - redirecting to home");
+        navigate("/worker/home", { replace: true });
+      }
     }
-  }, [currentTask, toteBarcode, navigate, loading]);
+  }, [currentTask, toteBarcode, navigate, loading, nextAction]);
+
+  // ✅ SCAN_TOTE 상태 감지 시 토트 스캔 화면으로 이동
+  useEffect(() => {
+    if (!loading && nextAction === "SCAN_TOTE") {
+      console.log("🔄 Action is SCAN_TOTE, redirecting to scan page");
+      // state에 task 정보 넘겨주어 재조회 방지
+      navigate("/worker/task/scan", { replace: true, state: { task: currentTask } });
+    }
+  }, [nextAction, loading, navigate, currentTask]);
 
   useEffect(() => {
     const fetchEverything = async () => {
@@ -67,7 +87,7 @@ export default function WorkDetail() {
           // toteBarcode 복구
           const recoveredTote = (taskRes.data as any).toteBarcode || (fetchedTask as any).toteBarcode;
           if (recoveredTote) setToteBarcode(recoveredTote);
-          
+
           taskIdToUse = fetchedTask.batchTaskId;
           processedHydrationRef.current = true;
           console.log("🌊 Hydration complete:", { nextAction: taskRes.data.nextAction, taskId: taskIdToUse });
@@ -86,7 +106,7 @@ export default function WorkDetail() {
           // ✅ 3) 복구 우선순위: 1순위(내비게이션 state), 2순위(서버 nextItem), 3순위(첫 미완료 건)
           let targetIdx = -1;
           const srvNextItem = taskRes.data.nextItem as any;
-          
+
           if (state?.currentIndex !== undefined) {
             targetIdx = Number(state.currentIndex);
             console.log("📍 [WorkDetail] 내비게이션 상태에서 인덱스 복구:", targetIdx);
@@ -100,7 +120,7 @@ export default function WorkDetail() {
           }
 
           if (targetIdx !== -1) {
-             if (currentIndex !== targetIdx) {
+            if (currentIndex !== targetIdx) {
               setCurrentIndex(targetIdx);
               console.log("📍 세션 복구: 현재 인덱스 설정 ->", targetIdx);
             }
@@ -147,22 +167,22 @@ export default function WorkDetail() {
     });
 
     // ✅ 1) 아이템 완료/이슈 상태면 다음 단계로 강제 설정
-    if (item.status === "DONE" || item.status === "ISSUE") {
+    if (item.status === "DONE" || item.status === "ISSUE" || item.status === "ISSUE_PENDING") {
       setNextAction("NEXT_ITEM");
       return;
     }
-    
+
     // ✅ 2) 첫 진입(Hydration) 직후라면 서버가 준 nextAction 유지
     if (!processedHydrationRef.current) {
-        console.log("🌊 Maintaining server-provided action during hydration:", nextAction);
-        return;
+      console.log("🌊 Maintaining server-provided action during hydration:", nextAction);
+      return;
     }
 
     // ✅ 3) 그 외 사용자가 직접 아이템을 바꿨으면 무조건 지번 스캔부터 시작 (보안/정확도)
     if (indexChanged) {
-        console.log("🔄 Manual index change, resetting to SCAN_LOCATION");
-        setNextAction("SCAN_LOCATION");
-        return;
+      console.log("🔄 Manual index change, resetting to SCAN_LOCATION");
+      setNextAction("SCAN_LOCATION");
+      return;
     }
   }, [currentIndex, items, loading]);
 
@@ -263,7 +283,10 @@ export default function WorkDetail() {
 
   const handleNextWork = async () => {
     if (!currentItem || !currentTask) return;
-    if (currentItem.pickedQty < currentItem.requiredQty && currentItem.status !== "ISSUE") {
+    // [Fix] ISSUE_PENDING(보류) 상태도 ISSUE 완료 상태와 마찬가지로 수량 체크 건너뜀
+    if (currentItem.pickedQty < currentItem.requiredQty &&
+      currentItem.status !== "ISSUE" &&
+      currentItem.status !== "ISSUE_PENDING") {
       toast({ title: "작업 미완료", description: "수량을 모두 채워주세요." });
       return;
     }
@@ -294,7 +317,27 @@ export default function WorkDetail() {
         setItems(itms => itms.map((it) => it.batchTaskItemId === updatedPayload.batchTaskItemId ? updatedPayload : it));
       }
 
-      setCurrentIndex((i) => i + 1);
+      // [Fix] 백엔드가 지정한 다음 아이템(nextItem)으로 이동하도록 수정 (건너뛰기/복구 대응)
+      // 기존: setCurrentIndex((i) => i + 1); -> 순차 이동만 가능하여 마지막 아이템 처리 후 문제 발생
+      const nextItemFromServer = completeRes.data?.nextItem;
+      if (nextItemFromServer) {
+        const nextIndex = items.findIndex(it => it.batchTaskItemId === nextItemFromServer.batchTaskItemId);
+        if (nextIndex !== -1) {
+          if (nextIndex < currentIndex) {
+            toast({ title: "알림", description: "미완료된 이전 작업 항목으로 이동합니다." });
+          }
+          setCurrentIndex(nextIndex);
+          return;
+        }
+      }
+
+      // nextItem이 없거나 못 찾은 경우 (예: 순차 진행)
+      if (currentIndex < items.length - 1) {
+        setCurrentIndex((i) => i + 1);
+      } else {
+        // 더 이상 갈 곳이 없는데 COMPLETE_TASK도 아닌 경우 (예외 상황)
+        console.warn("No next item found but task not completed.");
+      }
       setNextAction(nextActionFromServer || "SCAN_LOCATION");
     } catch (err: any) {
       toast({ title: "오류", description: err?.message, variant: "destructive" });
@@ -303,7 +346,7 @@ export default function WorkDetail() {
 
   const handleIssueSelect = (type: IssueType) => {
     if (!currentItem || !currentTask) return;
-    
+
     // ✅ 튕김 방지: 세션 유지용 데이터 저장 (fallback)
     const issueState = {
       issueType: type,
@@ -331,12 +374,12 @@ export default function WorkDetail() {
   };
 
   const isQuantityControlEnabled = nextAction !== "SCAN_LOCATION" && nextAction !== "SCAN_ITEM" && nextAction !== "NONE";
-  
+
   // ✅ UI 상태 판정: 현재 단계(nextAction)가 해당 단계를 확실히 지났을 때만 확인됨(초록색) 처리
-  const isLocationConfirmed = 
+  const isLocationConfirmed =
     nextAction !== "SCAN_LOCATION" && ["SCAN_ITEM", "ADJUST_QUANTITY", "NEXT_ITEM"].includes(nextAction);
 
-  const isItemConfirmed = 
+  const isItemConfirmed =
     nextAction !== "SCAN_ITEM" && nextAction !== "SCAN_LOCATION" && ["ADJUST_QUANTITY", "NEXT_ITEM"].includes(nextAction);
 
   if (loading) {
@@ -356,7 +399,7 @@ export default function WorkDetail() {
         </div>
         <div>
           <p className="text-xl font-black text-gray-900">작업 정보가 없습니다.</p>
-          <p className="mt-2 text-sm text-gray-400 font-medium leading-relaxed">진행 중인 작업 세션이 만료되었거나<br/>할당된 아이템이 없습니다.</p>
+          <p className="mt-2 text-sm text-gray-400 font-medium leading-relaxed">진행 중인 작업 세션이 만료되었거나<br />할당된 아이템이 없습니다.</p>
         </div>
         <button onClick={() => navigate("/worker/home")} className="w-full max-w-[200px] h-14 bg-blue-600 text-white rounded-[20px] font-black text-base shadow-lg active:scale-95 transition-all">
           홈으로 돌아가기
@@ -370,7 +413,7 @@ export default function WorkDetail() {
       <div className="space-y-2 px-2 relative h-full flex flex-col">
         {/* 상단 카드: 토트 정보 및 상품 목록 */}
         <section className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm flex justify-between items-center group active:scale-[0.99] transition-all">
-          <div 
+          <div
             onClick={() => navigate("/worker/task/list", { state: { task: currentTask, toteBarcode } })}
             className="flex-1 cursor-pointer"
           >
@@ -393,11 +436,10 @@ export default function WorkDetail() {
               }
               setIssueOpen(true);
             }}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border transition-all ${
-              nextAction === "SCAN_LOCATION"
-                ? "bg-gray-50 text-gray-300 border-gray-100 opacity-60"
-                : "bg-[#FFE162] text-[#854D0E] border-[#FDE047] shadow-sm font-black text-sm"
-            }`}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border transition-all ${nextAction === "SCAN_LOCATION"
+              ? "bg-gray-50 text-gray-300 border-gray-100 opacity-60"
+              : "bg-[#FFE162] text-[#854D0E] border-[#FDE047] shadow-sm font-black text-sm"
+              }`}
           >
             <Megaphone className={`w-3.5 h-3.5 ${nextAction === "SCAN_LOCATION" ? "opacity-30" : ""}`} />
             <span>이슈 신고</span>

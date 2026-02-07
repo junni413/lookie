@@ -19,6 +19,9 @@ public class AdminIssueListRequest {
     @Schema(description = "페이지 크기", defaultValue = "10")
     private int size = 10;
 
+    @Schema(description = "정렬 방식 (LATEST: 최신순, URGENCY: 긴급도순)", defaultValue = "LATEST")
+    private IssueSortType sortType = IssueSortType.LATEST;
+
     // Offset calculation for MyBatis
     public int getOffset() {
         return (page - 1) * size;

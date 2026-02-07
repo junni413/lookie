@@ -47,6 +47,7 @@ public class LiveKitService {
     private final io.livekit.server.RoomServiceClient roomServiceClient;
     private final SimpMessagingTemplate messagingTemplate;
     private final UserMapper userMapper;
+    private final lookie.backend.domain.issue.service.IssueService issueService;
 
     private static final String STATUS_BUSY = "BUSY";
 
@@ -74,11 +75,29 @@ public class LiveKitService {
      */
     @Transactional
     public WebRtcDto.CallResponse makeCall(WebRtcDto.CallRequest request) {
+        // [New] 이슈 관련 연결일 경우, Task 상태 검증 (완료된 작업이면 화상 연결 불가)
+        if (request.getIssueId() != null) {
+            issueService.validateIssueForCall(request.getIssueId());
+        }
+
         // [NEW] calleeId 자동 선택 로직
         Long calleeId = request.getCalleeId();
         if (calleeId == null) {
-            calleeId = selectAvailableManagerWithRetry(request.getCallerId());
-            log.info("[자동선택] Worker {} → Manager {} 자동 배정 완료", request.getCallerId(), calleeId);
+            try {
+                calleeId = selectAvailableManagerWithRetry(request.getCallerId());
+                log.info("[자동선택] Worker {} → Manager {} 자동 배정 완료", request.getCallerId(), calleeId);
+            } catch (ApiException e) {
+                // 관리자 부재 시에도 이슈 상태 변경 (NON_BLOCKING) -> 작업자 진행 가능
+                if (request.getIssueId() != null) {
+                    try {
+                        issueService.handleWebRtcMissed(request.getIssueId());
+                        log.info("🚫 [makeCall] 관리자 부재 -> 이슈 상태 NON_BLOCKING 전환. issueId={}", request.getIssueId());
+                    } catch (Exception ex) {
+                        log.error("❌ [makeCall] 이슈 상태 변경 실패", ex);
+                    }
+                }
+                throw e;
+            }
         }
 
         // Lambda에서 사용하기 위한 final 변수

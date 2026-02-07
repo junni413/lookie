@@ -6,6 +6,8 @@ import { useUIStore } from "@/stores/uiStore";
 import { useCallStore } from "@/stores/callStore"; // Import callStore
 import { LayoutGrid, ChevronLeft } from "lucide-react";
 
+import { useAuthStore } from "@/stores/authStore";
+
 export type MobileLayoutContext = { 
   setTitle: (t: string) => void;
   setHeaderRight: (el: React.ReactNode) => void;
@@ -17,10 +19,16 @@ export default function MobileLayout() {
   const location = useLocation();
   const toggleWorkerDrawer = useUIStore((s) => s.toggleWorkerDrawer);
   const listenForIncomingCalls = useCallStore((s) => s.listenForIncomingCalls);
+  
+  // Auth state
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
-    listenForIncomingCalls();
-  }, [listenForIncomingCalls]);
+    if (token && user) {
+      listenForIncomingCalls();
+    }
+  }, [listenForIncomingCalls, token, user]);
 
   const handleBack = () => {
     if (window.history.length > 1) navigate(-1);

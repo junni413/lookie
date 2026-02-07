@@ -30,13 +30,14 @@ public class AiResultResponse {
     private String summary; // AI 판정 요약
     private Float confidence; // AI 신뢰도 (0.0 ~ 1.0)
     private String aiDetail; // AI 상세 결과 JSON
+    private String imageUrl; // 이슈 이미지 URL
 
     /**
      * IssueVO와 nextAction으로부터 응답 생성
      */
     public static AiResultResponse from(IssueVO issue, IssueNextAction issueNextAction,
             java.util.List<String> availableActions, String aiResult, String summary,
-            Float confidence, String aiDetail) {
+            Float confidence, String aiDetail, String imageUrl) {
         return new AiResultResponse(
                 issue.getIssueId(),
                 issue.getStatus(),
@@ -50,6 +51,7 @@ public class AiResultResponse {
                 aiResult,
                 summary,
                 confidence,
-                aiDetail);
+                aiDetail,
+                imageUrl);
     }
 }

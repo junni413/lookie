@@ -27,7 +27,7 @@ export default function VideoCallModal() {
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-all duration-300">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-all duration-300 px-4">
             <div className="relative bg-white/90 backdrop-blur-xl rounded-[2rem] shadow-2xl w-[420px] overflow-hidden border border-white/50 ring-1 ring-black/5">
                 {/* 상태별 UI */}
                 {status === "WAITING" && (
@@ -66,7 +66,7 @@ function WaitingView({
             {/* Ripple Animation */}
             <div className="relative mb-12">
                 <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping opacity-20 duration-1000"></div>
-                <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping delay-150 opacity-10 duration-[1500ms]"></div>
+                <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping delay-150 opacity-10 [animation-duration:1500ms]"></div>
                 <div className="relative w-32 h-32 bg-white rounded-full flex items-center justify-center shadow-2xl z-10 p-1">
                     <div className="w-full h-full bg-slate-50 rounded-full flex items-center justify-center border border-slate-100">
                         <Phone className="w-12 h-12 text-[#304FFF] fill-current" />
@@ -159,7 +159,7 @@ function ActiveView({
     const [liveKitUrl] = useState(import.meta.env.VITE_LIVEKIT_URL || "wss://lookie-of5j44vq.livekit.cloud");
 
     // LiveKit Room 연결 (커스텀 훅 사용)
-    const { room, localTrack, remoteTrack, remoteParticipant } = useLiveKitRoom({
+    const { room, localTrack, remoteTrack } = useLiveKitRoom({
         url: liveKitUrl,
         token,
         onConnected: () => {
@@ -200,7 +200,7 @@ function ActiveView({
                 {/* Remote Video (Large) */}
                 {remoteTrack ? (
                     <div className="w-full h-full">
-                        <UserVideoComponent track={remoteTrack} participant={remoteParticipant} />
+                        <UserVideoComponent track={remoteTrack} />
                     </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center text-white/40 animate-pulse">
@@ -213,7 +213,7 @@ function ActiveView({
 
                 {/* Local Video (PIP) - Draggable feel with shadow */}
                 {localTrack && (
-                    <div className="absolute top-6 right-6 w-36 h-48 rounded-xl overflow-hidden shadow-2xl border border-white/10 bg-zinc-800 z-20">
+                    <div className="absolute top-6 right-6 w-36 h-48 rounded-xl overflow-hidden shadow-2xl bg-zinc-800 z-20">
                         <UserVideoComponent track={localTrack} isLocal={true} />
                     </div>
                 )}

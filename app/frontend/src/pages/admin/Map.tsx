@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { manageService } from "@/services/manageService";
+
 import type { DB_Worker, ZoneLayout, ZoneStat } from "@/types/db";
 import ZoneSummaryCard from "./components/map/ZoneSummaryCard";
 import ZoneMapModal from "./components/map/ZoneMapModal";
 import WorkerList from "./components/map/WorkerList";
+
 import { cn } from "@/utils/cn";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
+
 
 export default function Map() {
     const [searchParams] = useSearchParams();
@@ -22,6 +25,7 @@ export default function Map() {
     const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
     const [isWorkerPanelOpen, setIsWorkerPanelOpen] = useState(false);
     const [selectedLayout, setSelectedLayout] = useState<ZoneLayout | null>(null);
+
     useEffect(() => {
         loadData();
     }, []);
@@ -74,10 +78,52 @@ export default function Map() {
         }
     };
 
-    // 1. Click on Card Body -> Show Map Modal
-    const handleCardClick = (zoneId: number) => {
+    // Map Modal Data
+    const [mapZoneWorkers, setMapZoneWorkers] = useState<DB_Worker[]>([]);
+
+    // 1. Click on Card Body -> Show Map Modal & Fetch Data
+    const handleCardClick = async (zoneId: number) => {
         setSelectedZoneId(zoneId);
         setIsMapModalOpen(true);
+        
+        try {
+            // Fetch real map data
+            const adminServiceWrapper = await import("@/services/adminService");
+            const mapData = await adminServiceWrapper.getZoneMap(zoneId);
+            
+            // Convert DTO to DB_Worker format for UI
+            // API Response: { zoneId, zoneName, lines, workers: [...] }
+            const workersList = mapData.workers || [];
+
+            const parsedWorkers = workersList.map((dto: any) => {
+                const { lineNumber, binNumber } = adminServiceWrapper.parseLocationCode(dto.currentLocationCode);
+                
+                return {
+                    userId: dto.workerId,
+                    name: dto.name,
+                    lineNumber,
+                    binNumber,
+                    isBottleneck: dto.isBottleneck,
+                    workRate: dto.workRate || 0,
+                    
+                    // Defaults for required DB_Worker fields
+                    role: 'WORKER',
+                    isActive: true,
+                    status: 'WORKING', // Assumed working if bottleneck data exists
+                    currentZoneId: zoneId,
+                    todayWorkCount: 0,
+                    passwordHash: '',
+                    phoneNumber: '',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                } as DB_Worker;
+            });
+            
+            setMapZoneWorkers(parsedWorkers);
+        } catch (error) {
+            console.error("Failed to load map workers", error);
+            setMapZoneWorkers([]); // Fallback to empty or keep previous? Empty is safer.
+        }
     };
 
     // 2. Click on Zone List Button -> Toggle Worker Panel
@@ -95,9 +141,8 @@ export default function Map() {
 
     const handleCloseMapModal = () => {
         setIsMapModalOpen(false);
-        // Don't reset selectedZoneId if worker panel is open, 
-        // but here map modal takes full focus, so maybe we should?
-        // Let's keep separate logic.
+        setMapZoneWorkers([]); // Clear data
+        // Don't reset selectedZoneId if worker panel is open
         if (!isWorkerPanelOpen) {
             setSelectedZoneId(null);
         }
@@ -117,6 +162,9 @@ export default function Map() {
         }
     };
 
+    // 4. AI Rebalance Handlers
+
+
     if (loading && stats.length === 0) {
         return <div className="h-full flex items-center justify-center text-slate-500">데이터를 불러오는 중입니다...</div>;
     }
@@ -132,7 +180,10 @@ export default function Map() {
             <AdminPageHeader
                 title="현장 관제 맵"
                 description="공장 전체의 구역 배치와 작업자 현황을 시각적으로 모니터링합니다."
-            />
+            >
+
+            </AdminPageHeader>
+
             <div className="flex-1 flex overflow-hidden min-h-0 gap-4 h-full pb-6 px-8">
                 {/* Left Panel: Zone Cards Grid - Resizes when panel opens */}
                 <div className={cn(
@@ -187,8 +238,11 @@ export default function Map() {
                 onClose={handleCloseMapModal}
                 zoneName={selectedZoneName}
                 layout={selectedLayout}
-                workers={workers}
+                workers={mapZoneWorkers}
             />
+
+            {/* AI Rebalance Modal (New) */}
+
 
             {/* 스크롤바 숨김 스타일 */}
             <style>{`

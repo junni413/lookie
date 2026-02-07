@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { apiFetch } from "@/lib/apiFetch";
 import type { DB_User, UserRole } from "@/types/db";
+import { disconnectClient } from "@/services/stompService";
 
 // Use DB_User directly.
 export type User = DB_User;
@@ -52,6 +53,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(ROLE_KEY);
     localStorage.removeItem(USER_KEY);
+    
+    // [Fix] Disconnect STOMP client to clear session
+    disconnectClient();
 
     set({ token: null, refreshToken: null, role: null, user: null });
   },
