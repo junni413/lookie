@@ -67,10 +67,18 @@ export interface ZoneWorkerDto {
     processingSpeed: number;
     currentTaskProgress: number;
     status: string; // "WORKING", etc.
-    webrtcStatus: string; // "AVAILABLE", etc.
+    webrtcStatus?: string; // "ONLINE", "OFFLINE", "BUSY"
 }
 
-
+// Zone Map Worker DTO
+export interface ZoneMapWorkerDto {
+    workerId: number;
+    name: string;
+    lineId: number;
+    currentLocationCode: string; // "A-01-001"
+    isBottleneck: boolean;
+    workRate?: number;
+}
 
 // ========================================
 // 📡 API 함수
@@ -184,13 +192,53 @@ export async function getWorkersByZone(zoneId: number): Promise<ZoneWorkerDto[]>
     return response.data || [];
 }
 
+// Zone Map Response
+export interface ZoneMapResponse {
+    zoneId: number;
+    zoneName: string;
+    lines: any[]; // We only use workers for now
+    workers: ZoneMapWorkerDto[];
+}
+
+/**
+ * 구역 맵 조회 (실시간 위치 & 병목)
+ * GET /api/control/zones/{zoneId}/map
+ */
+export async function getZoneMap(zoneId: number): Promise<ZoneMapResponse> {
+    const response = await request<ApiResponse<ZoneMapResponse>>(`/api/control/zones/${zoneId}/map`, {
+        method: "GET",
+    });
+    return response.data || { zoneId, zoneName: "", lines: [], workers: [] };
+}
+
+/**
+ * 위치 코드 파싱 유틸리티 (중앙 집중화)
+ * 예: "A-01-001" -> { lineNumber: 1, binNumber: 1 }
+ */
+export function parseLocationCode(code: string | null): { lineNumber: number; binNumber: number } {
+    if (!code) return { lineNumber: 0, binNumber: 0 };
+    
+    const parts = code.split('-');
+    // 마지막 파트가 binNumber ("001" -> 1)
+    const binNum = parts.length > 0 ? parseInt(parts[parts.length - 1], 10) : 0;
+    // 두 번째 파트가 lineNumber ("01" -> 1)
+    const lineNum = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+    
+    return {
+        lineNumber: isNaN(lineNum) ? 0 : lineNum,
+        binNumber: isNaN(binNum) ? 0 : binNum,
+    };
+}
+
 export const adminService = {
     getDashboardSummary,
     getZones,
     getAdmins,
     assignWorkerToZone,
     getWorkersByZone,
-    getWorkerHoverInfo, // Add export
+    getWorkerHoverInfo,
+    getZoneMap,
+    parseLocationCode,
 };
 
 // ... (Existing interfaces)

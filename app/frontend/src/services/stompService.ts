@@ -281,3 +281,17 @@ export function subscribeIssueResult(
         }
     };
 }
+
+/**
+ * 클라이언트 연결 해제 (로그아웃 시 호출)
+ */
+export async function disconnectClient() {
+    if (client) {
+        console.log("🔌 [STOMP] Force disconnecting client...");
+        if (client.active) {
+            await client.deactivate();
+        }
+        client = null;
+        subscription = null;
+    }
+}

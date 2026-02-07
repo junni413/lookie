@@ -10,7 +10,7 @@ import { rebalanceService } from "@/services/rebalance.api";
 interface AiReallocationModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onApply: (workers: DB_Worker[]) => void;
+    onApply: (workers: DB_Worker[], moves?: any[]) => void;
     currentWorkers: DB_Worker[];
     zoneStats: ZoneStat[]; // To get zone names/ids
 }
@@ -24,6 +24,7 @@ export default function AiReallocationModal({
 }: AiReallocationModalProps) {
     const [simulatedWorkers, setSimulatedWorkers] = useState<DB_Worker[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [recommendation, setRecommendation] = useState<any>(null); // Store full recommendation
 
     // Initialize simulation with Real AI when modal opens
     useEffect(() => {
@@ -33,12 +34,14 @@ export default function AiReallocationModal({
             setIsLoading(true);
             try {
                 // Fetch AI Recommendation
-                const recommendation = await rebalanceService.recommend();
+                const data = await rebalanceService.recommend();
+                console.log("[AiModal] Received Recommendation:", data);
+                setRecommendation(data);
 
-                if (recommendation && recommendation.moves) {
+                if (data && data.moves) {
                     // Apply moves to create simulated state
                     const newWorkers = currentWorkers.map(worker => {
-                        const move = recommendation.moves.find(m => m.worker_id === worker.userId);
+                        const move = data.moves.find((m: any) => m.worker_id === worker.userId);
                         if (move) {
                             // Apply move (change zone)
                             return { ...worker, currentZoneId: move.to_zone };
@@ -134,7 +137,7 @@ export default function AiReallocationModal({
                     </Button>
                     <Button
                         className="bg-primary hover:bg-primary/90 text-white gap-2 px-6"
-                        onClick={() => onApply(simulatedWorkers)}
+                        onClick={() => onApply(simulatedWorkers, recommendation?.moves)}
                         disabled={isLoading}
                     >
                         <Wand2 size={16} />

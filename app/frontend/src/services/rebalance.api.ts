@@ -30,8 +30,10 @@ export const rebalanceService = {
                 method: "POST"
             });
             if (response.success && response.data) {
+                console.log("[RebalanceAPI] Recommendation Success:", response.data);
                 return response.data;
             }
+            console.warn("[RebalanceAPI] Recommendation successful but no data");
             return null;
         } catch (error) {
             console.error("Failed to get recommendation", error);
@@ -55,6 +57,7 @@ export const rebalanceService = {
                 body: payload
             });
 
+            console.log("[RebalanceAPI] Apply Response:", response);
             return response.success;
         } catch (error) {
             console.error("Failed to apply rebalance", error);

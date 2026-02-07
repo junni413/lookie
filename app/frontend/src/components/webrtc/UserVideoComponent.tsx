@@ -1,15 +1,13 @@
 import { useEffect, useRef } from "react";
-import type { VideoTrack, Participant } from "livekit-client";
+import type { VideoTrack } from "livekit-client";
 
 interface UserVideoComponentProps {
     track?: VideoTrack;
-    participant?: Participant; // 이름 표시용
     isLocal?: boolean;
 }
 
 export default function UserVideoComponent({
     track,
-    participant,
     isLocal = false,
 }: UserVideoComponentProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -28,7 +26,7 @@ export default function UserVideoComponent({
     }, [track]);
 
     return (
-        <div className="relative w-full h-full bg-slate-900 rounded-xl overflow-hidden shadow-lg border border-slate-700">
+        <div className="relative w-full h-full bg-slate-900 rounded-xl overflow-hidden shadow-lg">
             <video
                 ref={videoRef}
                 className="w-full h-full object-cover"
@@ -43,11 +41,12 @@ export default function UserVideoComponent({
                 </div>
             )}
 
-            {/* Name Tag */}
-            <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2">
-                {participant?.identity || participant?.name || "사용자"}
-                {isLocal && <span className="text-[10px] bg-slate-500 px-1.5 rounded-sm">나</span>}
-            </div>
+            {/* Name Tag - Only for Local User (PIP) */}
+            {isLocal && (
+                <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2">
+                    사용자
+                </div>
+            )}
         </div>
     );
 }

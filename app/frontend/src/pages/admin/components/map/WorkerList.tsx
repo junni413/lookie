@@ -4,7 +4,7 @@ import type { DB_Worker } from "@/types/db";
 import { cn } from "@/utils/cn";
 import { Phone, Users, X } from "lucide-react";
 import { useState, useEffect } from "react";
-import { getWorkRateColor } from "@/utils/styleHelpers";
+
 import { useCallStore } from "@/stores/callStore";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -118,11 +118,12 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
             {/* 작업자 리스트 */}
             <div className="flex-1 overflow-y-auto">
                 {sortedWorkers.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-40 text-slate-400 px-4">
-                        <Users className="w-12 h-12 mb-3 text-slate-300" />
-                        <p className="text-sm font-medium text-slate-600">
-                            해당 구역의 작업자가 없습니다
-                        </p>
+                    <div className="flex flex-col items-center justify-center h-full py-12 px-4 text-center text-slate-500 animate-in fade-in zoom-in-95 duration-300">
+                        <div className="bg-slate-50 p-3 rounded-full mb-3">
+                            <Users className="w-6 h-6 text-slate-400" />
+                        </div>
+                        <p className="text-sm font-medium text-slate-600">해당 구역에는</p>
+                        <p className="text-sm font-medium text-slate-600 mt-0.5">배정된 작업자가 없습니다.</p>
                     </div>
                 ) : (
                     <div className="divide-y divide-slate-100">
@@ -131,9 +132,9 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                                 <div key={worker.userId} className="group flex items-center gap-5 pl-7 pr-6 py-4 hover:bg-slate-50 transition-colors">
 
                                     {/* 정보 영역 */}
-                                    <div className="flex-1 min-w-0">
+                                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
                                         <WorkerHoverCard workerId={worker.userId}>
-                                            <div className="font-semibold text-sm text-slate-800 truncate hover:text-blue-600 transition-colors cursor-help inline-block">
+                                            <div className="font-semibold text-sm text-slate-800 truncate hover:text-blue-600 transition-colors cursor-help inline-block align-middle">
                                                 {worker.name}
                                             </div>
                                         </WorkerHoverCard>
@@ -151,7 +152,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                                         </div>
                                         <div className="text-center">
                                             <div className="text-slate-400 text-[10px] font-medium">작업률</div>
-                                            <div className={cn("font-semibold", getWorkRateColor(worker.workRate || 0))}>
+                                            <div className="font-semibold text-slate-700">
                                                 {worker.workRate || 0}%
                                             </div>
                                         </div>
@@ -164,9 +165,16 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
                                     {/* 통화 버튼 */}
                                     <button
                                         onClick={() => handleCallClick(worker)}
-                                        className="h-9 w-9 rounded-full transition-all flex items-center justify-center text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                                        disabled={worker.webrtcStatus !== 'AVAILABLE'}
+                                        title={worker.webrtcStatus === 'AVAILABLE' ? '통화 걸기' : '통화 불가능 (오프라인)'}
+                                        className={cn(
+                                            "h-9 w-9 rounded-full transition-all flex items-center justify-center",
+                                            worker.webrtcStatus === 'AVAILABLE'
+                                                ? "text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 shadow-sm border border-emerald-100"
+                                                : "text-slate-300 bg-slate-50 cursor-not-allowed grayscale"
+                                        )}
                                     >
-                                        <Phone size={16} fill="currentColor" />
+                                        <Phone size={16} fill={worker.webrtcStatus === 'AVAILABLE' ? "currentColor" : "none"} />
                                     </button>
                                 </div>
                             );
