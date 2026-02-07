@@ -934,6 +934,16 @@ public class IssueService {
                         issueId, item.getProductId(), item.getLocationId());
             }
         }
+
+        // 7. [Fix] Task의 진행 상태(action_status)를 다음 아이템 준비 단계(SCAN_LOCATION)로 초기화
+        // 이슈 처리가 완료(또는 보류)되었으므로, 해당 아이템에 대한 수량 조절(ADJUST_QUANTITY) 상태를 해제해야 함.
+        TaskItemVO taskItemForReset = taskItemService.getTaskItem(issue.getBatchTaskItemId());
+        if (taskItemForReset != null) {
+            taskMapper.updateActionStatus(taskItemForReset.getBatchTaskId(),
+                    lookie.backend.domain.task.vo.TaskActionStatus.SCAN_LOCATION);
+            log.info("[IssueService] Task action status reset to SCAN_LOCATION. taskId={}",
+                    taskItemForReset.getBatchTaskId());
+        }
     }
 
     // ================================================================
