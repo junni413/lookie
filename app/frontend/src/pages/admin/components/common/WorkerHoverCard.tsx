@@ -136,7 +136,7 @@ export default function WorkerHoverCard({ workerId, children, className }: Worke
                                             {data.name}
                                         </h4>
                                         <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100/50 rounded-full">
-                                            <span className={`w-1.5 h-1.5 rounded-full ${data.currentLocationCode ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]'}`} />
+                                            <span className={`w-1.5 h-1.5 rounded-full ${data.currentLocationCode ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]' : 'bg-slate-400 shadow-[0_0_8px_rgba(148,163,184,0.4)]'}`} />
                                             <span className="text-[10px] font-medium text-slate-400">
                                                 {data.currentLocationCode ? "작업 중" : "위치 미상"}
                                             </span>

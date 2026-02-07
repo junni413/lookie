@@ -40,7 +40,7 @@ export default function ZoneMapModal({
         >
             {/* Modal Container */}
             <div
-                className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full mx-6 h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out"
+                className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full mx-6 h-[85vh] max-h-[52rem] flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -73,19 +73,15 @@ export default function ZoneMapModal({
                     {/* Legend Bar */}
                     <div className="px-6 py-2 bg-white flex items-center justify-between shrink-0 border-b border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.02)] relative z-10">
                         <div className="flex items-center gap-6">
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Work Rate</span>
+                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status</span>
                             <div className="flex items-center gap-2 text-[11px] font-medium text-slate-600">
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-50 border border-slate-100">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
-                                    <span>상 (80%↑)</span>
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-100 text-amber-700">
+                                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+                                    <span>Bottleneck</span>
                                 </div>
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-50 border border-slate-100">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                                    <span>중 (40~79%)</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-50 border border-slate-100">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400"></div>
-                                    <span>하 (~39%)</span>
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700">
+                                    <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                                    <span>Normal</span>
                                 </div>
                             </div>
                         </div>

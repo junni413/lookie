@@ -67,10 +67,17 @@ export interface ZoneWorkerDto {
     processingSpeed: number;
     currentTaskProgress: number;
     status: string; // "WORKING", etc.
-    webrtcStatus: string; // "AVAILABLE", etc.
 }
 
-
+// Zone Map Worker DTO
+export interface ZoneMapWorkerDto {
+    workerId: number;
+    name: string;
+    lineId: number;
+    currentLocationCode: string; // "A-01-001"
+    isBottleneck: boolean;
+    workRate?: number;
+}
 
 // ========================================
 // 📡 API 함수
@@ -177,13 +184,33 @@ export async function getWorkersByZone(zoneId: number): Promise<ZoneWorkerDto[]>
     return response.data || [];
 }
 
+// Zone Map Response
+export interface ZoneMapResponse {
+    zoneId: number;
+    zoneName: string;
+    lines: any[]; // We only use workers for now
+    workers: ZoneMapWorkerDto[];
+}
+
+/**
+ * 구역 맵 조회 (실시간 위치 & 병목)
+ * GET /api/control/zones/{zoneId}/map
+ */
+export async function getZoneMap(zoneId: number): Promise<ZoneMapResponse> {
+    const response = await request<ApiResponse<ZoneMapResponse>>(`/api/control/zones/${zoneId}/map`, {
+        method: "GET",
+    });
+    return response.data || { zoneId, zoneName: "", lines: [], workers: [] };
+}
+
 export const adminService = {
     getDashboardSummary,
     getZones,
     getAdmins,
     assignWorkerToZone,
     getWorkersByZone,
-    getWorkerHoverInfo, // Add export
+    getWorkerHoverInfo,
+    getZoneMap,
 };
 
 // ... (Existing interfaces)

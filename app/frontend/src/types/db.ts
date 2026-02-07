@@ -322,6 +322,7 @@ export interface DB_Worker extends DB_User {
     processingSpeed?: number;
     currentTaskProgress?: number;
     webrtcStatus?: string;
+    isBottleneck?: boolean;
 }
 
 // Layout Types for Map

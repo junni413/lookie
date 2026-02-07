@@ -74,10 +74,55 @@ export default function Map() {
         }
     };
 
-    // 1. Click on Card Body -> Show Map Modal
-    const handleCardClick = (zoneId: number) => {
+    // Map Modal Data
+    const [mapZoneWorkers, setMapZoneWorkers] = useState<DB_Worker[]>([]);
+
+    // 1. Click on Card Body -> Show Map Modal & Fetch Data
+    const handleCardClick = async (zoneId: number) => {
         setSelectedZoneId(zoneId);
         setIsMapModalOpen(true);
+        
+        try {
+            // Fetch real map data
+            const mapData = await import("@/services/adminService").then(m => m.getZoneMap(zoneId));
+            
+            // Convert DTO to DB_Worker format for UI
+            // API Response: { zoneId, zoneName, lines, workers: [...] }
+            const workersList = mapData.workers || [];
+
+            const parsedWorkers = workersList.map(dto => {
+                // Parse "A-01-001" to get bin number (last part) and line number (middle part)
+                const parts = dto.currentLocationCode ? dto.currentLocationCode.split('-') : [];
+                const binNum = parts.length > 0 ? parseInt(parts[parts.length - 1], 10) : 0;
+                // Assuming "A-01-001", parts[1] is line number
+                const lineNum = parts.length > 1 ? parseInt(parts[1], 10) : dto.lineId; // Fallback to dto.lineId if parse fails
+                
+                return {
+                    userId: dto.workerId,
+                    name: dto.name,
+                    lineNumber: isNaN(lineNum) ? 0 : lineNum,
+                    binNumber: isNaN(binNum) ? 0 : binNum,
+                    isBottleneck: dto.isBottleneck,
+                    workRate: dto.workRate || 0,
+                    
+                    // Defaults for required DB_Worker fields
+                    role: 'WORKER',
+                    isActive: true,
+                    status: 'WORKING', // Assumed working if bottleneck data exists
+                    currentZoneId: zoneId,
+                    todayWorkCount: 0,
+                    passwordHash: '',
+                    phoneNumber: '',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                } as DB_Worker;
+            });
+            
+            setMapZoneWorkers(parsedWorkers);
+        } catch (error) {
+            console.error("Failed to load map workers", error);
+            setMapZoneWorkers([]); // Fallback to empty or keep previous? Empty is safer.
+        }
     };
 
     // 2. Click on Zone List Button -> Toggle Worker Panel
@@ -95,9 +140,8 @@ export default function Map() {
 
     const handleCloseMapModal = () => {
         setIsMapModalOpen(false);
-        // Don't reset selectedZoneId if worker panel is open, 
-        // but here map modal takes full focus, so maybe we should?
-        // Let's keep separate logic.
+        setMapZoneWorkers([]); // Clear data
+        // Don't reset selectedZoneId if worker panel is open
         if (!isWorkerPanelOpen) {
             setSelectedZoneId(null);
         }
@@ -187,7 +231,7 @@ export default function Map() {
                 onClose={handleCloseMapModal}
                 zoneName={selectedZoneName}
                 layout={selectedLayout}
-                workers={workers}
+                workers={mapZoneWorkers}
             />
 
             {/* 스크롤바 숨김 스타일 */}
