@@ -3,12 +3,20 @@ import { Outlet } from "react-router-dom";
 import AdminSidebar from "./AdminSidebar";
 import { useCallStore } from "@/stores/callStore";
 
+import { useAuthStore } from "@/stores/authStore";
+
 export default function AdminLayout() {
   const listenForIncomingCalls = useCallStore((state) => state.listenForIncomingCalls);
+  
+  // Auth state
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
-    listenForIncomingCalls();
-  }, [listenForIncomingCalls]);
+    if (token && user) {
+      listenForIncomingCalls();
+    }
+  }, [listenForIncomingCalls, token, user]);
 
   // 🔒 LOCKED LAYOUT: This structure (h-screen, overflow-hidden) is fixed.
   // DO NOT remove 'h-screen' or 'overflow-hidden'. The user requires the app to strictly fit the viewport.
