@@ -100,18 +100,18 @@ export default function Dashboard() {
         <section className="grid grid-cols-4 gap-3">
           <StatusCard
             title="작업중인 작업자"
-            value={summary.working}
+            value={`${summary.working}명`}
             icon={Users}
             onClick={() => navigate('/admin/manage')}
           />
           <StatusCard
             title="대기중인 전체 이슈"
-            value={summary.waiting}
+            value={`${summary.waiting}건`}
             icon={Package}
           />
           <StatusCard
             title="완료된 전체 이슈"
-            value={summary.done}
+            value={`${summary.done}건`}
             icon={CheckCircle2}
           />
           <StatusCard
