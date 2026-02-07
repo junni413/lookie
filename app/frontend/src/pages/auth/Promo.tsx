@@ -83,11 +83,11 @@ function PromoContent({ showScan, onStart }: { showScan: boolean; onStart: () =>
         transition={{ delay: 0.2, duration: 0.8 }}
         className="mb-12"
       >
-        <h1 className="text-[52px] font-bold tracking-tighter text-blue-500 font-pixel leading-none">
+        <h1 className="text-[65px] font-bold tracking-tighter text-blue-500 font-pixel leading-none">
           LOOKIE
         </h1>
         <p className="mt-4 text-[12px] font-bold tracking-[0.3em] text-slate-500 uppercase">
-          See it. Scan it. Done.
+          Smart Logistics Workflow
         </p>
       </motion.div>
 
@@ -156,7 +156,7 @@ function PromoContent({ showScan, onStart }: { showScan: boolean; onStart: () =>
         transition={{ delay: 0.8, duration: 0.6 }}
         className="mt-24 w-full h-15 rounded-2xl bg-white text-black font-black text-[15px] uppercase tracking-widest active:scale-[0.98] transition-all hover:bg-slate-100"
       >
-        Begin Workflow
+        Your Key to Smart Logistics
       </motion.button>
     </div>
   );

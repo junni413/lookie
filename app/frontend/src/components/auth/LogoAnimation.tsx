@@ -105,7 +105,7 @@ export default function LogoAnimation() {
         transition={{ delay: 0.15, duration: 0.45 }}
         className="mt-3 text-[11px] font-medium text-slate-700 tracking-widest"
       >
-        Logistics, clearly.
+        Your Key to Smart Logistics
       </motion.p>
     </div>
   );
