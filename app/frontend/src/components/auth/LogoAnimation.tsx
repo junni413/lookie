@@ -24,14 +24,14 @@ export default function LogoAnimation() {
     <div className="flex flex-col items-center justify-center mb-10 select-none pointer-events-none">
       <div className="relative flex items-center">
         {/* Wordmark */}
-        <span className="text-[64px] font-extrabold tracking-tight text-blue-600 leading-none">
+        <span className="text-[64px] font-extrabold tracking-tight text-primary leading-none">
           L
         </span>
 
         <Eye isUnlocked={isUnlocked} />
         <Eye isUnlocked={isUnlocked} />
 
-        <span className="text-[64px] font-extrabold tracking-tight text-blue-600 leading-none ml-1">
+        <span className="text-[64px] font-extrabold tracking-tight text-primary leading-none ml-1">
           K
         </span>
 
@@ -48,7 +48,7 @@ export default function LogoAnimation() {
               style={{ imageRendering: "pixelated" as any }}
             >
               <div className="relative">
-                <Key size={34} strokeWidth={3} className="text-blue-600" />
+                <Key size={34} strokeWidth={3} className="text-primary" />
               </div>
             </motion.div>
           )}
@@ -78,10 +78,10 @@ export default function LogoAnimation() {
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               className="flex items-center"
             >
-              <span className="text-[64px] font-extrabold tracking-tight text-blue-600 leading-none ml-2">
+              <span className="text-[64px] font-extrabold tracking-tight text-primary leading-none ml-2">
                 I
               </span>
-              <span className="text-[64px] font-extrabold tracking-tight text-blue-600 leading-none ml-1">
+              <span className="text-[64px] font-extrabold tracking-tight text-primary leading-none ml-1">
                 E
               </span>
             </motion.div>
@@ -125,7 +125,7 @@ function Eye({ isUnlocked }: { isUnlocked: boolean }) {
         <motion.div
           animate={isUnlocked ? { scale: 1, opacity: 1 } : { scale: 0.96, opacity: 0.92 }}
           transition={{ type: "spring", stiffness: 260, damping: 18 }}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[26px] h-[26px] rounded-full bg-blue-600"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[26px] h-[26px] rounded-full bg-primary"
           style={{ boxShadow: "inset 0 8px 10px rgba(255,255,255,0.20)" }}
         />
 

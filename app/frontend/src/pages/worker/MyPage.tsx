@@ -75,6 +75,10 @@ export default function MyPage() {
           <ChevronRight size={20} strokeWidth={3} />
         </button>
       </div>
+
+      <footer className="mt-auto py-20 text-center text-xs font-bold tracking-[0.2em] text-slate-200 uppercase">
+        LOOKIE
+      </footer>
     </div>
   );
 }

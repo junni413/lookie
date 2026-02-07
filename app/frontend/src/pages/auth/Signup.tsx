@@ -369,7 +369,7 @@ export default function Signup() {
     <div className="min-h-[100dvh] bg-white px-4 py-8">
       <div className="mx-auto w-full max-w-[430px]">
         <div className="mb-8 text-center">
-          <h1 className="text-4xl font-extrabold text-blue-600">Lookie</h1>
+          <h1 className="text-4xl font-extrabold text-primary">Lookie</h1>
         </div>
 
         <div className="space-y-4">
@@ -400,8 +400,8 @@ export default function Signup() {
                 onClick={handlePhoneDup}
                 className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
                   phoneVerified
-                    ? "bg-blue-50 text-blue-600"
-                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    ? "bg-gray-300 text-gray-600"
+                    : "bg-primary-soft text-primary hover:opacity-80"
                 }`}
               >
                 {phoneVerified ? "확인완료" : "중복확인"}
@@ -424,10 +424,10 @@ export default function Signup() {
                 disabled={emailStep === "verified" || isCooldown}
                 className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
                   emailStep === "verified"
-                    ? "bg-blue-50 text-blue-600"
+                    ? "bg-gray-300 text-gray-600"
                     : isCooldown
-                    ? "bg-gray-100 text-gray-400"
-                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    ? "bg-grey-f8 text-gray-400"
+                    : "bg-primary-soft text-primary hover:opacity-80"
                 }`}
               >
                 {emailStep === "verified"
@@ -456,8 +456,8 @@ export default function Signup() {
                     disabled={isEmailExpired}
                     className={`min-w-[92px] rounded-xl px-3 text-xs font-semibold ${
                       isEmailExpired
-                        ? "bg-gray-100 text-gray-400"
-                        : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        ? "bg-grey-f8 text-gray-400"
+                        : "bg-primary-soft text-primary hover:opacity-80"
                     }`}
                   >
                     확인
@@ -511,8 +511,8 @@ export default function Signup() {
             disabled={!canSubmit}
             className={`mt-6 w-full rounded-full py-4 text-base font-semibold transition ${
               canSubmit
-                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:bg-blue-700"
-                : "bg-gray-100 text-gray-400"
+                ? "bg-primary text-white shadow-lg shadow-blue-500/30 hover:bg-blue-700"
+                : "bg-grey-f8 text-gray-400"
             }`}
           >
             회원가입
@@ -521,7 +521,7 @@ export default function Signup() {
           <div className="pt-3 text-center text-sm text-gray-400">
             이미 회원이세요?{" "}
             <span
-              className="cursor-pointer text-blue-600"
+              className="cursor-pointer text-primary"
               onClick={() => navigate("/login")}
             >
               로그인하기
@@ -535,7 +535,7 @@ export default function Signup() {
 
 function inputClass(hasError: boolean) {
   return [
-    "w-full rounded-2xl bg-slate-100 px-5 py-4 text-sm outline-none",
+    "w-full rounded-2xl bg-grey-f8 px-5 py-4 text-sm outline-none",
     "focus:ring-2 focus:ring-blue-500",
     hasError ? "ring-2 ring-red-400 focus:ring-red-400" : "",
   ].join(" ");
@@ -552,7 +552,7 @@ function Field({
 }) {
   return (
     <div>
-      <div className="mb-2 text-xs font-semibold text-gray-500">{label}</div>
+      <div className="mb-2 text-xs font-semibold text-black">{label}</div>
       {children}
       {error && <div className="mt-2 text-xs text-red-500">{error}</div>}
     </div>
