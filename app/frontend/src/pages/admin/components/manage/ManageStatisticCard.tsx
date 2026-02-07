@@ -49,7 +49,7 @@ export default function ManageStatisticCard({
                         {/* 진행률 */}
                         <div className="flex items-baseline gap-2">
                             <span className="text-xs font-medium text-slate-400 whitespace-nowrap">진행률</span>
-                            <span className="text-base font-bold text-slate-800 whitespace-nowrap">{workRate}%</span>
+                            <span className="text-base font-bold text-slate-800 whitespace-nowrap">{Math.floor(workRate)}%</span>
                         </div>
                     </div>
                 </div>

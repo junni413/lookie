@@ -116,7 +116,7 @@ export default function Dashboard() {
           />
           <StatusCard
             title="작업 진행률"
-            value={`${summary.progress}%`}
+            value={`${Math.floor(summary.progress)}%`}
             icon={History}
           />
         </section>
