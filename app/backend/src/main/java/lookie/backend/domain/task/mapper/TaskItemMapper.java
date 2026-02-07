@@ -36,6 +36,10 @@ public interface TaskItemMapper {
                         @Param("batchTaskItemId") Long batchTaskItemId,
                         @Param("status") String status);
 
+        // [수정] 지번 이동 시 아이템의 location_id 변경
+        int updateLocationOfItem(@Param("batchTaskItemId") Long batchTaskItemId,
+                        @Param("newLocationId") Long newLocationId);
+
         // [조회] 다음 수행할 PENDING 아이템 조회
         TaskItemVO findNextItem(@Param("batchTaskId") Long batchTaskId);
 

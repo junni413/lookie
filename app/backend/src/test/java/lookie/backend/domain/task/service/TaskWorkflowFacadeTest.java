@@ -144,18 +144,18 @@ class TaskWorkflowFacadeTest {
         TaskItemVO updatedItem = new TaskItemVO();
         updatedItem.setBatchTaskItemId(500L);
         updatedItem.setRequiredQty(1);
-        updatedItem.setPickedQty(1);
+        updatedItem.setPickedQty(0);
         updatedItem.setStatus("PENDING"); // 자동 완료 안됨
 
         when(taskMapper.findById(taskId)).thenReturn(task);
         when(taskItemService.scanAndGetItem(taskId, 10L, barcode)).thenReturn(item);
-        when(taskItemService.updateQuantityAtomic(500L, 1)).thenReturn(updatedItem);
+        when(taskItemService.updateQuantityAtomic(500L, 0)).thenReturn(updatedItem);
 
         // when
         TaskResponse<TaskItemVO> response = taskWorkflowFacade.scanItem(taskId, barcode);
 
         // then
-        verify(taskItemService).updateQuantityAtomic(500L, 1);
+        verify(taskItemService).updateQuantityAtomic(500L, 0);
         verify(taskMapper).updateActionStatus(taskId, TaskActionStatus.ADJUST_QUANTITY);
         assertEquals(NextAction.ADJUST_QUANTITY, response.getNextAction());
     }
@@ -185,9 +185,11 @@ class TaskWorkflowFacadeTest {
         mockTask.setBatchTaskId(taskId);
         mockTask.setActionStatus(TaskActionStatus.SCAN_ITEM); // 상태 설정
         mockTask.setToteBarcode("TOTE-1234"); // 토트 바코드 설정 (가정)
+        mockTask.setCurrentLocationId(100L); // [Fix] 현재 위치 설정
 
         TaskItemVO mockNextItem = new TaskItemVO();
         mockNextItem.setProductImage("http://img.url"); // 이미지 URL 설정
+        mockNextItem.setLocationId(100L); // [Fix] 다음 아이템 위치를 현재 위치와 동일하게 설정 (그래야 SCAN_ITEM 유지)
 
         // 1. 진행 중 작업 조회
         when(taskMapper.findInProgressByWorkerId(workerId)).thenReturn(mockTask);

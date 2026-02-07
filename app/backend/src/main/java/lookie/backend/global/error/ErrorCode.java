@@ -67,6 +67,7 @@ public enum ErrorCode {
 	ISSUE_ALREADY_RESOLVED("ISSUE_005", HttpStatus.CONFLICT, "이미 해결된 이슈입니다"),
 	INVALID_ADMIN_DECISION("ISSUE_006", HttpStatus.BAD_REQUEST, "유효하지 않은 관리자 확정 결과입니다"),
 	INVALID_ISSUE_TYPE("ISSUE_007", HttpStatus.BAD_REQUEST, "유효하지 않은 이슈 타입입니다"),
+	ISSUE_TASK_ALREADY_DONE("ISSUE_008", HttpStatus.BAD_REQUEST, "이미 완료된 작업이므로 호출할 수 없습니다"),
 
 	// ==== PRODUCT ====
 	PRODUCT_NOT_FOUND("PROD_001", HttpStatus.NOT_FOUND, "상품 정보를 찾을 수 없습니다"),

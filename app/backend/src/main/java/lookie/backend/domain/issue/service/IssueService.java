@@ -29,12 +29,18 @@ import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import lookie.backend.domain.issue.dto.AdminDecision;
 
 import lookie.backend.domain.issue.dto.IssueStatus;
@@ -58,11 +64,34 @@ public class IssueService {
     private final InventoryService inventoryService;
 
     /**
-     * 이슈 생성
-     * - AI 판정 요청 성공 시 호출
-     * - Issue, IssueImage, AiJudgment 초기 데이터 생성
-     * - TaskItem 상태를 ISSUE로 변경
+     * [WebRTC] 화상 연결 전 이슈 상태 검증
+     * - Task가 이미 완료(Next Task 진행 중)되었다면 연결 차단
+     *
+     * @throws ApiException(ISSUE_TASK_ALREADY_DONE)
      */
+    @Transactional(readOnly = true)
+    public void validateIssueForCall(Long issueId) {
+        if (issueId == null)
+            return;
+
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        // 1. Task 상태 조회
+        TaskVO task = taskMapper.findById(issue.getBatchTaskId());
+        if (task == null) {
+            return; // Task가 없으면 검증 패스 (예외 상황)
+        }
+
+        // 2. Task가 이미 DONE(완료) 상태라면 호출 차단
+        if ("DONE".equals(task.getStatus())) {
+            throw new ApiException(ErrorCode.ISSUE_TASK_ALREADY_DONE);
+        }
+    }
+
+    // AI 판정 요청 성공 시 호출
     @Transactional
     public IssueResponse createIssue(Long workerId, CreateIssueRequest request) {
         log.info("[IssueService] createIssue started. workerId={}, itemId={}",
@@ -103,35 +132,52 @@ public class IssueService {
         judgment.setAiDecision("UNKNOWN"); // AI 결과 대기 중
         issueMapper.insertAiJudgment(judgment);
 
-        // 5. TaskItem 상태를 ISSUE로 변경
-        taskItemService.markAsIssue(item.getBatchTaskItemId());
-        log.info("[IssueService] TaskItem marked as ISSUE. itemId={}", item.getBatchTaskItemId());
+        // 5. TaskItem 상태를 ISSUE_PENDING(보류)으로 변경
+        taskItemService.markAsIssuePending(item.getBatchTaskItemId());
+        log.info("[IssueService] TaskItem marked as ISSUE_PENDING. itemId={}", item.getBatchTaskItemId());
 
-        // 6. Response 먼저 반환 (트랜잭션 커밋됨)
+        // 6. Response 생성
         IssueResponse response = IssueResponse.from(issue);
 
-        // 7. AI 서버로 판정 요청 (트랜잭션 커밋 후)
-        // NOTE: 트랜잭션이 끝난 후 실행되도록 별도 메서드로 분리
+        // 7. [Fix] AI 서버 요청은 트랜잭션 커밋 "후"에 실행 (Race Condition 방지)
         Long issueIdForAi = issue.getIssueId();
-        requestAiAnalysisAfterCommit(issueIdForAi, item, request.getIssueType(), request.getImageUrl());
+        String issueType = request.getIssueType();
+        String imageUrl = request.getImageUrl();
+
+        Runnable aiTask = () -> {
+            try {
+                log.info("[IssueService] Transaction committed (or mocked). Sending AI request for issueId={}",
+                        issueIdForAi);
+                requestAiAnalysisSafe(issueIdForAi, item, issueType, imageUrl);
+            } catch (Exception e) {
+                log.error("[IssueService] Failed to request AI analysis. issueId={}", issueIdForAi, e);
+            }
+        };
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    aiTask.run();
+                }
+            });
+        } else {
+            aiTask.run();
+        }
 
         return response;
     }
 
     /**
-     * AI 분석 요청 (트랜잭션 외부에서 실행)
-     * - 새로운 트랜잭션에서 실행되므로 createIssue()의 커밋 후 실행됨
+     * AI 분석 요청 (트랜잭션 없음 - 커밋 후 실행됨)
      */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
-    public void requestAiAnalysisAfterCommit(Long issueId, TaskItemVO item, String issueType, String imageUrl) {
+    public void requestAiAnalysisSafe(Long issueId, TaskItemVO item, String issueType, String imageUrl) {
         AiAnalysisRequest aiRequest = buildAiAnalysisRequest(issueId, item, issueType, imageUrl);
         aiAnalysisClient.requestAnalysis(aiRequest);
     }
 
     /**
      * 이슈 타입에 따라 적절한 AI 분석 요청 생성
-     * - DAMAGED: imageUrl 필수, inventoryState 불필요
-     * - OUT_OF_STOCK: imageUrl null, inventoryState 필수
      */
     private AiAnalysisRequest buildAiAnalysisRequest(
             Long issueId,
@@ -188,8 +234,6 @@ public class IssueService {
 
     /**
      * AI 재분석 요청 (재촬영)
-     * - AI 판정이 RETAKE인 경우, 새 이미지로 다시 분석 요청
-     * - 기존 Issue는 유지하고, AI 판정 상태만 초기화 (UNKNOWN)
      */
     @Transactional
     public void retakeIssue(Long workerId, Long issueId, String imageUrl) {
@@ -201,22 +245,17 @@ public class IssueService {
             throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
         }
 
-        // 2. 권한 검증 (본인 이슈인지)
+        // 2. 권한 검증
         if (!workerId.equals(issue.getWorkerId())) {
-            // NOTE: 관리자 개입 등으로 workerId가 달라질 수 있으나,
-            // 기본적으로는 본인이 생성한 이슈만 재촬영 가능하도록 제한
             log.warn("[IssueService] Unauthorized retake attempt. workerId={}, issueWorkerId={}",
                     workerId, issue.getWorkerId());
             throw new ApiException(ErrorCode.ISSUE_TASK_NOT_ASSIGNED);
         }
 
-        // 3. 현재 AI 판정 상태 확인 (RETAKE 여부)
+        // 3. AI 판정 상태 확인
         AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
-        // NOTE: 기획상 RETAKE 상태일 때만 재촬영이 가능하다고 했으므로 검증 추가
-        // 하지만 현장 상황에 따라 FAIL 등에서도 재촬영이 필요할 수 있으니,
-        // 일단은 "AI 판정이 존재할 때" 덮어쓰기 허용으로 유연하게 가되, 주로 RETAKE에서 사용됨.
         if (judgment == null) {
-            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND); // AI 판정 자체가 없는 경우는 비정상
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
         }
 
         log.info("[IssueService] Retaking issue. Original decision={}", judgment.getAiDecision());
@@ -228,27 +267,44 @@ public class IssueService {
         issueMapper.insertIssueImage(image);
         log.info("[IssueService] New image saved for retake.", imageUrl);
 
-        // 5. AI 판정 상태 리셋 (UNKNOWN) & 이미지 URL 교체
-        // 기존 레코드를 업데이트하여 processAiResult의 중복 방지 로직(UNKNOWN 체크)을 통과하도록 함
+        // 5. AI 판정 상태 리셋 (UNKNOWN)
         judgment.setImageUrl(imageUrl);
         judgment.setAiDecision("UNKNOWN");
         judgment.setConfidence(null);
-        judgment.setAiResult(null); // 이전 결과 날림
+        judgment.setAiResult(null);
         judgment.setSummary(null);
 
         issueMapper.updateAiJudgment(judgment);
         log.info("[IssueService] AiJudgment reset to UNKNOWN for retake.");
 
-        // 6. TaskItemVO 조회를 통한 ProductId 획득 (AI 재요청용)
+        // 6. TaskItemVO 조회 (ProductId 필요)
         TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
 
-        // 7. AI 서버로 재분석 요청 (비동기)
-        AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
-                issueId,
-                item != null ? item.getProductId() : 0L, // 안전장치
-                imageUrl);
-        aiAnalysisClient.requestAnalysis(aiRequest);
-        log.info("[IssueService] Re-analysis requested.");
+        // 7. [Fix] AI 재요청도 트랜잭션 커밋 후에 실행 (또는 즉시 실행)
+        Runnable retakeTask = () -> {
+            try {
+                log.info("[IssueService] Transaction committed (or mocked). Sending Retake request for issueId={}",
+                        issueId);
+                AiAnalysisRequest aiRequest = AiAnalysisRequest.of(
+                        issueId,
+                        item != null ? item.getProductId() : 0L,
+                        imageUrl);
+                aiAnalysisClient.requestAnalysis(aiRequest);
+            } catch (Exception e) {
+                log.error("[IssueService] Failed to request Retake analysis. issueId={}", issueId, e);
+            }
+        };
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    retakeTask.run();
+                }
+            });
+        } else {
+            retakeTask.run();
+        }
     }
 
     /**
@@ -320,7 +376,7 @@ public class IssueService {
             return AiResultResponse.from(issue, calculateNextAction(issue),
                     generateAvailableActions(issue),
                     existing.getAiDecision(), existing.getSummary(),
-                    existing.getConfidence(), existing.getAiResult());
+                    existing.getConfidence(), existing.getAiResult(), existing.getImageUrl());
         }
 
         // 2. AI 판정 결과 업데이트
@@ -330,6 +386,12 @@ public class IssueService {
         judgment.setConfidence(request.getConfidence());
         judgment.setSummary(request.getSummary());
         judgment.setAiResult(request.getAiResult());
+
+        // [Fix] 기존 이미지 URL 유지 (재촬영 등으로 이미지가 업데이트된 경우 보존)
+        if (existing != null) {
+            judgment.setImageUrl(existing.getImageUrl());
+        }
+
         issueMapper.updateAiJudgment(judgment);
 
         // 3. newLocation 처리 (MOVE_LOCATION 케이스)
@@ -347,19 +409,58 @@ public class IssueService {
         log.info("[IssueService] Issue updated by AI result. issueId={}, status={}, reasonCode={}",
                 issueId, issue.getStatus(), issue.getReasonCode());
 
+        // [NEW] TaskItem 상태 동기화 (부활 vs 완료 vs 보류)
+        syncTaskItemStatus(issue, request.getAiDecision(), request.getReasonCode());
+
         // 6. nextAction 계산
         IssueNextAction issueNextAction = calculateNextAction(issue);
         List<String> availableActions = generateAvailableActions(issue);
 
+        // [Fix] Response에 이미지 URL 포함
         AiResultResponse response = AiResultResponse.from(issue, issueNextAction, availableActions,
                 judgment.getAiDecision(), judgment.getSummary(),
-                judgment.getConfidence(), judgment.getAiResult());
+                judgment.getConfidence(), judgment.getAiResult(), judgment.getImageUrl());
 
         // [WebSocket] AI 판정 결과 통보
         messagingTemplate.convertAndSend("/topic/issues/" + issueId, response);
         log.info("[IssueService] AI result signaled via WebSocket. issueId={}", issueId);
 
         return response;
+    }
+
+    /**
+     * AI 결과/관리자 조치에 따라 TaskItem 상태(부활/완료/유지) 동기화
+     */
+    private void syncTaskItemStatus(IssueVO issue, String aiDecision, String reasonCode) {
+        Long itemId = issue.getBatchTaskItemId();
+
+        // 1. 지번 이동 (MOVE_LOCATION) -> 지번 변경 후 부활
+        if ("MOVE_LOCATION".equals(reasonCode)) {
+            taskItemService.updateItemLocation(itemId, issue.getNewLocationId());
+            taskItemService.reviveItem(itemId);
+            log.info("[IssueService] Item Location Updated & Revived. itemId={}", itemId);
+            return;
+        }
+
+        // 2. 정상 (PASS) or 자동 해결 (AUTO_RESOLVED) -> 부활
+        // D1(PASS) 케이스: 관리자 사후 확인이 필요하지만(NON_BLOCKING), 작업자는 계속 진행(CONTINUE_PICKING)해야
+        // 함.
+        if ("PASS".equals(aiDecision) || "AUTO_RESOLVED".equals(reasonCode)) {
+            taskItemService.reviveItem(itemId);
+            log.info("[IssueService] Item Revived (PASS/AUTO). itemId={}", itemId);
+            return;
+        }
+
+        // 3. 파손 확정 (FAIL) -> 최종 완료 처리
+        // D8(FAIL) 케이스: 파손 확정이므로 아이템은 죽이고 다음으로 넘어감
+        if ("FAIL".equals(aiDecision) || "DAMAGED".equals(reasonCode)) {
+            taskItemService.markAsIssueFinal(itemId);
+            log.info("[IssueService] Item Finalized (FAIL/DAMAGED). itemId={}", itemId);
+            return;
+        }
+
+        // 4. 그 외 (NEED_CHECK, RETAKE, STOCK_EXISTS 등)
+        // -> ISSUE_PENDING 상태 유지 (관리자 연결 대기 or 재촬영 대기)
     }
 
     /**
@@ -576,6 +677,13 @@ public class IssueService {
      * 작업자 다음 행동 계산 (분기표 WorkerNextAction 컬럼 기준)
      */
     private WorkerNextAction calculateWorkerNextAction(IssueVO issue, AiJudgmentVO judgment) {
+        // [NEW] 아이템이 PENDING(부활됨) 상태인지 확인
+        // PENDING이면 무조건 하던 작업 계속 (CONTINUE_PICKING)
+        TaskItemVO item = taskItemService.getTaskItem(issue.getBatchTaskItemId());
+        if (item != null && "PENDING".equals(item.getStatus())) {
+            return WorkerNextAction.CONTINUE_PICKING;
+        }
+
         // [수정] BLOCKING 상태면 최우선으로 WAIT_ADMIN (재고있음 등 관리자 필수 케이스)
         // 관리자와 먼저 연결을 시도하고, 실패 시 NON_BLOCKING으로 바뀌면 그때 사진/다음단계 진행
         if ("BLOCKING".equals(issue.getIssueHandling())) {
@@ -593,13 +701,13 @@ public class IssueService {
             return WorkerNextAction.UPLOAD_REPORT_IMAGE;
         }
 
-        // MOVE_LOCATION 케이스
+        // MOVE_LOCATION 케이스 (이미 PENDING 체크에서 걸러지겠지만, 안전장치)
         if ("RESOLVED".equals(issue.getStatus()) && "MOVE_LOCATION".equals(issue.getReasonCode())) {
             return WorkerNextAction.MOVE_LOCATION;
         }
 
-        // 기본값: CONTINUE_PICKING
-        return WorkerNextAction.CONTINUE_PICKING;
+        // 기본값: NEXT_ITEM (아이템이 PENDING이 아니므로 죽은 상태)
+        return WorkerNextAction.NEXT_ITEM;
     }
 
     private boolean isImageRequiredButMissing(IssueVO issue) {
@@ -747,7 +855,13 @@ public class IssueService {
 
         // 4. Issue 업데이트
         issueMapper.updateIssueStatus(issue);
-        log.info("[IssueService] WebRTC CONNECTED processed. issueId={}, urgency=5, adminRequired=false",
+
+        // [NEW] WebRTC 연결 성공 -> 아이템 부활 (작업자는 하던거 계속)
+        // 관리자가 "이건 안돼"라고 하면 별도 API로 죽여야겠지만,
+        // 일단 연결되면 작업자는 "관리자가 보고 있으니 진행해"라는 의미로 CONTINUE 처리
+        taskItemService.reviveItem(issue.getBatchTaskItemId());
+
+        log.info("[IssueService] WebRTC CONNECTED processed & Item Revived. issueId={}, urgency=5, adminRequired=false",
                 issueId);
     }
 
@@ -760,7 +874,7 @@ public class IssueService {
      * 
      * @param issueId Issue ID
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handleWebRtcMissed(Long issueId) {
         log.info("[IssueService] handleWebRtcMissed started. issueId={}", issueId);
 
@@ -820,6 +934,16 @@ public class IssueService {
                         issueId, item.getProductId(), item.getLocationId());
             }
         }
+
+        // 7. [Fix] Task의 진행 상태(action_status)를 다음 아이템 준비 단계(SCAN_LOCATION)로 초기화
+        // 이슈 처리가 완료(또는 보류)되었으므로, 해당 아이템에 대한 수량 조절(ADJUST_QUANTITY) 상태를 해제해야 함.
+        TaskItemVO taskItemForReset = taskItemService.getTaskItem(issue.getBatchTaskItemId());
+        if (taskItemForReset != null) {
+            taskMapper.updateActionStatus(taskItemForReset.getBatchTaskId(),
+                    lookie.backend.domain.task.vo.TaskActionStatus.SCAN_LOCATION);
+            log.info("[IssueService] Task action status reset to SCAN_LOCATION. taskId={}",
+                    taskItemForReset.getBatchTaskId());
+        }
     }
 
     // ================================================================
@@ -873,6 +997,17 @@ public class IssueService {
         issueMapper.updateIssueStatus(issue);
         log.info("[IssueService] Admin confirmed. issueId={}, adminDecision={}",
                 issueId, adminDecision);
+
+        // [Fix] NORMAL 판정 시, 작업 진행 중(IN_PROGRESS)이면 아이템 상태 PENDING 복구
+        // 작업자가 해당 상품을 다시 집품할 수 있도록 되돌림
+        if (AdminDecision.NORMAL.equals(adminDecision)) {
+            TaskVO task = taskMapper.findById(issue.getBatchTaskId());
+            if (task != null && "IN_PROGRESS".equals(task.getStatus())) {
+                taskItemService.reviveItem(issue.getBatchTaskItemId());
+                log.info("[IssueService] TaskItem revived to PENDING. issueId={}, itemId={}", issueId,
+                        issue.getBatchTaskItemId());
+            }
+        }
 
         // 6. Inventory Event 기록 (DAMAGED 타입)
         if ("DAMAGED".equals(issue.getIssueType())) {

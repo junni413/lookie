@@ -129,8 +129,8 @@ public class TaskWorkflowFacade {
 
         TaskItemVO item = taskItemService.scanAndGetItem(taskId, task.getCurrentLocationId(), barcode);
 
-        // 스캔 시 기본 1개 증가 처리 (자동 완료 제거로 인해 DONE 여부 체크 불필요)
-        TaskItemVO updatedItem = taskItemService.updateQuantityAtomic(item.getBatchTaskItemId(), 1);
+        // 스캔 시 수량 자동 증가 없음 (0) - 사용자 수동 입력 유도
+        TaskItemVO updatedItem = taskItemService.updateQuantityAtomic(item.getBatchTaskItemId(), 0);
 
         // 스캔 후에는 무조건 수량 조정 단계로 간주하고 DB 상태도 동기화
         taskMapper.updateActionStatus(taskId, TaskActionStatus.ADJUST_QUANTITY);
@@ -218,6 +218,18 @@ public class TaskWorkflowFacade {
         // 현재 DB 상태에 맞는 NextAction 유추
         NextAction nextAction = resolveNextAction(fullTask.getActionStatus());
 
+        // [BugFix] 현재 지번과 다음 아이템의 지번이 다르면 SCAN_LOCATION으로 강제 변경
+        if (nextItem != null) {
+            Long currentLocId = fullTask.getCurrentLocationId();
+            Long nextLocId = nextItem.getLocationId();
+
+            // 현재 지번이 없거나(초기상태), 다음 아이템 지번과 다르면 -> 지번 스캔부터 해야 함
+            if (currentLocId == null || !currentLocId.equals(nextLocId)) {
+                nextAction = NextAction.SCAN_LOCATION;
+                // 필요하다면 DB의 action status도 동기화할 수 있으나, 조회 메서드이므로 응답만 보정
+            }
+        }
+
         return TaskResponse.of(fullTask, nextAction, nextItem);
     }
 
@@ -252,10 +264,14 @@ public class TaskWorkflowFacade {
     private NextAction determineNextActionAfterPick(TaskItemVO item) {
         log.debug("[TaskWorkflow] Determining next action for item {}. Status={}", item.getBatchTaskItemId(),
                 item.getStatus());
-        if ("DONE".equals(item.getStatus())) {
+
+        // [Fix] DONE 뿐만 아니라 이슈(ISSUE/ISSUE_PENDING) 상태도 해당 아이템 처리는 끝난 것으로 간주
+        if ("DONE".equals(item.getStatus()) || "ISSUE".equals(item.getStatus())
+                || "ISSUE_PENDING".equals(item.getStatus())) {
             int totalPending = taskItemService.countPendingItems(item.getBatchTaskId());
-            log.info("[TaskWorkflow] Item DONE. Total pending items for task {}: {}", item.getBatchTaskId(),
-                    totalPending);
+            log.info("[TaskWorkflow] Item Finished ({}). Total pending items for task {}: {}",
+                    item.getStatus(), item.getBatchTaskId(), totalPending);
+
             if (totalPending == 0) {
                 return NextAction.COMPLETE_TASK;
             }
