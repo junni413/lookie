@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { manageService } from "@/services/manageService";
+import { rebalanceService } from "@/services/rebalance.api";
+import type { RebalanceRecommendation } from "@/services/rebalance.api";
 import type { DB_Worker, ZoneLayout, ZoneStat } from "@/types/db";
 import ZoneSummaryCard from "./components/map/ZoneSummaryCard";
 import ZoneMapModal from "./components/map/ZoneMapModal";
 import WorkerList from "./components/map/WorkerList";
+import RebalanceExecuteModal from "./components/map/RebalanceExecuteModal";
 import { cn } from "@/utils/cn";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
+import { Sparkles, Loader2 } from "lucide-react";
 
 export default function Map() {
     const [searchParams] = useSearchParams();
@@ -22,6 +26,12 @@ export default function Map() {
     const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
     const [isWorkerPanelOpen, setIsWorkerPanelOpen] = useState(false);
     const [selectedLayout, setSelectedLayout] = useState<ZoneLayout | null>(null);
+
+    // Rebalance State
+    const [isRebalanceModalOpen, setIsRebalanceModalOpen] = useState(false);
+    const [recommendation, setRecommendation] = useState<RebalanceRecommendation | null>(null);
+    const [isRecommending, setIsRecommending] = useState(false);
+    const [isApplyingRebalance, setIsApplyingRebalance] = useState(false);
     useEffect(() => {
         loadData();
     }, []);
@@ -117,6 +127,46 @@ export default function Map() {
         }
     };
 
+    // 4. AI Rebalance Handlers
+    const handleRecommendRebalance = async () => {
+        setIsRecommending(true);
+        try {
+            const data = await rebalanceService.recommend();
+            if (data) {
+                setRecommendation(data);
+                setIsRebalanceModalOpen(true);
+            } else {
+                alert("현재 추천 가능한 재배치 옵션이 없습니다.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("AI 추천을 받아오는데 실패했습니다.");
+        } finally {
+            setIsRecommending(false);
+        }
+    };
+
+    const handleApplyRebalance = async () => {
+        if (!recommendation) return;
+        setIsApplyingRebalance(true);
+        try {
+            const success = await rebalanceService.apply(recommendation.moves, "AI Recommendation Applied");
+            if (success) {
+                setIsRebalanceModalOpen(false);
+                setRecommendation(null);
+                // Refresh data
+                await loadData();
+            } else {
+                alert("재배치 적용에 실패했습니다.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("재배치 적용 중 오류가 발생했습니다.");
+        } finally {
+            setIsApplyingRebalance(false);
+        }
+    };
+
     if (loading && stats.length === 0) {
         return <div className="h-full flex items-center justify-center text-slate-500">데이터를 불러오는 중입니다...</div>;
     }
@@ -132,7 +182,21 @@ export default function Map() {
             <AdminPageHeader
                 title="현장 관제 맵"
                 description="공장 전체의 구역 배치와 작업자 현황을 시각적으로 모니터링합니다."
-            />
+            >
+                <button
+                    onClick={handleRecommendRebalance}
+                    disabled={isRecommending || loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-md shadow-indigo-200 transition-all active:scale-95 disabled:opacity-70"
+                >
+                    {isRecommending ? (
+                        <Loader2 className="animate-spin" size={18} />
+                    ) : (
+                        <Sparkles size={18} />
+                    )}
+                    AI 재배치 추천
+                </button>
+            </AdminPageHeader>
+
             <div className="flex-1 flex overflow-hidden min-h-0 gap-4 h-full pb-6 px-8">
                 {/* Left Panel: Zone Cards Grid - Resizes when panel opens */}
                 <div className={cn(
@@ -188,6 +252,16 @@ export default function Map() {
                 zoneName={selectedZoneName}
                 layout={selectedLayout}
                 workers={workers}
+            />
+
+            {/* AI Rebalance Modal (New) */}
+            <RebalanceExecuteModal
+                isOpen={isRebalanceModalOpen}
+                onClose={() => setIsRebalanceModalOpen(false)}
+                recommendation={recommendation}
+                workers={workers}
+                onApply={handleApplyRebalance}
+                isApplying={isApplyingRebalance}
             />
 
             {/* 스크롤바 숨김 스타일 */}
