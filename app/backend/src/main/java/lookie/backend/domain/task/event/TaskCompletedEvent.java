@@ -13,6 +13,6 @@ public class TaskCompletedEvent {
     private final Long taskId; // 완료된 작업 Id
     private final Long workerId; // 수행 작업자 Id
     private final Long zoneId; // 작업 구역 Id
-
+    private final Long batchId; // 작업 배치 Id
 
 }

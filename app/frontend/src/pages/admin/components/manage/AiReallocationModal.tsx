@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Wand2 } from "lucide-react";
+import { X, Wand2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { DB_Worker, ZoneStat } from "@/types/db";
 import ManageZoneColumn from "./ManageZoneColumn";
+import { rebalanceService } from "@/services/rebalance.api";
 
 interface AiReallocationModalProps {
     isOpen: boolean;
@@ -22,18 +23,44 @@ export default function AiReallocationModal({
     zoneStats
 }: AiReallocationModalProps) {
     const [simulatedWorkers, setSimulatedWorkers] = useState<DB_Worker[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
 
-    // Initialize simulation when modal opens
+    // Initialize simulation with Real AI when modal opens
     useEffect(() => {
-        if (isOpen) {
-            // Mock AI: Randomly shuffle simple for demo
-            // In real app, fetch "AI proposed" state from API
-            const scrambled = currentWorkers.map(w => ({
-                ...w,
-                currentZoneId: (Math.floor(Math.random() * 4) + 1)
-            }));
-            setSimulatedWorkers(scrambled);
-        }
+        const fetchRecommendation = async () => {
+            if (!isOpen) return;
+
+            setIsLoading(true);
+            try {
+                // Fetch AI Recommendation
+                const recommendation = await rebalanceService.recommend();
+
+                if (recommendation && recommendation.moves) {
+                    // Apply moves to create simulated state
+                    const newWorkers = currentWorkers.map(worker => {
+                        const move = recommendation.moves.find(m => m.worker_id === worker.userId);
+                        if (move) {
+                            // Apply move (change zone)
+                            return { ...worker, currentZoneId: move.to_zone };
+                        }
+                        // Keep current zone if no move suggested
+                        return worker;
+                    });
+                    setSimulatedWorkers(newWorkers);
+                } else {
+                    // No recommendation or empty? Keep as is.
+                    setSimulatedWorkers(currentWorkers);
+                }
+            } catch (err) {
+                console.error("AI Rebalance Failed", err);
+                // On error, fallback to current state (safe)
+                setSimulatedWorkers(currentWorkers);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchRecommendation();
     }, [isOpen, currentWorkers]);
 
     const handleDrop = (workerId: number, targetZoneId: number) => {
@@ -54,11 +81,13 @@ export default function AiReallocationModal({
                 <div className="flex items-center justify-between p-6 bg-white border-b shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                            <Wand2 size={24} />
+                            {isLoading ? <Loader2 className="animate-spin" size={24} /> : <Wand2 size={24} />}
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-slate-900">AI 추천 재배치</h2>
-                            <p className="text-sm text-slate-500">AI가 제안한 배치를 확인하고 수정할 수 있습니다.</p>
+                            <p className="text-sm text-slate-500">
+                                {isLoading ? "AI가 최적의 배치를 분석하고 있습니다..." : "AI가 제안한 배치를 확인하고 수정할 수 있습니다."}
+                            </p>
                         </div>
                     </div>
                     <Button variant="ghost" size="icon" onClick={onClose}>
@@ -68,26 +97,34 @@ export default function AiReallocationModal({
 
                 {/* Simulation Area */}
                 <div className="flex-1 overflow-x-auto p-6 bg-slate-100/50">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-full min-w-[1000px] lg:min-w-0">
-                        {zoneStats.map(stat => (
-                            <ManageZoneColumn
-                                key={stat.zoneId}
-                                zoneId={stat.zoneId}
-                                zoneName={stat.name}
-                                // Pass specific subset of simulated workers
-                                workers={simulatedWorkers.filter(w => w.currentZoneId === stat.zoneId)}
-                                onDrop={handleDrop}
-                                highlightWorkerIds={simulatedWorkers
-                                    .filter(sim => {
-                                        const orig = currentWorkers.find(c => c.userId === sim.userId);
-                                        // Highlight if zone changed AND not unassigned (optional check)
-                                        return orig && orig.currentZoneId !== sim.currentZoneId;
-                                    })
-                                    .map(w => w.userId)
-                                }
-                            />
-                        ))}
-                    </div>
+                    {isLoading ? (
+                        <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-4">
+                            <Loader2 className="animate-spin" size={48} />
+                            <p>AI 분석 중...</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-full min-w-[1000px] lg:min-w-0">
+                            {zoneStats.map(stat => (
+                                <ManageZoneColumn
+                                    key={stat.zoneId}
+                                    zoneId={stat.zoneId}
+                                    zoneName={stat.name}
+                                    // Pass specific subset of simulated workers
+                                    workers={simulatedWorkers.filter(w => w.currentZoneId === stat.zoneId)}
+                                    // Disable drop while loading or if wanted
+                                    onDrop={handleDrop}
+                                    highlightWorkerIds={simulatedWorkers
+                                        .filter(sim => {
+                                            const orig = currentWorkers.find(c => c.userId === sim.userId);
+                                            // Highlight if zone changed
+                                            return orig && orig.currentZoneId !== sim.currentZoneId;
+                                        })
+                                        .map(w => w.userId)
+                                    }
+                                />
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer */}
@@ -98,6 +135,7 @@ export default function AiReallocationModal({
                     <Button
                         className="bg-primary hover:bg-primary/90 text-white gap-2 px-6"
                         onClick={() => onApply(simulatedWorkers)}
+                        disabled={isLoading}
                     >
                         <Wand2 size={16} />
                         AI 추천 재배치 적용하기

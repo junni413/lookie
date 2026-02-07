@@ -108,10 +108,17 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
  * GET /api/control/zones
  */
 export async function getZones(): Promise<AdminZoneResponse[]> {
-    const response = await request<ApiResponse<AdminZoneResponse[]>>("/api/control/zones", {
+    const response = await request<ApiResponse<any[]>>("/api/control/zones", {
         method: "GET",
     });
-    return response.data || [];
+    const rawData = response.data || [];
+    return rawData.map(item => ({
+        zoneId: item.zoneId,
+        name: item.zoneName, // Backend sends 'zoneName'
+        status: item.status,
+        workerCount: item.workerCount,
+        workRate: item.progressRate || 0 // Map backend 'progressRate' to frontend 'workRate'
+    }));
 }
 
 /**

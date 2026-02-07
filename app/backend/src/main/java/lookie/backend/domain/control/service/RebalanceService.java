@@ -1,0 +1,87 @@
+package lookie.backend.domain.control.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.batch.mapper.BatchMapper;
+import lookie.backend.domain.batch.vo.BatchVO;
+import lookie.backend.domain.control.dto.RebalanceApplyRequest;
+import lookie.backend.domain.control.mapper.ControlMapper;
+import lookie.backend.domain.control.mapper.RebalanceMapper;
+import lookie.backend.domain.control.vo.RebalanceSnapshotVO;
+import lookie.backend.infra.ai.AiRebalanceClient;
+import lookie.backend.infra.ai.dto.RebalanceRecommendResponse;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class RebalanceService {
+
+    private final BatchMapper batchMapper;
+    private final RebalanceMapper rebalanceMapper;
+    private final ControlMapper controlMapper;
+    private final AiRebalanceClient aiRebalanceClient;
+
+    /**
+     * AI 재배치 추천 조회
+     * 1. 현재 진행 중인 배치 조회
+     * 2. 해당 배치의 최신 스냅샷 조회
+     * 3. AI 서버에 추천 요청
+     */
+    @Transactional(readOnly = true)
+    public RebalanceRecommendResponse recommend() {
+        // 1. Loading Current Batch
+        BatchVO currentBatch = batchMapper.findCurrentInProgress();
+        if (currentBatch == null) {
+            log.warn("[RebalanceService] No active batch found. Cannot recommend rebalance.");
+            // 배치가 없으면 빈 응답 또는 에러 처리 (여기서는 빈 응답 반환)
+            return new RebalanceRecommendResponse();
+        }
+
+        // 2. Loading Latest Snapshots
+        List<RebalanceSnapshotVO> snapshots = rebalanceMapper.selectLatestSnapshots(currentBatch.getBatchId());
+        if (snapshots.isEmpty()) {
+            log.warn("[RebalanceService] No snapshots found for batchId={}", currentBatch.getBatchId());
+            return new RebalanceRecommendResponse();
+        }
+
+        // 3. Request to AI Server
+        return aiRebalanceClient.requestRecommend(snapshots);
+    }
+
+    /**
+     * AI 재배치 적용 (Apply)
+     * - 각 이동 요청에 대해 DB 상태 갱신 (TEMP / AI)
+     * - 트랜잭션 필수 (전체 성공 or 전체 실패)
+     */
+    @Transactional
+    public void apply(RebalanceApplyRequest request) {
+        if (request.getMoves() == null || request.getMoves().isEmpty()) {
+            return;
+        }
+
+        String reason = (request.getReason() == null || request.getReason().isEmpty())
+                ? "AI Rebalance Applied"
+                : request.getReason();
+
+        for (RebalanceApplyRequest.ApplyMove move : request.getMoves()) {
+            Long workerId = move.getWorkerId();
+            Long toZone = move.getToZone();
+
+            // 1. 기존 배정 종료
+            controlMapper.closeActiveAssignment(workerId);
+
+            // 2. 사용자 배정 정보 업데이트 (System of Record: toZone으로 갱신)
+            controlMapper.updateUserAssignedZone(workerId, toZone);
+
+            // 3. 새 배정 이력 추가 (TEMP / AI)
+            // 기존 insertAssignmentHistory는 BASE/ADMIN 하드코딩이므로 사용 불가
+            controlMapper.insertAiAssignmentHistory(workerId, toZone, "TEMP", "AI", reason);
+        }
+
+        log.info("[RebalanceService] Applied {} moves. Reason={}", request.getMoves().size(), reason);
+    }
+}

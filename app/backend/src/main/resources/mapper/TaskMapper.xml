@@ -117,4 +117,12 @@
             batch_task_id = #{batchTaskId}
             AND status = 'IN_PROGRESS'
     </update>
+
+    <!-- [조회] 배치 내 진행 중인 Task 개수 조회 -->
+    <select id="countInProgressTasksByBatch" resultType="int">
+        SELECT COUNT(*)
+        FROM batch_tasks
+        WHERE batch_id = #{batchId}
+          AND status != 'COMPLETED'
+    </select>
 </mapper>

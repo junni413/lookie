@@ -25,6 +25,7 @@ public class TaskItemService {
     private final TaskItemMapper taskItemMapper;
     private final ProductMapper productMapper;
     private final InventoryService inventoryService;
+    // Event publishing moved to Facade layer
 
     /**
      * 상품 바코드 스캔 및 매칭되는 아이템 조회
@@ -66,8 +67,10 @@ public class TaskItemService {
     public TaskItemVO completeItemManual(Long itemId) {
         TaskItemVO item = taskItemMapper.findById(itemId);
 
-        // 1. 이미 완료된 경우 체크
-        if ("DONE".equals(item.getStatus())) {
+        // 1. 이미 완료되거나 이슈 상태인 경우 체크 (건너뛰기/Pass)
+        if ("DONE".equals(item.getStatus()) ||
+                "ISSUE".equals(item.getStatus()) ||
+                "ISSUE_PENDING".equals(item.getStatus())) {
             return item;
         }
 
@@ -81,14 +84,17 @@ public class TaskItemService {
 
         // 4. 재고 차감 이벤트 발행 (정상 집품 확정)
         inventoryService.recordEvent(
-            "PICK_NORMAL",
-            item.getProductId(),
-            item.getLocationId(),
-            -item.getRequiredQty(), // 음수 = 재고 감소
-            "TASK_ITEM",
-            itemId,
-            null // workerId는 TaskWorkflowFacade에서 얻을 수 있지만, 여기서는 null
+                "PICK_NORMAL",
+                item.getProductId(),
+                item.getLocationId(),
+                -item.getRequiredQty(), // 음수 = 재고 감소
+                "TASK_ITEM",
+                itemId,
+                null // workerId는 TaskWorkflowFacade에서 얻을 수 있지만, 여기서는 null
         );
+
+        // 5. [Event] 아이템 완료 이벤트 발행 (Redis 집계용)
+        // 5. [Event] Redis update logic moved to Facade
 
         return taskItemMapper.findById(itemId);
     }
@@ -110,12 +116,73 @@ public class TaskItemService {
     }
 
     /**
-     * [이슈] 아이템 상태를 ISSUE로 변경
-     * - 작업 흐름상 완료로 간주됨 (DONE과 동일)
+     * [이슈] 아이템 상태를 ISSUE_PENDING(보류)으로 변경
+     * - 작업 흐름상 다음 아이템으로 넘어가도록 유도 (할일 카운트에서 제외됨)
+     * - 하지만 pickedQty는 유지하여 나중에 복귀 가능
      */
     @Transactional
-    public void markAsIssue(Long itemId) {
+    public void markAsIssuePending(Long itemId) {
+        taskItemMapper.updateStatus(itemId, "ISSUE_PENDING");
+        // NOTE: ISSUE_PENDING은 가완료 상태이므로 TaskItemCompletedEvent를 발행하여
+        // Redis 집계에 반영하고, 프론트가 다음 아이템으로 넘어가게 해야 함.
+        TaskItemVO item = taskItemMapper.findById(itemId);
+        if (item != null) {
+            // Event will be published by Facade layer if needed
+        }
+
+    }
+
+    /**
+     * [이슈] 아이템 상태를 ISSUE(최종 완료)로 확정
+     * - 파손 확정, 재고 없음 등으로 완전히 죽은 상태
+     */
+    @Transactional
+    public void markAsIssueFinal(Long itemId) {
         taskItemMapper.updateStatus(itemId, "ISSUE");
+
+        // [Inventory] 파손 확정 시 재고 차감 (결손 처리)
+        // picked_qty와 무관하게 할당된 요구 수량 전체를 파손으로 간주하고 차감
+        TaskItemVO item = taskItemMapper.findById(itemId);
+        if (item != null) {
+            inventoryService.recordEvent(
+                    "PICK_DAMAGED_FINAL",
+                    item.getProductId(),
+                    item.getLocationId(),
+                    -item.getRequiredQty(),
+                    "TASK_ITEM",
+                    itemId,
+                    null // 시스템/관리자 확정이므로 workerId는 생략
+            );
+        }
+
+        // 이미 PENDING -> ISSUE_PENDING 갈 때 이벤트를 발행했으므로
+        // 여기서는 중복 발행할 필요가 있는지 체크 필요.
+        // 현재 로직상 ISSUE_PENDING도 '완료' 취급이므로 추가 발행 불필요
+    }
+
+    /**
+     * [이슈] 아이템 부활 (정상 복귀)
+     * - ISSUE_PENDING -> PENDING
+     * - pickedQty 등은 그대로 유지됨
+     */
+    @Transactional
+    public void reviveItem(Long itemId) {
+        taskItemMapper.updateStatus(itemId, "PENDING");
+
+        // Redis 집계 정합성을 위해 Reverted 이벤트 발행 (-1 처리)
+        TaskItemVO item = taskItemMapper.findById(itemId);
+        if (item != null) {
+            // Reverted Event logic should be also moved if needed
+        }
+
+    }
+
+    /**
+     * [이슈] 지번 이동 처리
+     */
+    @Transactional
+    public void updateItemLocation(Long itemId, Long newLocationId) {
+        taskItemMapper.updateLocationOfItem(itemId, newLocationId);
     }
 
     /**

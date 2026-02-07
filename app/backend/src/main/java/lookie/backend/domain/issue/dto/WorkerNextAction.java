@@ -38,5 +38,11 @@ public enum WorkerNextAction {
      * - OUT_OF_STOCK + MOVE_LOCATION 케이스
      * - 새 지번으로 이동 후 작업 재개
      */
-    MOVE_LOCATION
+    MOVE_LOCATION,
+
+    /**
+     * 다음 아이템 진행
+     * - 아이템이 파손 확정 등으로 완료(ISSUE) 처리된 경우
+     */
+    NEXT_ITEM
 }
