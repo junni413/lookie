@@ -89,7 +89,7 @@ public class TaskWorkflowService {
             throw new LocationNotFoundException();
         }
 
-        TaskItemVO nextItem = findNextPickableItem(taskId);
+        TaskItemVO nextItem = findNextPickableItem(task);
         if (nextItem == null) {
             log.warn("[TaskWorkflowService] scanLocation failed - No pickable item found for taskId={}", taskId);
             throw new NoPickableItemException();
@@ -121,7 +121,8 @@ public class TaskWorkflowService {
 
         assertSingleInProgress(taskId);
 
-        TaskItemVO nextItem = findNextPickableItem(taskId);
+        // [수정] Task 객체를 전달하여 검증
+        TaskItemVO nextItem = findNextPickableItem(task);
         if (nextItem == null) {
             throw new NoPickableItemException();
         }
@@ -203,7 +204,7 @@ public class TaskWorkflowService {
         // [FSM 보강] 이미 DONE이거나 ISSUE_PENDING(패스)인 경우 로직 스킵하고 다음 액션 계산
         if ("DONE".equals(item.getStatus()) || "ISSUE_PENDING".equals(item.getStatus())) {
             log.info("[TaskWorkflowService] Item already processed ({}). Calculating next action.", item.getStatus());
-            TaskItemVO nextItem = findNextPickableItem(taskId);
+            TaskItemVO nextItem = findNextPickableItem(task);
             lookie.backend.domain.task.constant.NextAction nextAction = (nextItem == null)
                     ? lookie.backend.domain.task.constant.NextAction.COMPLETE_TASK
                     : lookie.backend.domain.task.constant.NextAction.SCAN_LOCATION;
@@ -237,7 +238,7 @@ public class TaskWorkflowService {
                 taskItemId,
                 workerId);
 
-        TaskItemVO nextItem = findNextPickableItem(taskId);
+        TaskItemVO nextItem = findNextPickableItem(task);
         lookie.backend.domain.task.constant.NextAction nextAction;
 
         if (nextItem == null) {
@@ -290,8 +291,9 @@ public class TaskWorkflowService {
 
     // ========== 유틸리티 메서드 ==========
 
-    private TaskItemVO findNextPickableItem(Long taskId) {
-        return taskItemMapper.findNextItem(taskId);
+    // [수정] Task 정보(현재 위치)를 기반으로 다음 아이템 결정
+    private TaskItemVO findNextPickableItem(TaskVO task) {
+        return taskItemMapper.findNextItem(task.getBatchTaskId(), task.getCurrentLocationId());
     }
 
     private void assertSingleInProgress(Long taskId) {

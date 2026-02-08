@@ -111,8 +111,14 @@ export default function WorkDetail() {
           const srvNextItem = taskRes.data.nextItem as any;
 
           if (state?.currentIndex !== undefined) {
-            targetIdx = Number(state.currentIndex);
-          } else if (srvNextItem?.batchTaskItemId) {
+            // ✅ [수정] 사용자가 이미 특정 인덱스를 보고 있었다면 우선 복원 (납치 방지)
+            const idx = Number(state.currentIndex);
+            if (idx >= 0 && idx < response.data.length && response.data[idx].status !== "DONE") {
+              targetIdx = idx;
+            }
+          }
+
+          if (targetIdx === -1 && srvNextItem?.batchTaskItemId) {
             targetIdx = response.data.findIndex((it) => it.batchTaskItemId === srvNextItem.batchTaskItemId);
           }
 
@@ -143,42 +149,8 @@ export default function WorkDetail() {
 
   const currentItem = items[currentIndex];
 
-  // ✅ 각 아이템별 워크플로우 상태 추적 (itemId -> NextAction)
-  const itemStatesRef = useRef<Map<number, NextAction>>(new Map());
-
-  // ✅ 현재 아이템이 바뀔 때 nextAction 저장/복원
-  useEffect(() => {
-    if (!items[currentIndex] || loading) return;
-
-    // ✅ 복구(Hydration) 중에는 서버가 준 상태를 유지해야 하므로 로직 건너뜀
-    if (!processedHydrationRef.current) return;
-
-    const item = items[currentIndex];
-    const indexChanged = prevIndexRef.current !== currentIndex;
-    prevIndexRef.current = currentIndex;
-
-    // 1) 아이템 완료/이슈 상태면 다음 단계로 강제 설정
-    if (item.status === "DONE" || item.status === "ISSUE" || item.status === "ISSUE_PENDING") {
-      setNextAction("NEXT_ITEM");
-      return;
-    }
-
-    // 2) 신규 진입이거나 수동으로 아이템을 바꿨으면 안전을 위해 지번 스캔부터 시작
-    if (indexChanged && processedHydrationRef.current) {
-      console.log("🔄 Manual Index change detected - resetting to SCAN_LOCATION for safety");
-      setNextAction("SCAN_LOCATION");
-      return;
-    }
-  }, [currentIndex, items, loading]);
-
-
-  // ✅ nextAction이 바뀔 때 현재 아이템 상태 저장
-  useEffect(() => {
-    const item = items[currentIndex];
-    if (item && item.status !== "DONE" && nextAction !== "NEXT_ITEM") {
-      itemStatesRef.current.set(item.batchTaskItemId, nextAction);
-    }
-  }, [nextAction, currentIndex, items]);
+  // ✅ [수정] 복잡한 로컬 상태 추적 및 리셋 로직 삭제
+  // 프론트엔드에서 임의로 단계를 리셋하지 않고, 오직 백엔드가 내려주는 상태(nextAction)를 따릅니다.
 
   const openLocationScanner = () => {
     setScanType("LOCATION");
@@ -210,7 +182,6 @@ export default function WorkDetail() {
           setScannerOpen(false);
           const res = await taskService.scanLocation(currentTask.batchTaskId, barcode);
           if (res.success && res.data) {
-            itemStatesRef.current.set(currentItem.batchTaskItemId, res.data.nextAction);
             setNextAction(res.data.nextAction);
             if (res.data.payload) {
               setCurrentTask(res.data.payload as any);
@@ -244,7 +215,6 @@ export default function WorkDetail() {
         setScannerOpen(false);
         const res = await taskService.scanItem(currentTask.batchTaskId, barcode);
         if (res.success && res.data) {
-          itemStatesRef.current.set(currentItem.batchTaskItemId, res.data.nextAction);
           setNextAction(res.data.nextAction);
           const updatedPayload = res.data.payload;
           setItems(itms => itms.map((it) => it.batchTaskItemId === updatedPayload.batchTaskItemId ? updatedPayload : it));

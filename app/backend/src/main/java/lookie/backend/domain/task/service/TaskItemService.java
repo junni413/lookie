@@ -113,7 +113,8 @@ public class TaskItemService {
     }
 
     public TaskItemVO getNextItem(Long taskId) {
-        return taskItemMapper.findNextItem(taskId);
+        // TaskItemService는 단순 조회가 많으므로 현재 위치 고려 없이 조회 (null 전달)
+        return taskItemMapper.findNextItem(taskId, null);
     }
 
     public List<TaskItemVO> getAllItems(Long taskId) {

@@ -218,7 +218,8 @@ public class TaskController {
      */
     private TaskWorkScreenResponse buildWorkScreen(Long taskId) {
         TaskVO task = taskMapper.findById(taskId);
-        TaskItemVO nextItem = taskItemMapper.findNextItem(taskId);
+        // [수정] 현재 위치 정보 함께 전달하여 다음 아이템 결정 시 우선순위 부여
+        TaskItemVO nextItem = taskItemMapper.findNextItem(taskId, task.getCurrentLocationId());
 
         return TaskWorkScreenResponse.builder()
                 .task(task)

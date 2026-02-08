@@ -437,8 +437,20 @@ public class IssueServiceNew {
         if ("PASS".equals(decision)) {
             issue.setUrgency(4); // 신뢰도 높음 -> 낮은 우선순위
         } else if ("NEED_CHECK".equals(decision)) {
-            issue.setUrgency(1); // 관리자 확인 필수 -> 높은 우선순위
-            issue.setIssueHandling("BLOCKING");
+            issue.setUrgency(1); // 관리자 확인 필요 -> 높은 우선순위
+
+            // 재고 부족(OOS)의 경우 Ghost Stock만 BLOCKING
+            if ("OUT_OF_STOCK".equals(issue.getIssueType())) {
+                if ("STOCK_EXISTS".equals(reasonCode)) {
+                    issue.setIssueHandling("BLOCKING");
+                } else {
+                    issue.setIssueHandling("NON_BLOCKING");
+                    issue.setAdminRequired(false);
+                }
+            } else {
+                // 파손 등 나머지 NEED_CHECK는 기본 BLOCKING
+                issue.setIssueHandling("BLOCKING");
+            }
         } else if ("RETAKE".equals(decision)) {
             issue.setUrgency(0); // 관제 대상 제외
             issue.setIssueHandling("BLOCKING");
@@ -563,7 +575,8 @@ public class IssueServiceNew {
 
     private IssueNextAction calculateWorkerNextAction(IssueVO issue, AiJudgmentVO judgment) {
         TaskItemVO item = taskItemMapper.findById(issue.getBatchTaskItemId());
-        if (item != null && "PENDING".equals(item.getStatus())) {
+        // 이미 해결되었거나(DONE) 다음 아이템으로 넘어갈 준비가 된 경우
+        if (item != null && ("PENDING".equals(item.getStatus()) || "DONE".equals(item.getStatus()))) {
             return IssueNextAction.NEXT_ITEM;
         }
 
@@ -574,13 +587,24 @@ public class IssueServiceNew {
         }
 
         if ("NEED_CHECK".equals(aiDecision)) {
-            if ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null) {
-                return IssueNextAction.WAIT_ADMIN;
+            // 1. 파손(DAMAGED)의 경우: 관리자 호출이 기본
+            if ("DAMAGED".equals(issue.getIssueType())) {
+                if ("MISSED".equals(issue.getWebrtcStatus())) {
+                    return IssueNextAction.NEXT_ITEM;
+                }
+                return IssueNextAction.WAIT_ADMIN; // NONE, WAITING, CONNECTED인 동안 차단
             }
-            if ("MISSED".equals(issue.getWebrtcStatus())) {
-                // 관리자 연결 실패 시 사진 촬영 요구 또는 다음 아이템 진행
-                return "OUT_OF_STOCK".equals(issue.getIssueType()) ? IssueNextAction.WAIT_REPORT_IMAGE
-                        : IssueNextAction.NEXT_ITEM;
+
+            // 2. 재고 부족(OUT_OF_STOCK)의 경우: Ghost Stock(STOCK_EXISTS)만 필수 확인
+            if ("OUT_OF_STOCK".equals(issue.getIssueType())) {
+                if ("STOCK_EXISTS".equals(issue.getReasonCode())) {
+                    if ("MISSED".equals(issue.getWebrtcStatus())) {
+                        return IssueNextAction.WAIT_REPORT_IMAGE;
+                    }
+                    return IssueNextAction.WAIT_ADMIN; // NONE, WAITING, CONNECTED인 동안 차단
+                }
+                // Ghost Stock이 아닌 OOS 건은 차단 해제 (NEXT_ITEM)
+                return IssueNextAction.NEXT_ITEM;
             }
         }
 
@@ -593,8 +617,15 @@ public class IssueServiceNew {
 
     private List<String> generateAvailableActions(IssueVO issue) {
         List<String> actions = new ArrayList<>();
-        if ("NEED_CHECK".equals(issue.getAiDecision())
-                && ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null)) {
+
+        // 관리자 연결 버튼 노출 조건:
+        // 1. 파손(DAMAGED)이면서 NEED_CHECK인 경우
+        // 2. 재고 부족(OUT_OF_STOCK)이면서 Ghost Stock(STOCK_EXISTS)으로 판정된 NEED_CHECK인 경우
+        boolean isAdminCallMandatory = "NEED_CHECK".equals(issue.getAiDecision())
+                && ("DAMAGED".equals(issue.getIssueType()) ||
+                        ("OUT_OF_STOCK".equals(issue.getIssueType()) && "STOCK_EXISTS".equals(issue.getReasonCode())));
+
+        if (isAdminCallMandatory && ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null)) {
             actions.add("CONNECT_ADMIN");
         }
         return actions;
@@ -621,7 +652,11 @@ public class IssueServiceNew {
     }
 
     private TaskItemVO findNextPickableItem(Long taskId) {
-        return taskItemMapper.findNextItem(taskId);
+        // [수정] Task 조회하여 현재 위치 정보 획득
+        TaskVO task = taskMapper.findById(taskId);
+        if (task == null)
+            return null;
+        return taskItemMapper.findNextItem(taskId, task.getCurrentLocationId());
     }
 
     private void assertTaskOwnership(TaskVO task, Long workerId) {

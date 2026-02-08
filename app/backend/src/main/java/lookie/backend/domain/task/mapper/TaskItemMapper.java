@@ -40,8 +40,10 @@ public interface TaskItemMapper {
         int updateLocationOfItem(@Param("batchTaskItemId") Long batchTaskItemId,
                         @Param("newLocationId") Long newLocationId);
 
-        // [조회] 다음 수행할 PENDING 아이템 조회
-        TaskItemVO findNextItem(@Param("batchTaskId") Long batchTaskId);
+        // [조회] 다음 수행할 PENDING 아이템 조회 (현재 위치 우선)
+        TaskItemVO findNextItem(
+                        @Param("batchTaskId") Long batchTaskId,
+                        @Param("currentLocationId") Long currentLocationId);
 
         // [목록] 작업 전체 아이템 목록 조회
         List<TaskItemVO> findAllByTaskId(@Param("batchTaskId") Long batchTaskId);

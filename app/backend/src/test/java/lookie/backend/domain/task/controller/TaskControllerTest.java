@@ -61,7 +61,7 @@ class TaskControllerTest {
                 when(userMapper.findById(workerId)).thenReturn(java.util.Optional.empty());
                 when(taskMapper.findInProgressByWorkerId(workerId)).thenReturn(task);
                 when(taskMapper.findById(1L)).thenReturn(task);
-                when(taskItemMapper.findNextItem(1L)).thenReturn(null);
+                when(taskItemMapper.findNextItem(eq(1L), any())).thenReturn(null);
 
                 // when & then
                 mockMvc.perform(post("/api/tasks")
@@ -85,7 +85,7 @@ class TaskControllerTest {
                 task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.SCAN_LOCATION);
 
                 when(taskMapper.findById(taskId)).thenReturn(task);
-                when(taskItemMapper.findNextItem(taskId)).thenReturn(null);
+                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(null);
 
                 ToteScanRequest request = new ToteScanRequest();
                 request.setBarcode(barcode);
@@ -113,7 +113,7 @@ class TaskControllerTest {
                 task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.SCAN_ITEM);
 
                 when(taskMapper.findById(taskId)).thenReturn(task);
-                when(taskItemMapper.findNextItem(taskId)).thenReturn(null);
+                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(null);
 
                 LocationScanRequest request = new LocationScanRequest();
                 request.setLocationCode(locationCode);
@@ -149,7 +149,7 @@ class TaskControllerTest {
                 when(taskWorkflowService.scanItem(any(), eq(taskId), eq(barcode)))
                                 .thenReturn(serviceResponse);
                 when(taskMapper.findById(taskId)).thenReturn(task);
-                when(taskItemMapper.findNextItem(taskId)).thenReturn(item);
+                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(item);
 
                 ItemScanRequest request = new ItemScanRequest();
                 request.setBarcode(barcode);
@@ -189,7 +189,7 @@ class TaskControllerTest {
                 when(taskWorkflowService.adjustQuantity(any(), eq(taskId), eq(itemId), eq(increment)))
                                 .thenReturn(serviceResponse);
                 when(taskMapper.findById(taskId)).thenReturn(task);
-                when(taskItemMapper.findNextItem(taskId)).thenReturn(null);
+                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(null);
 
                 QuantityUpdateRequest request = new QuantityUpdateRequest();
                 request.setIncrement(increment);
