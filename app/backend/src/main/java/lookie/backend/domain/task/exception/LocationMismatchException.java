@@ -1,11 +1,10 @@
 package lookie.backend.domain.task.exception;
 
-public class LocationMismatchException extends RuntimeException {
-    public LocationMismatchException() {
-        super("Location mismatch");
-    }
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 
-    public LocationMismatchException(String message) {
-        super(message);
+public class LocationMismatchException extends ApiException {
+    public LocationMismatchException() {
+        super(ErrorCode.TASK_LOCATION_MISMATCH);
     }
 }

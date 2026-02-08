@@ -1,11 +1,10 @@
 package lookie.backend.domain.task.exception;
 
-public class ToteNotFoundException extends RuntimeException {
-    public ToteNotFoundException() {
-        super("Tote not found");
-    }
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 
-    public ToteNotFoundException(String message) {
-        super(message);
+public class ToteNotFoundException extends ApiException {
+    public ToteNotFoundException() {
+        super(ErrorCode.TASK_TOTE_MISMATCH);
     }
 }

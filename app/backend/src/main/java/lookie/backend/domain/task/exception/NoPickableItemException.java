@@ -1,11 +1,10 @@
 package lookie.backend.domain.task.exception;
 
-public class NoPickableItemException extends RuntimeException {
-    public NoPickableItemException() {
-        super("No pickable item found");
-    }
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 
-    public NoPickableItemException(String message) {
-        super(message);
+public class NoPickableItemException extends ApiException {
+    public NoPickableItemException() {
+        super(ErrorCode.TASK_NO_AVAILABLE);
     }
 }

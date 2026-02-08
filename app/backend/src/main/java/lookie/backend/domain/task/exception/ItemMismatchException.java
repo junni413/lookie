@@ -1,11 +1,10 @@
 package lookie.backend.domain.task.exception;
 
-public class ItemMismatchException extends RuntimeException {
-    public ItemMismatchException() {
-        super("Item mismatch");
-    }
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 
-    public ItemMismatchException(String message) {
-        super(message);
+public class ItemMismatchException extends ApiException {
+    public ItemMismatchException() {
+        super(ErrorCode.ITEM_NOT_FOUND);
     }
 }

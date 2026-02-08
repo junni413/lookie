@@ -1,11 +1,10 @@
 package lookie.backend.domain.task.exception;
 
-public class InvalidQuantityException extends RuntimeException {
-    public InvalidQuantityException() {
-        super("Invalid quantity");
-    }
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 
-    public InvalidQuantityException(String message) {
-        super(message);
+public class InvalidQuantityException extends ApiException {
+    public InvalidQuantityException() {
+        super(ErrorCode.TASK_ITEM_QUANTITY_EXCEEDED);
     }
 }
