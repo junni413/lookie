@@ -225,7 +225,7 @@ export default function WorkHistory() {
         </div>
       </div>
 
-      <footer className="py-12 text-center text-xs font-bold tracking-[0.2em] text-slate-200 uppercase">
+      <footer className="py-12 text-center text-xs font-bold tracking-[0.2em] text-slate-200">
         LOOKie
       </footer>
     </div>
