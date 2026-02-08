@@ -398,7 +398,7 @@ export default function Home() {
       </div>
 
       <footer className="mt-auto py-3 text-center text-xs font-bold tracking-[0.2em] text-slate-200 uppercase">
-        LOOKIE
+        LOOKie
       </footer>
     </div>
   );

@@ -121,7 +121,7 @@ function PromoContent({ showScan, laserY, onStart }: { showScan: boolean; laserY
         className="mb-12"
       >
         <h1 className="text-[65px] font-bold tracking-tighter text-blue-500 font-pixel leading-none">
-          LOOKIE
+          LOOKie
         </h1>
         <p className="mt-4 text-[12px] font-bold tracking-[0.3em] text-slate-500 uppercase">
           Smart Logistics Partner
