@@ -131,10 +131,15 @@ export default function ToteScan() {
         setError(null);
         const reader = new BrowserMultiFormatReader();
 
+        // The decodeFromVideoDevice method already accepts 3 arguments:
+        // 1. deviceId (optional, can be undefined)
+        // 2. videoElement
+        // 3. callback function
+        // The current usage already conforms to this signature.
         controlsRef.current = await reader.decodeFromVideoDevice(
-          undefined,
-          videoRef.current!,
-          (result, err) => {
+          undefined, // deviceId (undefined to let the library choose)
+          videoRef.current!, // videoElement
+          (result, err) => { // callback function
             if (result) {
               handleScanSuccess(result.getText());
               return;
