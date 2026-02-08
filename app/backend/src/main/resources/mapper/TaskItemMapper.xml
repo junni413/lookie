@@ -18,6 +18,7 @@
             i.completed_at AS completedAt,
             i.last_scanned_at AS lastScannedAt,
             p.product_name AS productName,
+            p.product_image AS productImage,
             p.barcode
         FROM batch_task_items i
         JOIN products p ON i.product_id = p.product_id
@@ -40,6 +41,7 @@
             i.completed_at AS completedAt,
             i.last_scanned_at AS lastScannedAt,
             p.product_name AS productName,
+            p.product_image AS productImage,
             p.barcode
         FROM batch_task_items i
         JOIN products p ON i.product_id = p.product_id
@@ -70,6 +72,7 @@
             i.completed_at AS completedAt,
             i.last_scanned_at AS lastScannedAt,
             p.product_name AS productName,
+            p.product_image AS productImage,
             p.barcode
         FROM batch_task_items i
         JOIN products p ON i.product_id = p.product_id
