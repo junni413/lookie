@@ -179,7 +179,7 @@ export default function AttendPage() {
         transition={{ delay: 1 }}
         className="absolute bottom-10 text-[11px] font-black text-slate-300 tracking-[0.3em] uppercase"
       >
-        Lookie
+        LOOKie
       </motion.p>
     </div>
   );

@@ -1,3 +1,4 @@
+
 import { NavLink, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { cn } from "@/utils/cn";
@@ -5,6 +6,7 @@ import { ADMIN_MENU } from "@/config/adminMenu";
 import { useAuthStore } from "@/stores/authStore";
 import { LogOut, Briefcase, Play, Pause, Power } from "lucide-react";
 import { workLogService } from "@/services/workLogService";
+import LogoAnimation from "@/components/auth/LogoAnimation";
 
 export default function AdminSidebar() {
   const logout = useAuthStore((state) => state.logout);
@@ -33,17 +35,20 @@ export default function AdminSidebar() {
   return (
     <div className="h-full flex flex-col bg-slate-900">
       {/* Brand */}
+
       <div className="p-6 pb-2">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-            <div className="w-4 h-4 rounded-full bg-primary animate-pulse" />
-          </div>
-          <div>
-            <div className="text-xl font-bold text-white tracking-tight leading-none">
-              LOOkie
-            </div>
-            <div className="text-[10px] text-slate-500 font-semibold tracking-wider mt-1 uppercase">Admin Console</div>
-          </div>
+        <div className="flex flex-col items-center gap-0.5 mb-6 w-full overflow-visible">
+             <div className="h-12 w-full relative flex items-center justify-center">
+                <LogoAnimation 
+                    scale={0.42} 
+                    color="white"
+                    eyeColor="#304FFF"
+                    showTagline={false} 
+                    origin="center center"
+                    className="mb-0"
+                />
+             </div>
+             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mt-1">Admin Console</div>
         </div>
       </div>
 

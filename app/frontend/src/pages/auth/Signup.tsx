@@ -353,7 +353,7 @@ export default function Signup() {
     <div className="min-h-[100dvh] bg-white px-4 py-8">
       <div className="mx-auto w-full max-w-[430px]">
         <div className="mb-8 text-center">
-          <h1 className="text-4xl font-extrabold text-primary">Lookie</h1>
+          <h1 className="text-4xl font-extrabold text-primary">LOOKie</h1>
         </div>
 
         <div className="space-y-4">
