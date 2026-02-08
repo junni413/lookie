@@ -13,7 +13,7 @@ services:
       - "6379:6379"
     volumes:
       # Redis 데이터 영구 저장
-      - ./data/redis:/data
+      - ./data/prod/redis:/data
     networks: [lookie]
 
   # ============================
@@ -37,7 +37,7 @@ services:
       - "3306:3306"
     volumes:
       # MySQL 데이터 영구 저장 (컨테이너 삭제/재배포해도 DB 유지)
-      - ./data/mysql:/var/lib/mysql
+      - ./data/prod/mysql:/var/lib/mysql
     networks: [lookie]
     healthcheck:
       # "진짜로 접속 가능한 상태"가 될 때까지 체크
@@ -154,7 +154,7 @@ services:
       # letsencrypt 인증서(EC2 호스트에 존재해야 함)
       - /etc/letsencrypt:/etc/letsencrypt:ro
       # 이미지 업로드 파일 등 정적 파일 저장 경로
-      - ./data/images:/data/images
+      - ./data/prod/images:/data/images
     networks: [lookie]
     depends_on: [backend]
 

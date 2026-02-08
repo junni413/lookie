@@ -10,7 +10,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./data/redis:/data
+      - ./data/dev/redis:/data
     networks:
       - lookie
 
@@ -32,7 +32,7 @@ services:
     ports:
       - "3307:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ./data/dev/mysql:/var/lib/mysql
     networks:
       - lookie
     healthcheck:
@@ -93,7 +93,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./data/images:/data/images  # 이미지 업로드용 볼륨 (nginx와 공유)
+      - ./data/dev/images:/data/images  # 이미지 업로드용 볼륨 (nginx와 공유)
     networks:
       - lookie
     depends_on:
@@ -139,7 +139,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./data/images:/data/images
+      - ./data/dev/images:/data/images
     networks:
       - lookie
     depends_on:
@@ -157,7 +157,7 @@ services:
       POSTGRES_DB: airflow
       TZ: Asia/Seoul
     volumes:
-      - airflow_pgdata:/var/lib/postgresql/data
+      - ./data/dev/airflow/postgres:/var/lib/postgresql/data
     networks:
       - lookie
     restart: unless-stopped
@@ -311,9 +311,7 @@ services:
       ]
     restart: unless-stopped
 
-volumes:
-  mysql_data:
-  airflow_pgdata:
+# Global volumes section removed as we are using bind mounts now
 
 networks:
   lookie:
