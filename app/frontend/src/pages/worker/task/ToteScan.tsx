@@ -183,14 +183,6 @@ export default function ToteScan() {
       </div>
 
       {error && <div className="rounded-2xl border bg-white p-4 text-sm text-red-600">{error}</div>}
-
-      <button
-        type="button"
-        className="h-12 w-full rounded-2xl border bg-white text-sm font-semibold"
-        onClick={() => handleScanSuccess("TOTE-TEST-0001")}
-      >
-        (개발용) 토트 스캔 성공 처리
-      </button>
     </div>
   );
 }

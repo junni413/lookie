@@ -79,7 +79,7 @@ export default function MyPage() {
         </button>
       </div>
 
-      <footer className="mt-auto py-20 text-center text-xs font-bold tracking-[0.2em] text-slate-200 uppercase">
+      <footer className="mt-auto py-20 text-center text-xs font-bold tracking-[0.2em] text-slate-200">
         LOOKie
       </footer>
     </div>

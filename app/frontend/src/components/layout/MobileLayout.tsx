@@ -49,7 +49,7 @@ export default function MobileLayout() {
   return (
     <div className="min-h-dvh bg-gray-50 flex justify-center">
       <div className="w-full max-w-[430px] min-h-dvh bg-white shadow-sm flex flex-col relative">
-        <header className="sticky top-0 z-[50] flex items-center justify-between bg-white/70 backdrop-blur-xl px-5 pt-7 pb-4 border-b border-slate-100 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)]">
+        <header className="sticky top-0 z-[50] flex items-center justify-between bg-white/70 backdrop-blur-xl px-4 py-2 border-b border-slate-100 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)]">
           {/* left */}
           <div className="flex items-center gap-4">
             {!hideBackButton && (

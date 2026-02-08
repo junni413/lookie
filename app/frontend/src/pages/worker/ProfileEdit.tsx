@@ -490,8 +490,11 @@ export default function ProfileEdit() {
             type="button"
             onClick={handleSave}
             disabled={!canSave}
-            className={`flex-1 h-11 rounded-full font-semibold shadow-sm active:scale-[0.99] transition ${canSave ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"
-              }`}
+            className={`flex-1 h-11 rounded-full font-semibold shadow-sm active:scale-[0.99] transition ${
+              canSave
+                ? "bg-primary text-white shadow-primary/20"
+                : "bg-gray-100 text-gray-400"
+            }`}
           >
             {saving ? "저장 중..." : "저장"}
           </button>
