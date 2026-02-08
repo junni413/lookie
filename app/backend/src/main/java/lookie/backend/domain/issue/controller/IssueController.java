@@ -38,6 +38,7 @@ import lookie.backend.domain.issue.dto.MyIssueSummary;
 public class IssueController {
 
         private final IssueService issueService;
+        private final lookie.backend.domain.issue.service.IssueServiceNew issueServiceNew;
 
         /**
          * 이슈 생성
@@ -81,6 +82,56 @@ public class IssueController {
                 issueService.reportImage(workerId, issueId, request.getImageUrl());
 
                 return ResponseEntity.ok(ApiResponse.success("이미지가 등록되었습니다.", null));
+        }
+
+        /**
+         * [FSM] 작업자 다음 아이템 진행
+         * - 이슈를 남기고 다음 아이템으로 진행합니다.
+         * - NEED_CHECK 정책: 관리자 연결 시도가 필수, 단 MISSED 후에는 허용
+         */
+        @Operation(summary = "[FSM] 작업자 다음 아이템 진행", description = "이슈를 남기고 다음 아이템으로 진행합니다.")
+        @PostMapping("/{issueId}/next-item")
+        public ResponseEntity<ApiResponse<Void>> workerChooseNextItem(
+                        @PathVariable Long issueId,
+                        @RequestParam Long taskId) {
+
+                Long workerId = SecurityUtil.getCurrentUserId();
+                issueServiceNew.workerChooseNextItem(workerId, taskId, issueId);
+
+                return ResponseEntity.ok(ApiResponse.success("다음 아이템으로 진행합니다.", null));
+        }
+
+        /**
+         * [FSM] 관리자 연결 시작
+         * - 관리자와 WebRTC 연결을 시작합니다.
+         */
+        @Operation(summary = "[FSM] 관리자 연결 시작", description = "관리자와 WebRTC 연결을 시작합니다.")
+        @PostMapping("/{issueId}/connect-admin")
+        public ResponseEntity<ApiResponse<Void>> connectAdmin(@PathVariable Long issueId) {
+                issueServiceNew.connectAdmin(issueId);
+                return ResponseEntity.ok(ApiResponse.success("관리자 연결을 시작합니다.", null));
+        }
+
+        /**
+         * [FSM] WebRTC 연결 완료
+         * - 관리자와 WebRTC 연결이 완료되었습니다.
+         */
+        @Operation(summary = "[FSM] WebRTC 연결 완료", description = "관리자와 WebRTC 연결이 완료되었습니다.")
+        @PostMapping("/{issueId}/webrtc/connected")
+        public ResponseEntity<ApiResponse<Void>> onWebrtcConnected(@PathVariable Long issueId) {
+                issueServiceNew.onWebrtcConnected(issueId);
+                return ResponseEntity.ok(ApiResponse.success("WebRTC 연결이 완료되었습니다.", null));
+        }
+
+        /**
+         * [FSM] WebRTC 연결 실패 (부재)
+         * - 관리자가 부재하여 연결에 실패했습니다.
+         */
+        @Operation(summary = "[FSM] WebRTC 연결 실패 (부재)", description = "관리자가 부재하여 연결에 실패했습니다.")
+        @PostMapping("/{issueId}/webrtc/missed")
+        public ResponseEntity<ApiResponse<Void>> onWebrtcMissed(@PathVariable Long issueId) {
+                issueServiceNew.onWebrtcMissed(issueId);
+                return ResponseEntity.ok(ApiResponse.success("관리자 부재로 연결이 종료되었습니다.", null));
         }
 
         /**
@@ -137,7 +188,8 @@ public class IssueController {
                 log.info("[IssueController] Admin confirm request. issueId={}, decision={}",
                                 issueId, request.getAdminDecision());
 
-                issueService.confirmIssue(issueId, request.getAdminDecision());
+                // String을 AdminDecision enum으로 변환
+                issueServiceNew.adminConfirm(issueId, request.getAdminDecision());
 
                 return ResponseEntity.ok(ApiResponse.success(
                                 "이슈가 확정 처리되었습니다.",

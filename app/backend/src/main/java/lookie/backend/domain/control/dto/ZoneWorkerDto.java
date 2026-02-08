@@ -18,7 +18,7 @@ public class ZoneWorkerDto {
     private Long workerId;
     /** 작업자 이름 (개인정보 보호를 위해 '이름 + 전화번호 뒷 4자리'로 포맷팅됨) */
     private String name;
-    /** 금일 처리한 작업량 (Items Picked) */
+    /** 금일 완료한 작업 수 (Tasks Completed) */
     private Integer workCount;
     /** 시간당 처리 속도 (UPH) - 현재 0.0 고정 */
     private Double processingSpeed;

@@ -26,7 +26,9 @@
             issue_id AS issueId,
             issue_type AS issueType,
             status,
+            ai_decision AS aiDecision,
             reason_code AS reasonCode,
+            webrtc_status AS webrtcStatus,
             issue_handling AS issueHandling,
             admin_required AS adminRequired,
             urgency,
@@ -44,6 +46,33 @@
         WHERE issue_id = #{issueId}
     </select>
 
+    <!-- Issue 단건 조회 (FOR UPDATE - 새 FSM용) -->
+    <select id="findByIdForUpdate" resultType="IssueVO">
+        SELECT
+            issue_id AS issueId,
+            issue_type AS issueType,
+            status,
+            ai_decision AS aiDecision,
+            reason_code AS reasonCode,
+            webrtc_status AS webrtcStatus,
+            issue_handling AS issueHandling,
+            admin_required AS adminRequired,
+            urgency,
+            admin_decision AS adminDecision,
+            worker_id AS workerId,
+            admin_id AS adminId,
+            batch_task_id AS batchTaskId,
+            batch_task_item_id AS batchTaskItemId,
+            zone_location_id AS zoneLocationId,
+            new_location_id AS newLocationId,
+            created_at AS createdAt,
+            resolved_at AS resolvedAt,
+            note
+        FROM issues
+        WHERE issue_id = #{issueId}
+        FOR UPDATE
+    </select>
+
     <!-- Issue 상태/정책 업데이트 -->
     <update id="updateIssueStatus">
         UPDATE issues
@@ -58,6 +87,24 @@
             resolved_at = #{resolvedAt}
         WHERE issue_id = #{issueId}
     </update>
+
+    <!-- Issue 전체 업데이트 (새 FSM용) -->
+    <update id="updateIssue">
+        UPDATE issues
+        SET
+            status = #{status},
+            ai_decision = #{aiDecision},
+            webrtc_status = #{webrtcStatus},
+            reason_code = #{reasonCode}
+            <if test="resolvedAt != null">
+                , resolved_at = #{resolvedAt}
+            </if>
+            <if test="adminId != null">
+                , admin_id = #{adminId}
+            </if>
+        WHERE issue_id = #{issueId}
+    </update>
+
 
     <!-- 이미지 저장 -->
     <insert id="insertIssueImage" useGeneratedKeys="true" keyProperty="issueImageId">
@@ -125,26 +172,19 @@
             i.created_at AS createdAt,
             i.resolved_at AS resolvedAt,
             i.admin_decision AS adminDecision,
-            (
-                SELECT aj.ai_decision
-                FROM ai_judgments aj
-                WHERE aj.issue_id = i.issue_id
-                ORDER BY aj.created_at DESC
-                LIMIT 1
-            ) AS aiDecision
+            i.ai_decision AS aiDecision
         FROM issues i
         JOIN zone_locations zl ON i.zone_location_id = zl.location_id
-        JOIN zones z ON zl.zone_id = z.zone_id
-        JOIN admin_assignments aa ON z.zone_id = aa.zone_id
-        LEFT JOIN users u ON i.worker_id = u.user_id
+        JOIN users admin_u ON admin_u.user_id = #{adminId} -- 현재 관리자 정보
+        LEFT JOIN users u ON i.worker_id = u.user_id      -- 작업자 정보
         LEFT JOIN batch_task_items bti ON i.batch_task_item_id = bti.batch_task_item_id
         LEFT JOIN products p ON bti.product_id = p.product_id
-        WHERE aa.admin_id = #{adminId}
+        WHERE zl.zone_id = admin_u.assigned_zone_id        -- 관리자 구역 일치 확인
           AND i.status = #{req.status}
         <choose>
-            <when test="req.status.name() == 'OPEN'">
+            <when test="req.status.name == 'OPEN'">
                 <choose>
-                    <when test="req.sortType.name() == 'URGENCY'">
+                    <when test="req.sortType.name == 'URGENCY'">
                         ORDER BY COALESCE(i.urgency, 5) ASC, i.created_at DESC
                     </when>
                     <otherwise>
@@ -164,9 +204,8 @@
         SELECT count(DISTINCT i.issue_id)
         FROM issues i
         JOIN zone_locations zl ON i.zone_location_id = zl.location_id
-        JOIN zones z ON zl.zone_id = z.zone_id
-        JOIN admin_assignments aa ON z.zone_id = aa.zone_id
-        WHERE aa.admin_id = #{adminId}
+        JOIN users admin_u ON admin_u.user_id = #{adminId} -- 현재 관리자 정보
+        WHERE zl.zone_id = admin_u.assigned_zone_id        -- 관리자 구역 일치 확인
           AND i.status = #{req.status}
     </select>
     <!-- 내 이슈 목록 조회 (최적화: Window Function 사용) -->

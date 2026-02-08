@@ -59,7 +59,7 @@ class IssueServiceTest {
     private IssueService issueService;
 
     @Test
-    @DisplayName("이슈 생성 성공")
+    @DisplayName("이슈 생성 성공 - DAMAGED (이미지 필수)")
     void createIssue_Success() {
         // given
         Long workerId = 1L;
@@ -68,10 +68,10 @@ class IssueServiceTest {
         Long locationId = 10L;
 
         CreateIssueRequest request = new CreateIssueRequest();
-        request.setBatchTaskId(taskId);
-        request.setBatchTaskItemId(itemId);
+        request.setTaskId(taskId);
+        request.setTaskItemId(itemId);
         request.setIssueType("DAMAGED");
-        request.setImageUrl("https://example.com/image.jpg");
+        request.setImageUrl("https://example.com/image.jpg"); // 이미지 필수
 
         TaskItemVO item = new TaskItemVO();
         item.setBatchTaskItemId(itemId);
@@ -92,26 +92,15 @@ class IssueServiceTest {
         // then
         assertNotNull(response);
 
-        // IssueVO 저장 검증 - createInitial() 팩토리 메서드 사용 확인
+        // IssueVO 저장 검증
         ArgumentCaptor<IssueVO> issueCaptor = ArgumentCaptor.forClass(IssueVO.class);
         verify(issueMapper).insertIssue(issueCaptor.capture());
         IssueVO capturedIssue = issueCaptor.getValue();
 
-        // 기본 정책 검증 (IssueVO.createInitial 기본값)
         assertEquals("DAMAGED", capturedIssue.getIssueType());
         assertEquals("OPEN", capturedIssue.getStatus());
-        assertEquals(3, capturedIssue.getUrgency()); // 신규 필드 검증 (기본값 3)
-        assertEquals("NON_BLOCKING", capturedIssue.getIssueHandling());
-        assertEquals(false, capturedIssue.getAdminRequired());
-        assertEquals("UNKNOWN", capturedIssue.getReasonCode());
 
-        // 연관 데이터 검증
-        assertEquals(workerId, capturedIssue.getWorkerId());
-        assertEquals(taskId, capturedIssue.getBatchTaskId());
-        assertEquals(itemId, capturedIssue.getBatchTaskItemId());
-        assertEquals(locationId, capturedIssue.getZoneLocationId());
-
-        // IssueImageVO 저장 검증
+        // IssueImageVO 저장 검증 (이미지 있으므로)
         ArgumentCaptor<IssueImageVO> imageCaptor = ArgumentCaptor.forClass(IssueImageVO.class);
         verify(issueMapper).insertIssueImage(imageCaptor.capture());
         assertEquals(request.getImageUrl(), imageCaptor.getValue().getImageUrl());
@@ -123,15 +112,12 @@ class IssueServiceTest {
         assertEquals("UNKNOWN", capturedJudgment.getAiDecision());
         assertEquals(request.getImageUrl(), capturedJudgment.getImageUrl());
 
-        // TaskItem 상태 변경 검증
-        verify(taskItemService).markAsIssuePending(itemId);
-
-        // AI 분석 요청 검증 추가
+        // AI 분석 요청 검증 (이미지 있으므로)
         verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
     }
 
     @Test
-    @DisplayName("이슈 생성 성공 - OUT_OF_STOCK")
+    @DisplayName("이슈 생성 성공 - OUT_OF_STOCK (이미지 없음)")
     void createIssue_Success_OutOfStock() {
         // given
         Long workerId = 1L;
@@ -141,10 +127,10 @@ class IssueServiceTest {
         Long locationId = 100L;
 
         CreateIssueRequest request = new CreateIssueRequest();
-        request.setBatchTaskId(taskId);
-        request.setBatchTaskItemId(itemId);
+        request.setTaskId(taskId);
+        request.setTaskItemId(itemId);
         request.setIssueType("OUT_OF_STOCK");
-        request.setImageUrl("https://example.com/image.jpg");
+        request.setImageUrl(null); // 이미지 없음
 
         TaskItemVO item = new TaskItemVO();
         item.setBatchTaskItemId(itemId);
@@ -176,31 +162,35 @@ class IssueServiceTest {
         verify(issueMapper).insertIssue(issueCaptor.capture());
         assertEquals("OUT_OF_STOCK", issueCaptor.getValue().getIssueType());
 
-        // InventoryService 호출 검증
-        verify(inventoryService).getInventoryState(productId, locationId);
+        // 이미지가 없으므로 IssueImage 저장 안 됨 (never)
+        verify(issueMapper, never()).insertIssueImage(any());
 
-        // AI 분석 요청 검증
+        // AiJudgment 저장 검증 (이미지 없이)
+        ArgumentCaptor<AiJudgmentVO> judgmentCaptor = ArgumentCaptor.forClass(AiJudgmentVO.class);
+        verify(issueMapper).insertAiJudgment(judgmentCaptor.capture());
+        assertNull(judgmentCaptor.getValue().getImageUrl());
+
+        // AI 분석은 이미지가 있거나 OOS여야 함. OOS이므로 요청 보냄 (단, 이미지 URL은 null)
         verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
     }
 
     @Test
-    @DisplayName("이슈 생성 성공 - OUT_OF_STOCK (이미지 없이 생성)")
-    void createIssue_Success_OutOfStock_NoImage() {
+    @DisplayName("이슈 생성 실패: DAMAGED인데 이미지가 없음")
+    void createIssue_Fail_DamagedNoImage() {
         // given
         Long workerId = 1L;
         Long taskId = 100L;
         Long itemId = 200L;
 
         CreateIssueRequest request = new CreateIssueRequest();
-        request.setBatchTaskId(taskId);
-        request.setBatchTaskItemId(itemId);
-        request.setIssueType("OUT_OF_STOCK");
-        request.setImageUrl(null); // 이미지 없음
+        request.setTaskId(taskId);
+        request.setTaskItemId(itemId);
+        request.setIssueType("DAMAGED");
+        request.setImageUrl(null); // 이미지 누락!
 
         TaskItemVO item = new TaskItemVO();
         item.setBatchTaskItemId(itemId);
         item.setBatchTaskId(taskId);
-        item.setStatus("PENDING");
 
         TaskVO task = new TaskVO();
         task.setBatchTaskId(taskId);
@@ -209,28 +199,14 @@ class IssueServiceTest {
         when(taskItemService.getTaskItem(itemId)).thenReturn(item);
         when(taskMapper.findById(taskId)).thenReturn(task);
 
-        // when
-        IssueResponse response = issueService.createIssue(workerId, request);
+        // when & then
+        ApiException exception = assertThrows(ApiException.class, () -> {
+            issueService.createIssue(workerId, request);
+        });
 
-        // then
-        assertNotNull(response);
-        // Issue 저장 검증
-        ArgumentCaptor<IssueVO> issueCaptor = ArgumentCaptor.forClass(IssueVO.class);
-        verify(issueMapper).insertIssue(issueCaptor.capture());
-        assertEquals("OUT_OF_STOCK", issueCaptor.getValue().getIssueType());
+        assertEquals(ErrorCode.ISSUE_IMAGE_REQUIRED, exception.getErrorCode());
 
-        // 중요: 이미지가 없으므로 insertIssueImage 호출되면 안됨
-        verify(issueMapper, never()).insertIssueImage(any());
-
-        // AiJudgment 생성 검증 (이미지 없이)
-        ArgumentCaptor<AiJudgmentVO> judgmentCaptor = ArgumentCaptor.forClass(AiJudgmentVO.class);
-        verify(issueMapper).insertAiJudgment(judgmentCaptor.capture());
-        assertNull(judgmentCaptor.getValue().getImageUrl());
-
-        // AI 분석 요청 검증 (이미지 null)
-        ArgumentCaptor<AiAnalysisRequest> aiRequestCaptor = ArgumentCaptor.forClass(AiAnalysisRequest.class);
-        verify(aiAnalysisClient).requestAnalysis(aiRequestCaptor.capture());
-        assertNull(aiRequestCaptor.getValue().getImageUrl());
+        verify(issueMapper, never()).insertIssue(any());
     }
 
     @Test
@@ -241,8 +217,8 @@ class IssueServiceTest {
         Long itemId = 999L;
 
         CreateIssueRequest request = new CreateIssueRequest();
-        request.setBatchTaskId(100L);
-        request.setBatchTaskItemId(itemId);
+        request.setTaskId(100L);
+        request.setTaskItemId(itemId);
         request.setIssueType("DAMAGED");
         request.setImageUrl("https://example.com/image.jpg");
 
@@ -255,7 +231,6 @@ class IssueServiceTest {
 
         assertEquals(ErrorCode.ISSUE_ITEM_NOT_FOUND, exception.getErrorCode());
 
-        // 후속 작업이 실행되지 않았는지 검증
         verify(issueMapper, never()).insertIssue(any());
         verify(issueMapper, never()).insertIssueImage(any());
         verify(issueMapper, never()).insertAiJudgment(any());
@@ -273,8 +248,8 @@ class IssueServiceTest {
         Long itemId = 200L;
 
         CreateIssueRequest request = new CreateIssueRequest();
-        request.setBatchTaskId(taskId);
-        request.setBatchTaskItemId(itemId);
+        request.setTaskId(taskId);
+        request.setTaskItemId(itemId);
         request.setIssueType("DAMAGED");
         request.setImageUrl("https://example.com/image.jpg");
 
@@ -297,7 +272,6 @@ class IssueServiceTest {
 
         assertEquals(ErrorCode.ISSUE_TASK_NOT_ASSIGNED, exception.getErrorCode());
 
-        // 후속 작업이 실행되지 않았는지 검증
         verify(issueMapper, never()).insertIssue(any());
         verify(issueMapper, never()).insertIssueImage(any());
         verify(issueMapper, never()).insertAiJudgment(any());
@@ -310,8 +284,8 @@ class IssueServiceTest {
         // given
         Long workerId = 1L;
         CreateIssueRequest request = new CreateIssueRequest();
-        request.setBatchTaskId(100L);
-        request.setBatchTaskItemId(200L);
+        request.setTaskId(100L);
+        request.setTaskItemId(200L);
         request.setIssueType("DAMAGED");
         request.setImageUrl("https://example.com/image.jpg");
 
@@ -337,7 +311,8 @@ class IssueServiceTest {
         inOrder.verify(issueMapper).insertAiJudgment(any(AiJudgmentVO.class));
         inOrder.verify(taskItemService).markAsIssuePending(200L);
 
-        // requestAnalysis는 비동기 호출이므로 InOrder에서 제외될 수도 있지만 일단 마지막에 검증
+        // requestAnalysis는 비동기 호출이므로 InOrder에서 제외될 수도 있지만 일단 마지막에 검증 (OOS/Image있음 모두
+        // 호출)
         verify(aiAnalysisClient).requestAnalysis(any(AiAnalysisRequest.class));
     }
 

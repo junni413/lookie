@@ -19,8 +19,14 @@ public interface IssueMapper {
         // Issue ID로 조회
         IssueVO findById(@Param("issueId") Long issueId);
 
+        // Issue ID로 조회 (FOR UPDATE - 새 FSM용)
+        IssueVO findByIdForUpdate(@Param("issueId") Long issueId);
+
         // Issue 상태 업데이트
         void updateIssueStatus(IssueVO issueVO);
+
+        // Issue 전체 업데이트 (새 FSM용)
+        void updateIssue(IssueVO issueVO);
 
         // 이미지 저장
         void insertIssueImage(IssueImageVO issueImageVO);

@@ -97,10 +97,10 @@ public class IssueService {
     @Transactional
     public IssueResponse createIssue(Long workerId, CreateIssueRequest request) {
         log.info("[IssueService] createIssue started. workerId={}, itemId={}",
-                workerId, request.getBatchTaskItemId());
+                workerId, request.getTaskItemId());
 
         // 1. TaskItem 존재 여부 확인
-        TaskItemVO item = taskItemService.getTaskItem(request.getBatchTaskItemId());
+        TaskItemVO item = taskItemService.getTaskItem(request.getTaskItemId());
         if (item == null) {
             throw new ApiException(ErrorCode.ISSUE_ITEM_NOT_FOUND);
         }
@@ -116,10 +116,16 @@ public class IssueService {
         // 3. Issue 생성
         IssueVO issue = IssueVO.createInitial(workerId, item, request.getIssueType());
 
+        if ("DAMAGED".equals(request.getIssueType())) {
+            if (request.getImageUrl() == null || request.getImageUrl().isEmpty()) {
+                throw new ApiException(ErrorCode.ISSUE_IMAGE_REQUIRED); // 이미지가 반드시 필요함
+            }
+        }
+
         issueMapper.insertIssue(issue);
         log.info("[IssueService] Issue created. issueId={}", issue.getIssueId());
 
-        // 3. 이슈 증빙 이미지 저장 (이미지가 있는 경우에만)
+        // 4. 이슈 증빙 이미지 저장 (이미지가 있는 경우)
         if (request.getImageUrl() != null && !request.getImageUrl().isEmpty()) {
             IssueImageVO image = new IssueImageVO();
             image.setIssueId(issue.getIssueId());
@@ -127,15 +133,28 @@ public class IssueService {
             issueMapper.insertIssueImage(image);
         }
 
-        // 4. AI 판정 초기 데이터 생성 (UNKNOWN 상태)
+        // 5. AI 판정 초기 데이터 생성 (UNKNOWN 상태)
         AiJudgmentVO judgment = new AiJudgmentVO();
         judgment.setIssueId(issue.getIssueId());
-        judgment.setImageUrl(request.getImageUrl());
+        judgment.setImageUrl(request.getImageUrl()); // 이미지 있으면 저장
         judgment.setAiDecision("UNKNOWN"); // AI 결과 대기 중
         issueMapper.insertAiJudgment(judgment);
 
-        // 5. TaskItem 상태를 ISSUE_PENDING(보류)으로 변경
+        // 6. TaskItem 상태를 ISSUE_PENDING(보류)으로 변경
         taskItemService.markAsIssuePending(item.getBatchTaskItemId());
+
+        // [Inventory] 파손 이슈인 경우 재고 임시 차감 (Available -> DamagedTemp)
+        if ("DAMAGED".equals(request.getIssueType())) {
+            inventoryService.recordEvent(
+                    "PICK_DAMAGED_TEMP",
+                    item.getProductId(),
+                    item.getLocationId(),
+                    -1, // 1개 임시 차감 (Available -1, DamagedTemp +1)
+                    "ISSUE",
+                    issue.getIssueId(),
+                    workerId);
+            log.info("[IssueService] PICK_DAMAGED_TEMP event recorded for new issue. issueId={}", issue.getIssueId());
+        }
 
         // [Event] ISSUE_PENDING도 실시간 집계에서는 '완료'와 유사하게 처리 (할일 목록 제외)
         if (task != null) {
@@ -149,33 +168,29 @@ public class IssueService {
         log.info("[IssueService] TaskItem marked as ISSUE_PENDING and event published. itemId={}",
                 item.getBatchTaskItemId());
 
-        // 6. Response 생성
         IssueResponse response = IssueResponse.from(issue);
 
-        // 7. [Fix] AI 서버 요청은 트랜잭션 커밋 "후"에 실행 (Race Condition 방지)
-        Long issueIdForAi = issue.getIssueId();
-        String issueType = request.getIssueType();
-        String imageUrl = request.getImageUrl();
+        // 7. AI 분석 요청 (트랜잭션 커밋 후 비동기 실행)
+        // DAMAGED는 이미지 분석, OOS는 재고 확인 등으로 활용 가능
+        if (request.getImageUrl() != null || "OUT_OF_STOCK".equals(request.getIssueType())) {
+            Long issueIdForAi = issue.getIssueId();
+            String issueType = request.getIssueType();
+            String imageUrl = request.getImageUrl();
 
-        Runnable aiTask = () -> {
-            try {
-                log.info("[IssueService] Transaction committed (or mocked). Sending AI request for issueId={}",
-                        issueIdForAi);
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            requestAiAnalysisSafe(issueIdForAi, item, issueType, imageUrl);
+                        } catch (Exception e) {
+                            log.error("Failed to request AI analysis", e);
+                        }
+                    }
+                });
+            } else {
                 requestAiAnalysisSafe(issueIdForAi, item, issueType, imageUrl);
-            } catch (Exception e) {
-                log.error("[IssueService] Failed to request AI analysis. issueId={}", issueIdForAi, e);
             }
-        };
-
-        if (TransactionSynchronizationManager.isActualTransactionActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    aiTask.run();
-                }
-            });
-        } else {
-            aiTask.run();
         }
 
         return response;
@@ -367,6 +382,14 @@ public class IssueService {
         log.info("[IssueService] processAiResult started. issueId={}, aiDecision={}, reasonCode={}",
                 issueId, request.getAiDecision(), request.getReasonCode());
 
+        // [Reason Code Mapping] AI 서버 응답값과 DB ENUM 매핑
+        // DB ENUM: DAMAGED, OUT_OF_STOCK, STOCK_EXISTS, MOVE_LOCATION, WAITING_RETURN,
+        // UNKNOWN, AUTO_RESOLVED
+        if ("NORMAL".equals(request.getReasonCode()) || "AMBIGUOUS".equals(request.getReasonCode())) {
+            log.warn("[IssueService] Mapping AI reasonCode {} to UNKNOWN", request.getReasonCode());
+            request.setReasonCode("UNKNOWN");
+        }
+
         // 0. Confidence == 0.0 처리 (신뢰 불가 → NEED_CHECK 강제)
         String decision = request.getAiDecision();
         if (request.getConfidence() != null && request.getConfidence() == 0.0f) {
@@ -396,7 +419,7 @@ public class IssueService {
         AiJudgmentVO judgment = new AiJudgmentVO();
         judgment.setIssueId(issueId);
         judgment.setAiDecision(request.getAiDecision());
-        judgment.setConfidence(request.getConfidence());
+        judgment.setConfidence(request.getConfidence() != null ? request.getConfidence().floatValue() : null);
         judgment.setSummary(request.getSummary());
         judgment.setAiResult(request.getAiResult());
 
@@ -408,10 +431,13 @@ public class IssueService {
         issueMapper.updateAiJudgment(judgment);
 
         // 3. newLocation 처리 (MOVE_LOCATION 케이스)
+        // newLocation이 String(locationCode)인 경우 locationId로 변환 필요
         if ("MOVE_LOCATION".equals(request.getReasonCode()) && request.getNewLocation() != null) {
-            issue.setNewLocationId(request.getNewLocation().getZoneLocationId());
-            log.info("[IssueService] newLocation set. issueId={}, newLocationId={}",
-                    issueId, issue.getNewLocationId());
+            // TODO: newLocation이 locationCode(String)라면 locationId로 변환 필요
+            // 임시로 null 처리 (실제로는 LocationService로 변환)
+            log.warn("[IssueService] MOVE_LOCATION received but newLocation conversion not implemented. newLocation={}",
+                    request.getNewLocation());
+            // issue.setNewLocationId(convertedLocationId);
         }
 
         // 4. AI 결과 → Issue 정책 매핑
@@ -472,11 +498,9 @@ public class IssueService {
             return;
         }
 
-        // 3. 파손 확정 (FAIL) -> 최종 완료 처리
-        // D8(FAIL) 케이스: 파손 확정이므로 아이템은 죽이고 다음으로 넘어감
+        // 3. 파손 확정 (FAIL) -> 상태 유지 (가이드 준수: DONE 확정은 관리자만)
         if ("FAIL".equals(aiDecision) || "DAMAGED".equals(reasonCode)) {
-            taskItemService.markAsIssueFinal(itemId);
-            log.info("[IssueService] Item Finalized (FAIL/DAMAGED). itemId={}", itemId);
+            log.info("[IssueService] Item remains ISSUE_PENDING for admin confirmation. itemId={}", itemId);
             return;
         }
 
@@ -930,10 +954,12 @@ public class IssueService {
 
         issue.setAdminRequired(true); // 관리자 확인 필요 (연결 실패)
         issue.setIssueHandling("NON_BLOCKING"); // 작업자는 계속 진행 가능
+        issue.setWebrtcStatus("NONE"); // [Fix] 통화 상태 초기화 (WAITING에서 탈출)
 
         // 5. Issue 업데이트
         issueMapper.updateIssueStatus(issue);
-        log.info("[IssueService] WebRTC MISSED processed. issueId={}, urgency={}, adminRequired=true",
+        log.info(
+                "[IssueService] WebRTC MISSED processed. issueId={}, urgency={}, adminRequired=true, webrtcStatus=NONE",
                 issueId, issue.getUrgency());
 
         // 6. 파손 TEMP 재고 차감 (DAMAGED 타입만)

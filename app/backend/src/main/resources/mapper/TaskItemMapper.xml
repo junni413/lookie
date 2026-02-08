@@ -24,7 +24,7 @@
         WHERE i.batch_task_id = #{batchTaskId}
           AND i.location_id = #{locationId}
           AND i.product_id = #{productId}
-          AND i.status = 'PENDING'
+          AND i.status IN ('PENDING', 'IN_PROGRESS')
     </select>
 
     <!-- [조회] 특정 작업 및 지번에 해당하는 모든 아이템 목록 (상품 정보 포함) -->
@@ -54,7 +54,7 @@
         SELECT COUNT(*)
         FROM batch_task_items
         WHERE batch_task_id = #{batchTaskId}
-          AND status = 'PENDING'
+          AND status IN ('PENDING', 'IN_PROGRESS')
     </select>
 
     <!-- [조회] 특정 작업 아이템 상세 정보 (상품 정보 포함) -->
@@ -83,7 +83,7 @@
             picked_qty = picked_qty + #{increment},
             last_scanned_at = NOW()
         WHERE batch_task_item_id = #{batchTaskItemId}
-          AND status = 'PENDING'
+          AND status IN ('PENDING', 'IN_PROGRESS')
           AND picked_qty + #{increment} &lt;= required_qty
     </update>
 
@@ -103,7 +103,7 @@
         WHERE batch_task_item_id = #{batchTaskItemId}
     </update>
 
-    <!-- [조회] 작업 내에서 수행해야 할 다음 PENDING 아이템 하나 조회 -->
+    <!-- [조회] 작업 내에서 수행해야 할 다음 아이템 하나 조회 (IN_PROGRESS 우선, 그 다음 PENDING) -->
     <select id="findNextItem" resultType="TaskItemVO">
         SELECT
             i.batch_task_item_id AS batchTaskItemId,
@@ -116,12 +116,15 @@
             p.product_name AS productName,
             p.product_image AS productImage,
             p.barcode,
-            l.location_code AS locationCode -- 지번 코드 추가
+            l.location_code AS locationCode
         FROM batch_task_items i
         JOIN products p ON i.product_id = p.product_id
         JOIN zone_locations l ON i.location_id = l.location_id
         WHERE i.batch_task_id = #{batchTaskId}
-          AND i.status = 'PENDING'
+          AND i.status IN ('PENDING', 'IN_PROGRESS')
+        ORDER BY 
+            CASE WHEN i.status = 'IN_PROGRESS' THEN 1 ELSE 2 END,
+            i.batch_task_item_id ASC
         LIMIT 1
     </select>
 
@@ -138,10 +141,17 @@
             p.product_name AS productName,
             p.product_image AS productImage,
             p.barcode,
-            l.location_code AS locationCode
+            l.location_code AS locationCode,
+            iss.issue_type AS issueType,
+            iss.admin_decision AS adminDecision
         FROM batch_task_items i
         JOIN products p ON i.product_id = p.product_id
         JOIN zone_locations l ON i.location_id = l.location_id
+        LEFT JOIN (
+            SELECT batch_task_item_id, issue_type, admin_decision,
+                   ROW_NUMBER() OVER(PARTITION BY batch_task_item_id ORDER BY created_at DESC) as rn
+            FROM issues
+        ) iss ON i.batch_task_item_id = iss.batch_task_item_id AND iss.rn = 1
         WHERE i.batch_task_id = #{batchTaskId}
     </select>
 
@@ -169,7 +179,23 @@
         JOIN batch_tasks bt ON bti.batch_task_id = bt.batch_task_id
         WHERE bt.batch_id = #{batchId}
           AND bt.zone_id = #{zoneId}
-          AND bti.status != 'PENDING'
+          AND bti.status NOT IN ('PENDING', 'IN_PROGRESS')
+    </select>
+
+    <!-- [수정] picked_qty 단독 업데이트 (새 FSM용) -->
+    <update id="setPickedQty">
+        UPDATE batch_task_items
+        SET picked_qty = #{pickedQty},
+            last_scanned_at = NOW()
+        WHERE batch_task_item_id = #{batchTaskItemId}
+    </update>
+
+    <!-- [집계] IN_PROGRESS 상태 아이템 개수 조회 (새 FSM용) -->
+    <select id="countInProgressItems" resultType="int">
+        SELECT COUNT(*)
+        FROM batch_task_items
+        WHERE batch_task_id = #{batchTaskId}
+          AND status = 'IN_PROGRESS'
     </select>
 
 </mapper>
