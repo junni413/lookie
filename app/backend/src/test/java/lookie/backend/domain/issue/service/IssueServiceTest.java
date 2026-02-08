@@ -448,7 +448,7 @@ class IssueServiceTest {
         Long issueId = 1L;
         AiResultRequest request = new AiResultRequest();
         request.setAiDecision("PASS");
-        request.setConfidence(0.95f);
+        request.setConfidence(0.95);
         request.setSummary("정상 상품으로 판정됨");
 
         IssueVO issue = new IssueVO();
@@ -485,7 +485,7 @@ class IssueServiceTest {
         Long issueId = 1L;
         AiResultRequest request = new AiResultRequest();
         request.setAiDecision("NEED_CHECK");
-        request.setConfidence(0.6f);
+        request.setConfidence(0.6);
         request.setSummary("확인 필요");
 
         IssueVO issue = new IssueVO();
@@ -514,7 +514,7 @@ class IssueServiceTest {
         Long issueId = 1L;
         AiResultRequest request = new AiResultRequest();
         request.setAiDecision("FAIL");
-        request.setConfidence(0.88f);
+        request.setConfidence(0.88);
         request.setSummary("명확한 파손 감지");
 
         IssueVO issue = new IssueVO();
@@ -762,6 +762,7 @@ class IssueServiceTest {
         assertEquals(1, issue.getUrgency()); // NEED_CHECK → urgency=1
         assertEquals(true, issue.getAdminRequired());
         assertEquals("NON_BLOCKING", issue.getIssueHandling());
+        assertEquals("NONE", issue.getWebrtcStatus()); // WebRTC 상태 초기화 확인
         verify(issueMapper).updateIssueStatus(issue);
     }
 
@@ -788,6 +789,7 @@ class IssueServiceTest {
         // then
         assertEquals(1, issue.getUrgency()); // STOCK_EXISTS → urgency=1
         assertEquals(true, issue.getAdminRequired());
+        assertEquals("NONE", issue.getWebrtcStatus()); // WebRTC 상태 초기화 확인
         verify(issueMapper).updateIssueStatus(issue);
     }
 
@@ -814,6 +816,7 @@ class IssueServiceTest {
         // then
         assertEquals(2, issue.getUrgency()); // 기타 → urgency=2
         assertEquals(true, issue.getAdminRequired());
+        assertEquals("NONE", issue.getWebrtcStatus()); // WebRTC 상태 초기화 확인
         verify(issueMapper).updateIssueStatus(issue);
     }
 

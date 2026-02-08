@@ -518,6 +518,7 @@ public class IssueService {
      *                   DAMAGED, UNKNOWN)
      */
     private void applyAiResultPolicy(IssueVO issue, String aiDecision, String reasonCode) {
+        issue.setAiDecision(aiDecision); // [Fix] AI 판정 결과 직접 저장 (관리자 목록 조회용)
         String issueType = issue.getIssueType();
 
         // DAMAGED 케이스
