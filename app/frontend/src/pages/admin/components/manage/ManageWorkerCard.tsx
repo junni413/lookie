@@ -26,6 +26,11 @@ export default function ManageWorkerCard({ worker, onDragStart, isMoved }: Manag
                             {worker.name}
                         </div>
                     </WorkerHoverCard>
+                    {isMoved && (
+                        <span className="inline-flex items-center self-start px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-primary/10 text-primary mt-0.5">
+                            이동됨
+                        </span>
+                    )}
                     <div className="text-[10px] text-slate-400 font-medium truncate flex items-center gap-1">
                         {!worker.currentZoneId && "대기중"}
                         {worker.lineNumber && `L${worker.lineNumber}`}

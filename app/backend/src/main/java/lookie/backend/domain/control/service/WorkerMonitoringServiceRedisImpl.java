@@ -228,11 +228,8 @@ public class WorkerMonitoringServiceRedisImpl implements WorkerMonitoringService
             // 작업자 캐시 삭제
             redisRepository.deleteWorkerCache(workerId);
 
-            // 구역 캐시 삭제 (이전 구역 + 새 구역)
-            redisRepository.deleteZoneCache(zoneId);
-
-            // 대시보드 캐시 삭제
-            redisRepository.deleteDashboardCache();
+            // 상태 계산은 전체 구역 분포에 영향 -> 전체 캐시 무효화
+            redisRepository.deleteAllControlCache();
 
             log.info("[Redis Service] 구역 배정 완료 및 캐시 무효화: workerId={}, zoneId={}",
                     workerId, zoneId);

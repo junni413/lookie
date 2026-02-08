@@ -26,9 +26,38 @@ export default function Manage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+    const [lastMovedWorkerIds, setLastMovedWorkerIds] = useState<number[]>([]);
+    const [pendingAiMoves, setPendingAiMoves] = useState<any[] | null>(null);
 
     // Check if user has unsaved changes
     const isDirty = JSON.stringify(workers) !== JSON.stringify(lastAppliedWorkers);
+
+    const computeStatusByWorkers = (workerCount: number, avgWorkers: number): ZoneStat["status"] => {
+        if (avgWorkers <= 0) return "NORMAL";
+        if (workerCount >= avgWorkers * 1.2) return "STABLE";
+        if (workerCount <= avgWorkers * 0.8) return "CRITICAL";
+        return "NORMAL";
+    };
+
+    const zoneIds = stats.map(s => s.zoneId);
+    const workerCountByZone = zoneIds.map(
+        zoneId => workers.filter(w => w.currentZoneId === zoneId).length
+    );
+    const avgWorkers = workerCountByZone.length > 0
+        ? workerCountByZone.reduce((sum, c) => sum + c, 0) / workerCountByZone.length
+        : 0;
+
+    const displayStats: ZoneStat[] = stats.map(stat => {
+        const workerCount = workers.filter(w => w.currentZoneId === stat.zoneId).length;
+        return {
+            ...stat,
+            workerCount,
+            // Zone progress stays as server-provided workload progress
+            workRate: stat.workRate,
+            // Status reflects reallocation impact using current worker distribution
+            status: computeStatusByWorkers(workerCount, avgWorkers),
+        };
+    });
 
     useEffect(() => {
         loadData();
@@ -36,8 +65,12 @@ export default function Manage() {
 
     // Poll every 5 seconds, but pause if user is editing or AI modal is open
     useInterval(() => {
-        if (!isDirty && !isAiModalOpen) {
-            loadData(true);
+        if (!isAiModalOpen) {
+            if (!isDirty) {
+                loadData(true);
+            } else {
+                loadStatsOnly(true);
+            }
         }
     }, 5000);
 
@@ -82,6 +115,19 @@ export default function Manage() {
         }
     };
 
+    const loadStatsOnly = async (isBackground = false) => {
+        if (!isBackground) setLoading(true);
+        setError(null);
+        try {
+            const fetchedStats = await manageService.getZoneStats();
+            setStats(fetchedStats.length > 0 ? fetchedStats : DEFAULT_ZONES);
+        } catch (error) {
+            console.error("Failed to load zone stats", error);
+        } finally {
+            if (!isBackground) setLoading(false);
+        }
+    };
+
     const handleDrop = (workerId: number, targetZoneId: number) => {
         setWorkers(prev => prev.map(w => {
             if (w.userId === workerId) {
@@ -104,6 +150,31 @@ export default function Manage() {
     const handleApply = async () => {
         setLoading(true);
         try {
+            if (pendingAiMoves && pendingAiMoves.length > 0) {
+                const success = await rebalanceService.apply(
+                    pendingAiMoves,
+                    "AI Recommendation Applied via Admin Manage"
+                );
+
+                if (success) {
+                    alert("AI 추천 배치가 적용되었습니다.");
+                    setLastMovedWorkerIds(pendingAiMoves.map((m: any) => m.worker_id));
+                    setPendingAiMoves(null);
+                    await loadData();
+                    try {
+                        const ts = String(Date.now());
+                        localStorage.setItem("zones-refresh-ts", ts);
+                        window.dispatchEvent(new Event("zones-refresh"));
+                    } catch {
+                        window.dispatchEvent(new Event("zones-refresh"));
+                    }
+                } else {
+                    alert("재배치 적용에 실패했습니다.");
+                }
+                setLoading(false);
+                return;
+            }
+
             // Calculate changed workers
             const changedWorkers = workers.filter((worker) => {
                  const original = lastAppliedWorkers.find(w => w.userId === worker.userId);
@@ -123,6 +194,15 @@ export default function Manage() {
             // Update History with Deep Copy
             setPrevAppliedWorkers(structuredClone(lastAppliedWorkers));
             setLastAppliedWorkers(structuredClone(workers));
+            setLastMovedWorkerIds(changedWorkers.map(w => w.userId));
+            await loadStatsOnly(true);
+            try {
+                const ts = String(Date.now());
+                localStorage.setItem("zones-refresh-ts", ts);
+                window.dispatchEvent(new Event("zones-refresh"));
+            } catch {
+                window.dispatchEvent(new Event("zones-refresh"));
+            }
         } catch (err) {
             console.error("Failed to apply changes", err);
             alert("배치 적용 중 오류가 발생했습니다.");
@@ -141,24 +221,12 @@ export default function Manage() {
 
         if (moves && moves.length > 0) {
             console.log("[Manage] Applying AI Rebalance with moves:", moves);
-            try {
-                // Use the explicit moves from AI if available (Matches Map Logic)
-                const success = await rebalanceService.apply(moves, "AI Recommendation Applied via Admin Manage");
-                
-                if (success) {
-                    console.log("[Manage] AI Rebalance Apply Success. Refreshing data...");
-                    alert("AI 추천 배치가 적용되었습니다.");
-                    await loadData(); // Refresh all data from DB
-                } else {
-                    console.error("[Manage] AI Rebalance Apply Failed.");
-                    alert("재배치 적용에 실패했습니다.");
-                    setLoading(false);
-                }
-            } catch (err) {
-                console.error("Failed to apply AI rebalance", err);
-                alert("재배치 적용 중 오류가 발생했습니다.");
-                setLoading(false);
-            }
+            // Apply to UI only, persist when user clicks the black "적용" button
+            setWorkers(newWorkers);
+            setPendingAiMoves(moves);
+            setLastMovedWorkerIds(moves.map((m: any) => m.worker_id));
+            await loadStatsOnly(true);
+            setLoading(false);
         } else {
             // Fallback: If no moves (e.g. manual adjustments in modal?), just update local state
             // Or if user manually dragged in the AI modal (if we supported that)
@@ -169,6 +237,8 @@ export default function Manage() {
             // So for now, we trust 'moves' if present.
             
             setWorkers(newWorkers);
+            setPendingAiMoves(null);
+            await loadStatsOnly(true);
             setLoading(false);
             // Alert user that this is just a draft if not applied via API?
             // "AI 추천 결과가 리스트에 반영되었습니다. '적용' 버튼을 눌러 저장하세요."
@@ -232,12 +302,12 @@ export default function Manage() {
             <div className="flex-1 flex flex-col min-h-0 px-8 pb-6 overflow-hidden">
                 {/* Top Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0 mb-3">
-                    {stats.map(stat => (
+                    {displayStats.map(stat => (
                         <ManageStatisticCard
                             key={stat.zoneId}
                             zoneName={stat.name}
                             status={stat.status}
-                            workerCount={workers.filter(w => w.currentZoneId === stat.zoneId).length} // Dynamic count
+                            workerCount={stat.workerCount}
                             workRate={stat.workRate}
                         />
                     ))}
@@ -246,13 +316,14 @@ export default function Manage() {
                 {/* Bottom Zones Columns */}
                 <div className="flex-1 overflow-x-auto min-h-0 p-1">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 h-full min-w-[1000px] lg:min-w-0">
-                        {stats.map(stat => (
+                        {displayStats.map(stat => (
                             <ManageZoneColumn
                                 key={stat.zoneId}
                                 zoneId={stat.zoneId}
                                 zoneName={stat.name}
                                 workers={workers.filter(w => w.currentZoneId === stat.zoneId)}
                                 onDrop={handleDrop}
+                                highlightWorkerIds={lastMovedWorkerIds}
                             />
                         ))}
 
@@ -263,6 +334,7 @@ export default function Manage() {
                                 zoneName="대기중"
                                 workers={workers.filter(w => !w.currentZoneId)}
                                 onDrop={handleDrop}
+                                highlightWorkerIds={lastMovedWorkerIds}
                             />
                         )}
                     </div>

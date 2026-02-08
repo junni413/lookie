@@ -12,6 +12,12 @@ interface ManageZoneColumnProps {
 
 export default function ManageZoneColumn({ zoneId, zoneName, workers, onDrop, highlightWorkerIds }: ManageZoneColumnProps) {
     void zoneName; // Used by AIReallocationModal
+    const highlightSet = new Set(highlightWorkerIds || []);
+    const sortedWorkers = [...workers].sort((a, b) => {
+        const aMoved = highlightSet.has(a.userId) ? 1 : 0;
+        const bMoved = highlightSet.has(b.userId) ? 1 : 0;
+        return bMoved - aMoved;
+    });
 
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -38,12 +44,12 @@ export default function ManageZoneColumn({ zoneId, zoneName, workers, onDrop, hi
         >
             {/* Droppable Area */}
             <div className="flex-1 overflow-y-auto min-h-[300px] flex flex-col scrollbar-hide">
-                {workers.map(worker => (
+                {sortedWorkers.map(worker => (
                     <ManageWorkerCard
                         key={worker.userId}
                         worker={worker}
                         onDragStart={handleDragStart}
-                        isMoved={highlightWorkerIds?.includes(worker.userId)}
+                        isMoved={highlightSet.has(worker.userId)}
                     />
                 ))}
 

@@ -356,90 +356,137 @@ def recommend_rebalance(req: RebalanceRecommendRequest) -> RebalanceRecommendRes
         s = weighted_sum_risk(risk_map)
         return float(req.worst_case_weight * worst + req.sum_weight * s)
 
-    used_workers = set()
-    chosen_moves: List[Move] = []
-    current_cap = dict(cap_h)
-    current_risk = dict(risk_before)
-    base_obj = objective(current_risk)
+    def choose_moves(
+        *,
+        max_moves: int,
+        min_active_workers: int,
+        min_gain: float,
+        min_delta: float,
+        donor_candidates: List[Tuple[float, SnapshotRow]],
+    ) -> Tuple[List[Move], Dict[int, float], Dict[int, float]]:
+        used = set()
+        moves: List[Move] = []
+        cur_cap = dict(cap_h)
+        cur_risk = dict(risk_before)
+        cur_obj = objective(cur_risk)
 
-    for _ in range(max(int(max_moves_cap), 0)):
-        best: Optional[Tuple[float, Move, Dict[int, float], Dict[int, float]]] = None
+        for _ in range(max(int(max_moves), 0)):
+            best: Optional[Tuple[float, Move, Dict[int, float], Dict[int, float]]] = None
 
-        for ms, r in donor_rows:
-            wid = r.worker_id
-            if wid in used_workers:
-                continue
-
-            from_zone = r.zone_id
-            if zone_active_workers.get(from_zone, 0) <= int(min_active_workers_per_zone):
-                continue
-
-            sp_h = speed_pred_map[wid]
-
-            for to_zone in targets:
-                if to_zone == from_zone:
+            for ms, r in donor_candidates:
+                wid = r.worker_id
+                if wid in used:
                     continue
 
-                gain = gain_until_deadline(sp_h, zone_state[to_zone].deadline_min)
-                if gain < float(min_gain_until_deadline):
+                from_zone = r.zone_id
+                if zone_active_workers.get(from_zone, 0) <= int(min_active_workers):
                     continue
 
-                new_cap = apply_move_caps(current_cap, from_zone, to_zone, sp_h)
-                new_risk = compute_zone_risk(zone_state, new_cap, req.block_risk_discount)
+                sp_h = speed_pred_map[wid]
 
-                delta_total = float(sum(current_risk.values()) - sum(new_risk.values()))
+                for to_zone in targets:
+                    if to_zone == from_zone:
+                        continue
 
-                benefit = current_risk.get(to_zone, 0.0) - new_risk.get(to_zone, 0.0)
-                cost = new_risk.get(from_zone, 0.0) - current_risk.get(from_zone, 0.0)
+                    gain = gain_until_deadline(sp_h, zone_state[to_zone].deadline_min)
+                    if gain < float(min_gain):
+                        continue
 
-                new_obj = objective(new_risk)
-                obj_improve = float(base_obj - new_obj)
+                    new_cap = apply_move_caps(cur_cap, from_zone, to_zone, sp_h)
+                    new_risk = compute_zone_risk(zone_state, new_cap, req.block_risk_discount)
 
-                score = (
-                    1.0 * max(benefit, 0.0)
-                    - req.lambda_cost * max(cost, 0.0)
-                    + req.mobility_weight * max(ms, 0.0)
-                    + 0.5 * max(obj_improve, 0.0)
-                )
+                    delta_total = float(sum(cur_risk.values()) - sum(new_risk.values()))
 
-                if best is None or score > best[0]:
-                    reason = (
-                        f"[{mode}] 마감 미스(risk) 감소 목적. "
-                        f"to risk↓={benefit:.2f}, from risk↑={cost:.2f}, "
-                        f"speed_pred={sp_h:.2f} qty/h, "
-                        f"deadline까지 추가처리량={gain:.1f}, "
-                        f"총위험감소(추정)={max(delta_total,0.0):.1f}."
+                    benefit = cur_risk.get(to_zone, 0.0) - new_risk.get(to_zone, 0.0)
+                    cost = new_risk.get(from_zone, 0.0) - cur_risk.get(from_zone, 0.0)
+
+                    new_obj = objective(new_risk)
+                    obj_improve = float(cur_obj - new_obj)
+
+                    score = (
+                        1.0 * max(benefit, 0.0)
+                        - req.lambda_cost * max(cost, 0.0)
+                        + req.mobility_weight * max(ms, 0.0)
+                        + 0.5 * max(obj_improve, 0.0)
                     )
-                    mv = Move(
-                        worker_id=int(wid),
-                        from_zone=int(from_zone),
-                        to_zone=int(to_zone),
-                        score=float(score),
-                        gain_until_deadline=float(gain),
-                        expected_risk_reduction=float(max(delta_total, 0.0)),
-                        reason=reason,
-                    )
-                    best = (score, mv, new_cap, new_risk)
 
-        if best is None:
-            break
+                    if best is None or score > best[0]:
+                        reason = (
+                            f"[{mode}] 마감 미스(risk) 감소 목적. "
+                            f"to risk↓={benefit:.2f}, from risk↑={cost:.2f}, "
+                            f"speed_pred={sp_h:.2f} qty/h, "
+                            f"deadline까지 추가처리량={gain:.1f}, "
+                            f"총위험감소(추정)={max(delta_total,0.0):.1f}."
+                        )
+                        mv = Move(
+                            worker_id=int(wid),
+                            from_zone=int(from_zone),
+                            to_zone=int(to_zone),
+                            score=float(score),
+                            gain_until_deadline=float(gain),
+                            expected_risk_reduction=float(max(delta_total, 0.0)),
+                            reason=reason,
+                        )
+                        best = (score, mv, new_cap, new_risk)
 
-        best_score, best_move, best_cap, best_risk = best
+            if best is None:
+                break
 
-        # ✅ stop rule(자동 인원): 개선이 작으면 멈춤
-        delta_total = float(sum(current_risk.values()) - sum(best_risk.values()))
-        if delta_total < float(min_delta_total_risk):
-            break
+            _, best_move, best_cap, best_risk = best
 
-        used_workers.add(best_move.worker_id)
-        chosen_moves.append(best_move)
+            # ✅ stop rule(자동 인원): 개선이 작으면 멈춤
+            delta_total = float(sum(cur_risk.values()) - sum(best_risk.values()))
+            if delta_total < float(min_delta):
+                break
 
-        current_cap = best_cap
-        current_risk = best_risk
-        base_obj = objective(current_risk)
+            used.add(best_move.worker_id)
+            moves.append(best_move)
 
-        if mode == "normal":
-            if all(current_risk.get(z, 0.0) <= 0 for z in target_set):
+            cur_cap = best_cap
+            cur_risk = best_risk
+            cur_obj = objective(cur_risk)
+
+            if mode == "normal":
+                if all(cur_risk.get(z, 0.0) <= 0 for z in target_set):
+                    break
+
+        return moves, cur_cap, cur_risk
+
+    chosen_moves, current_cap, current_risk = choose_moves(
+        max_moves=max_moves_cap,
+        min_active_workers=min_active_workers_per_zone,
+        min_gain=min_gain_until_deadline,
+        min_delta=min_delta_total_risk,
+        donor_candidates=donor_rows,
+    )
+
+    # Adaptive fallback: if no moves but risk exists, relax constraints progressively.
+    if not chosen_moves and total_risk_before > 0:
+        relaxed_top_workers = max(int(top_workers), len(rows))
+        relaxed_donors = donor_rows[: max(int(relaxed_top_workers), 1)]
+
+        relax_steps = [
+            {
+                "min_active_workers": max(int(min_active_workers_per_zone) - 1, 1),
+                "min_gain": float(min_gain_until_deadline) * 0.5,
+                "min_delta": float(min_delta_total_risk) * 0.5,
+            },
+            {
+                "min_active_workers": 1,
+                "min_gain": 0.0,
+                "min_delta": 0.0,
+            },
+        ]
+
+        for step in relax_steps:
+            chosen_moves, current_cap, current_risk = choose_moves(
+                max_moves=max_moves_cap,
+                min_active_workers=step["min_active_workers"],
+                min_gain=step["min_gain"],
+                min_delta=step["min_delta"],
+                donor_candidates=relaxed_donors,
+            )
+            if chosen_moves:
                 break
 
     risk_after = current_risk
