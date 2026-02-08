@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_required_env(key: str) -> str:
-    value = os.getenv(key)
+def get_required_env(key: str, default: str = None) -> str:
+    value = os.getenv(key, default)
     if value is None:
         raise EnvironmentError(f"Missing required environment variable: {key}")
     return value
@@ -50,7 +50,7 @@ GATE_MODEL_PATH = "model/yolov8n.onnx"
 # [수정] GMS (SSAFY AI) 설정
 # OpenAI 공식 키 대신 GMS 키를 사용
 GMS_API_KEY = get_required_env("GMS_API_KEY") # 필수!
-GMS_BASE_URL = get_required_env("GMS_BASE_URL", "https://gms.ssafy.io/gmsapi/api.openai.com/v1") # 필수!
+GMS_BASE_URL = get_required_env("GMS_BASE_URL") # 필수!
 
 # 모델명도 변수로 빼두는 것이 좋습니다 (나중에 gpt-4o로 바꿀 때 편함)
 GMS_MODEL_NAME = "gpt-4o-mini"
