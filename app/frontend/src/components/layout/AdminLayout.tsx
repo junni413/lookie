@@ -30,9 +30,9 @@ export default function AdminLayout() {
         </aside>
 
         {/* Content Wrapper: The "Card" overlay */}
-        <div className="flex-1 min-w-0 flex flex-col h-full relative z-0 bg-[#f8f9fc] overflow-hidden">
+        <div className="flex-1 min-w-0 flex flex-col h-full relative z-0 bg-slate-50 overflow-hidden md:rounded-l-[40px] shadow-2xl">
           {/* Main Content */}
-          <main className="flex-1 flex flex-col min-h-0 bg-[#f8f9fc]">
+          <main className="flex-1 flex flex-col min-h-0 bg-slate-50">
             <Outlet />
           </main>
         </div>

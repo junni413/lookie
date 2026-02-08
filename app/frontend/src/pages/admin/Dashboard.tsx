@@ -96,7 +96,7 @@ export default function Dashboard() {
       />
 
       {/* Top Section */}
-      <div className="shrink-0 pt-6 pr-6 pb-5 pl-[30px]">
+      <div className="shrink-0 py-6 px-8">
         <section className="grid grid-cols-4 gap-3">
           <StatusCard
             title="작업중인 작업자"
@@ -123,11 +123,11 @@ export default function Dashboard() {
       </div>
 
       {/* Bottom Section */}
-      <div className="flex-1 min-h-0 flex gap-5 items-stretch pr-6 pb-6">
+      <div className="flex-1 min-h-0 flex gap-6 items-stretch px-8 pb-6">
 
         {/* Left: Zone Cards (Grid) */}
         <div className="flex-1 flex flex-col min-h-0 relative h-[calc(100%+20px)] -mt-5">
-          <div className="absolute inset-0 pl-[30px] pr-1 pt-5">
+          <div className="absolute inset-0 pt-5">
             <ZoneGrid 
                 zones={zoneData} 
                 onZoneClick={(id) => navigate(`/admin/map?zoneId=${id}`)}
@@ -138,7 +138,7 @@ export default function Dashboard() {
         {/* Right: Issue List (Card) */}
         <div className="w-[400px] shrink-0 flex flex-col bg-white rounded-xl shadow-sm overflow-hidden h-full border border-slate-100/50">
           <div className="px-5 pt-4 pb-2 flex justify-between items-center shrink-0">
-            <h3 className="text-base font-bold text-slate-900">승인 요청 목록</h3>
+            <h3 className="text-base font-bold text-slate-900">관리자 확인이 필요한 이슈</h3>
 
             {/* Sort Controls */}
             <div className="flex items-center gap-2">

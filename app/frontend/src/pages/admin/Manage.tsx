@@ -191,7 +191,7 @@ export default function Manage() {
                         size="sm"
                     >
                         <Wand2 size={16} className="text-white/90" />
-                        AI 추천 재배치
+                        AI 추천 배치
                     </Button>
                     <div className="w-px h-6 bg-slate-200 mx-2 self-center rounded-full" />
                     
@@ -209,7 +209,7 @@ export default function Manage() {
 
                     <Button
                         onClick={handleApply}
-                        className="gap-2 bg-[#0F172A] hover:bg-[#0F172A]/90 text-white shadow-md hover:shadow-xl transition-all duration-200 h-9 px-5 font-bold rounded-full hover:-translate-y-0.5"
+                        className="gap-2 bg-[#0F172A] hover:bg-[#0F172A]/90 text-white shadow-md hover:shadow-xl transition-all duration-200 h-9 px-5 font-bold rounded-full hover:scale-105 active:scale-95"
                         size="sm"
                     >
                         <Check size={16} strokeWidth={2.5} />
@@ -218,9 +218,9 @@ export default function Manage() {
                 </div>
             </AdminPageHeader>
 
-            <div className="flex-1 flex flex-col min-h-0 px-8 pb-6 space-y-5 overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0 px-8 pb-6 overflow-hidden">
                 {/* Top Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0 mb-3">
                     {stats.map(stat => (
                         <ManageStatisticCard
                             key={stat.zoneId}
@@ -233,7 +233,7 @@ export default function Manage() {
                 </div>
 
                 {/* Bottom Zones Columns */}
-                <div className="flex-1 overflow-x-auto min-h-0 pb-2">
+                <div className="flex-1 overflow-x-auto min-h-0 p-1">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 h-full min-w-[1000px] lg:min-w-0">
                         {stats.map(stat => (
                             <ManageZoneColumn

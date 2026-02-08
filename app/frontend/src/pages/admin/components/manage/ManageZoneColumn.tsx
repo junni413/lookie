@@ -32,12 +32,12 @@ export default function ManageZoneColumn({ zoneId, zoneName, workers, onDrop, hi
 
     return (
         <div
-            className="flex flex-col bg-white rounded-xl h-full border border-slate-200 hover:border-primary/30 transition-colors shadow-sm"
+            className="flex flex-col bg-white rounded-2xl h-full border-0 ring-1 ring-slate-100 hover:ring-primary/50 transition-all duration-300 shadow-sm overflow-hidden"
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
             {/* Droppable Area */}
-            <div className="flex-1 overflow-y-auto min-h-[300px] flex flex-col scrollbar-hide py-2">
+            <div className="flex-1 overflow-y-auto min-h-[300px] flex flex-col scrollbar-hide">
                 {workers.map(worker => (
                     <ManageWorkerCard
                         key={worker.userId}

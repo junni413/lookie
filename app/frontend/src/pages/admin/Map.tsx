@@ -184,7 +184,7 @@ export default function Map() {
 
             </AdminPageHeader>
 
-            <div className="flex-1 flex overflow-hidden min-h-0 gap-4 h-full pb-6 px-8">
+            <div className="flex-1 flex overflow-hidden min-h-0 h-full pb-6 px-8">
                 {/* Left Panel: Zone Cards Grid - Resizes when panel opens */}
                 <div className={cn(
                     "flex flex-col overflow-y-auto transition-all duration-300 rounded-xl border border-slate-200 bg-white/50 shadow-sm h-full",
@@ -193,7 +193,7 @@ export default function Map() {
                     {/* Zone Cards Grid */}
                     <div className="p-6 h-full">
                         <div className={cn(
-                            "grid gap-4 w-full mx-auto h-full content-stretch",
+                            "grid gap-3 w-full mx-auto h-full content-stretch",
                             isWorkerPanelOpen ? "grid-cols-1 xl:grid-cols-2" : "grid-cols-1 md:grid-cols-2"
                         )}>
                             {stats.map(stat => (
@@ -215,11 +215,11 @@ export default function Map() {
 
                 {/* Right Panel: Worker List - Slides in */}
                 <div className={cn(
-                    "flex flex-col rounded-xl border border-slate-200 bg-white shadow-xl h-full transition-all duration-300 overflow-hidden",
-                    isWorkerPanelOpen ? "w-[40%] translate-x-0 opacity-100 ml-2" : "w-0 translate-x-full opacity-0 ml-0 border-0"
+                    "flex flex-col h-full transition-all duration-300",
+                    isWorkerPanelOpen ? "w-[40%] translate-x-0 opacity-100 pl-4" : "w-0 translate-x-full opacity-0 ml-0 border-0 overflow-hidden"
                 )}>
                     {isWorkerPanelOpen && (
-                        <div className="flex-1 overflow-hidden p-0">
+                        <div className="flex-1 overflow-hidden p-0 bg-white border border-slate-200 shadow-xl rounded-xl">
                             <WorkerList
                                 currentZoneId={selectedZoneId}
                                 allWorkers={workers}
