@@ -31,25 +31,9 @@ export default function ScannerModal({ isOpen, onClose, onScan, title, expectedV
                 setError(null);
                 const reader = new BrowserMultiFormatReader();
 
-                const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-                if (!devices || devices.length === 0) {
-                    setError("카메라 장치를 찾을 수 없습니다. 브라우저 권한을 확인해 주세요.");
-                    return;
-                }
-                // 후면 카메라 우선 선택
-                const rearCamera = devices.find((device) =>
-                    device.label.toLowerCase().includes("back") ||
-                    device.label.toLowerCase().includes("rear") ||
-                    device.label.toLowerCase().includes("environment")
-                );
-
-                const deviceId = rearCamera ? rearCamera.deviceId : devices[0].deviceId;
-                console.log("Scanner devices:", devices);
-                console.log("Selected device:", deviceId, rearCamera ? "(Rear)" : "(Default)");
-
-                // 권한 확인 및 스트림 시작
+                // ToteScan.tsx와 동일하게 deviceId를 undefined로 설정하여 라이브러리가 자동 선택하도록 함
                 controlsRef.current = await reader.decodeFromVideoDevice(
-                    deviceId,
+                    undefined,
                     videoRef.current!,
                     (result, err) => {
                         if (result && !scannedRef.current) {
