@@ -197,10 +197,6 @@ export default function Login() {
         </button>
 
       </div>
-
-      <footer className="mt-auto py-8 text-center text-xs font-bold tracking-[0.2em] text-slate-200 uppercase">
-        LOOKIE
-      </footer>
     </div>
   );
 }

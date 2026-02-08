@@ -100,7 +100,7 @@ export default function IssueListPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">상품명</p>
-                      <p className="text-base font-black text-slate-900 truncate leading-tight mt-0.5">
+                      <p className="text-[19px] font-black text-slate-900 truncate leading-tight mt-0.5">
                         {it.productName || "상품명 없음"}
                       </p>
                     </div>
@@ -112,7 +112,7 @@ export default function IssueListPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">지번 코드</p>
-                      <p className="text-[15px] font-bold text-blue-600 mt-0.5 tracking-tight font-mono">
+                      <p className="text-[18px] font-bold text-blue-600 mt-0.5 tracking-tight">
                         {it.locationCode || "-"}
                       </p>
                     </div>
