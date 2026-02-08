@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useInterval } from "@/hooks/useInterval";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 
@@ -26,12 +27,22 @@ export default function Manage() {
     const [error, setError] = useState<string | null>(null);
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
+    // Check if user has unsaved changes
+    const isDirty = JSON.stringify(workers) !== JSON.stringify(lastAppliedWorkers);
+
     useEffect(() => {
         loadData();
     }, []);
 
-    const loadData = async () => {
-        setLoading(true);
+    // Poll every 5 seconds, but pause if user is editing or AI modal is open
+    useInterval(() => {
+        if (!isDirty && !isAiModalOpen) {
+            loadData(true);
+        }
+    }, 5000);
+
+    const loadData = async (isBackground = false) => {
+        if (!isBackground) setLoading(true);
         setError(null);
         try {
             const [statsResult, workersResult] = await Promise.allSettled([
@@ -67,7 +78,7 @@ export default function Manage() {
             console.error("Unexpected error in loadData", error);
             // setError(error.message); // Don't block UI
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     };
 

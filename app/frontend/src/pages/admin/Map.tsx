@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useInterval } from "@/hooks/useInterval";
 import { useSearchParams } from "react-router-dom";
 import { manageService } from "@/services/manageService";
 
@@ -51,8 +52,16 @@ export default function Map() {
         }
     }, [selectedZoneId, isMapModalOpen]);
 
-    const loadData = async () => {
-        setLoading(true);
+    // Poll every 5 seconds
+    useInterval(() => {
+        loadData(true);
+        if (isMapModalOpen && selectedZoneId !== null) {
+            updateMapWorkers(selectedZoneId);
+        }
+    }, 5000);
+
+    const loadData = async (isBackground = false) => {
+        if (!isBackground) setLoading(true);
         setError(null);
         try {
             const [fetchedStats, fetchedWorkers] = await Promise.all([
@@ -65,7 +74,7 @@ export default function Map() {
             console.error("Failed to load manage data", error);
             setError(error.message || "Unknown error");
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     };
 
@@ -81,11 +90,7 @@ export default function Map() {
     // Map Modal Data
     const [mapZoneWorkers, setMapZoneWorkers] = useState<DB_Worker[]>([]);
 
-    // 1. Click on Card Body -> Show Map Modal & Fetch Data
-    const handleCardClick = async (zoneId: number) => {
-        setSelectedZoneId(zoneId);
-        setIsMapModalOpen(true);
-        
+    const updateMapWorkers = async (zoneId: number) => {
         try {
             // Fetch real map data
             const adminServiceWrapper = await import("@/services/adminService");
@@ -122,8 +127,15 @@ export default function Map() {
             setMapZoneWorkers(parsedWorkers);
         } catch (error) {
             console.error("Failed to load map workers", error);
-            setMapZoneWorkers([]); // Fallback to empty or keep previous? Empty is safer.
+            // setMapZoneWorkers([]); // Don't clear on failure during polling to avoid flicker
         }
+    }
+
+    // 1. Click on Card Body -> Show Map Modal & Fetch Data
+    const handleCardClick = async (zoneId: number) => {
+        setSelectedZoneId(zoneId);
+        setIsMapModalOpen(true);
+        await updateMapWorkers(zoneId);
     };
 
     // 2. Click on Zone List Button -> Toggle Worker Panel

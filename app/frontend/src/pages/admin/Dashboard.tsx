@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useInterval } from "@/hooks/useInterval";
 import { useNavigate } from "react-router-dom";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import StatusCard from "./components/dashboard/StatusCard";
@@ -28,8 +29,12 @@ export default function Dashboard() {
     progress: 0,
   });
 
-  useEffect(() => {
-    const fetchData = async () => {
+  /* 
+    Polling for Real-time Updates 
+    We use a ref to track if it's the first load to strictly control loading states if needed, 
+    but Dashboard currently doesn't have a blocking loading state.
+  */
+  const fetchData = async () => {
       // Parallel execution with independent error handling
       const [issuesResult, zonesResult, summaryResult] = await Promise.allSettled([
         issueService.getIssues({ status: "OPEN" }),
@@ -56,13 +61,18 @@ export default function Dashboard() {
           })));
       } else {
         console.error("Failed to load zone stats, using defaults", zonesResult.reason);
-        setZoneData(DEFAULT_ZONES.map(z => ({
-              id: z.zoneId,
-              name: z.name,
-              status: z.status,
-              working: z.workerCount,
-              workRate: z.workRate
-        })));
+        // Only set defaults if we have absolutely no data? 
+        // Or should we keep previous data if polling fails?
+        // Retaining previous data is better for "silent" failures.
+        if (zoneData.length === 0) {
+            setZoneData(DEFAULT_ZONES.map(z => ({
+                id: z.zoneId,
+                name: z.name,
+                status: z.status,
+                working: z.workerCount,
+                workRate: z.workRate
+            })));
+        }
       }
 
       // 3. Summary
@@ -71,10 +81,16 @@ export default function Dashboard() {
       } else {
         console.error("Failed to load dashboard summary", summaryResult.reason);
       }
-    };
+  };
 
+  useEffect(() => {
     fetchData();
   }, []);
+
+  // Poll every 5 seconds
+  useInterval(() => {
+    fetchData();
+  }, 5000);
 
   const sortedIssues = useMemo(() => {
     const arr = [...issues];
