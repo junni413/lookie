@@ -36,8 +36,8 @@ export default function AdminSidebar() {
     <div className="h-full flex flex-col bg-slate-900">
       {/* Brand */}
 
-      <div className="p-6 pb-2">
-        <div className="flex flex-col items-center gap-0.5 mb-6 w-full overflow-visible">
+      <div className="px-6 pt-8 pb-3">
+        <div className="flex flex-col items-center gap-0.5 mb-4 w-full overflow-visible">
              <div className="h-12 w-full relative flex items-center justify-center">
                 <LogoAnimation 
                     scale={0.42} 
@@ -48,7 +48,7 @@ export default function AdminSidebar() {
                     className="mb-0"
                 />
              </div>
-             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mt-1">Admin Console</div>
+             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase">Admin Console</div>
         </div>
       </div>
 
