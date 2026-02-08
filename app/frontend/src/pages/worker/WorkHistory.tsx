@@ -128,7 +128,7 @@ export default function WorkHistory() {
             isSelected
               ? "bg-[#304FFF] text-white font-semibold z-10"
               : hasLog
-              ? "bg-green-100/80 text-gray-900"
+              ? "bg-[#ECFDF5] text-gray-900"
               : isToday
               ? "bg-gray-100 text-gray-900"
               : "text-gray-900 hover:bg-gray-50"
@@ -211,7 +211,7 @@ export default function WorkHistory() {
         {/* Legend */}
         <div className="flex items-center gap-6 text-xs text-gray-500 pb-8">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-green-100/80" />
+            <div className="w-4 h-4 rounded bg-[#ECFDF5]" />
             <span>근무일</span>
           </div>
           <div className="flex items-center gap-2">
