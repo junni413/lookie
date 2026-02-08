@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.control.dto.*;
 import lookie.backend.domain.control.mapper.ControlMapper;
+import lookie.backend.domain.control.mapper.RebalanceMapper;
 import lookie.backend.domain.control.repository.ControlRedisRepository;
 import lookie.backend.domain.control.repository.vo.AdminQueryVo;
 import lookie.backend.domain.user.service.UserService;
@@ -40,6 +41,7 @@ public class WorkerMonitoringServiceRedisImpl implements WorkerMonitoringService
     private final ControlMapper controlMapper; // DB Fallback용
     private final UserService userService; // 실시간 상태 주입용
     private final BatchMapper batchMapper;
+    private final RebalanceMapper rebalanceMapper;
     private final TaskItemMapper taskItemMapper;
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -223,13 +225,39 @@ public class WorkerMonitoringServiceRedisImpl implements WorkerMonitoringService
         controlMapper.insertAssignmentHistory(workerId, zoneId, request.getReason());
         controlMapper.updateUserAssignedZone(workerId, zoneId);
 
-        // 3. Redis 캐시 무효화 (중요!)
+        // 3. Rebalance snapshot refresh (apply latest zone assignment)
+        try {
+            BatchVO currentBatch = batchMapper.findCurrentInProgress();
+            if (currentBatch != null) {
+                rebalanceMapper.insertSnapshotFromLatestWithUserZone(currentBatch.getBatchId());
+            }
+        } catch (Exception e) {
+            log.warn("[Redis Service] Snapshot refresh failed after assignment: {}", e.getMessage());
+        }
+
+        // 4. Redis 캐시 무효화 (중요!)
         try {
             // 작업자 캐시 삭제
             redisRepository.deleteWorkerCache(workerId);
 
             // 상태 계산은 전체 구역 분포에 영향 -> 전체 캐시 무효화
             redisRepository.deleteAllControlCache();
+
+            // Warm caches immediately for instant UI reflection
+            List<ZoneOverviewDto> overviews = controlMapper.selectZoneOverviews();
+            for (ZoneOverviewDto dto : overviews) {
+                dto.setZoneName(ZoneType.getNameById(dto.getZoneId()));
+                redisRepository.saveZoneOverview(dto.getZoneId(), dto);
+            }
+
+            DashboardSummaryDto summary = DashboardSummaryDto.builder()
+                    .totalActiveWorkers(controlMapper.countTotalActiveWorkers())
+                    .pendingIssues(controlMapper.countPendingIssues())
+                    .completedIssues(controlMapper.countTodayCompletedIssues())
+                    .totalProgressRate(0.0)
+                    .zoneSummaries(overviews)
+                    .build();
+            redisRepository.saveDashboardSummary(summary);
 
             log.info("[Redis Service] 구역 배정 완료 및 캐시 무효화: workerId={}, zoneId={}",
                     workerId, zoneId);

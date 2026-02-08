@@ -35,4 +35,67 @@
           )
     </select>
 
+    <insert id="insertSnapshotFromLatestWithUserZone">
+        <![CDATA[
+        WITH latest AS (
+            SELECT *
+            FROM rebalance_snapshots
+            WHERE batch_id = #{batchId}
+              AND ts = (
+                  SELECT MAX(ts)
+                  FROM rebalance_snapshots
+                  WHERE batch_id = #{batchId}
+              )
+        ),
+        zone_vals AS (
+            SELECT
+                zone_id,
+                MAX(time_to_deadline_min) AS time_to_deadline_min,
+                MAX(zone_backlog) AS zone_backlog,
+                MAX(zone_location_cnt) AS zone_location_cnt,
+                MAX(zone_blocking_issue_cnt) AS zone_blocking_issue_cnt
+            FROM latest
+            GROUP BY zone_id
+        ),
+        zone_counts AS (
+            SELECT
+                u.assigned_zone_id AS zone_id,
+                COUNT(*) AS zone_active_workers
+            FROM users u
+            JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+            WHERE u.role = 'WORKER'
+            GROUP BY u.assigned_zone_id
+        )
+        INSERT INTO rebalance_snapshots (
+            ts, batch_id, worker_id, zone_id,
+            progress, remaining_qty,
+            time_to_planned_end_min, time_to_deadline_min,
+            zone_backlog, zone_active_workers, zone_location_cnt, zone_blocking_issue_cnt,
+            worker_speed_30m_avg, speed_label,
+            picked_total, required_total
+        )
+        SELECT
+            NOW() AS ts,
+            l.batch_id,
+            l.worker_id,
+            u.assigned_zone_id AS zone_id,
+            l.progress,
+            l.remaining_qty,
+            l.time_to_planned_end_min,
+            COALESCE(zv.time_to_deadline_min, l.time_to_deadline_min),
+            COALESCE(zv.zone_backlog, l.zone_backlog),
+            COALESCE(zc.zone_active_workers, l.zone_active_workers),
+            COALESCE(zv.zone_location_cnt, l.zone_location_cnt),
+            COALESCE(zv.zone_blocking_issue_cnt, l.zone_blocking_issue_cnt),
+            l.worker_speed_30m_avg,
+            l.speed_label,
+            l.picked_total,
+            l.required_total
+        FROM latest l
+        JOIN users u ON u.user_id = l.worker_id
+        LEFT JOIN zone_vals zv ON zv.zone_id = u.assigned_zone_id
+        LEFT JOIN zone_counts zc ON zc.zone_id = u.assigned_zone_id;
+        ]]>
+    </insert>
+
 </mapper>

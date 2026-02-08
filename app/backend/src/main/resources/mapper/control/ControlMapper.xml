@@ -59,8 +59,7 @@
             -- Status Calculation (Based on AI rebalancing logic)
             CASE
                 WHEN COALESCE(zwr.worker_count, 0) = 0 THEN 'CRITICAL'
-                WHEN zwr.max_worker_count > zwr.min_worker_count AND zwr.rank_high = 1 THEN 'STABLE'
-                WHEN zwr.max_worker_count > zwr.min_worker_count AND zwr.rank_low = 1 THEN 'CRITICAL'
+                -- 인원수 랭크 기반 STABLE/CRITICAL 판단은 사용하지 않음
                 WHEN zrs.avg_speed_per_hour IS NULL OR zrs.avg_speed_per_hour = 0 THEN 'CRITICAL'
                 WHEN zrs.total_remaining_qty IS NULL THEN 'STABLE'
                 -- 예상 완료 시간 계산: 현재 시각 + (남은 수량 / 시간당 속도) 시간

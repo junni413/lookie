@@ -190,10 +190,10 @@ SELECT
   zl.zone_id,
   zl.line_id,
   CONCAT(
-    zl.zone_id, '-', LPAD(zl.line_id, 2, '0'), '-', LPAD(loc.seq, 2, '0')
+    zl.zone_id, '-', LPAD(zl.line_name, 2, '0'), '-', LPAD(loc.seq, 2, '0')
   ) AS location_code,
   -- 더미 좌표값
-  (ASCII(zl.line_name) - ASCII('A') + 1) * 10 AS x,
+  CAST(zl.line_name AS UNSIGNED) * 10 AS x,
   loc.seq * 5 AS y,
   true AS is_active
 FROM zone_lines zl
@@ -821,7 +821,7 @@ WHERE bti.status = 'DONE';
 -- =====================================================
 -- Use a single snapshot timestamp across all zones to ensure latest batch selection returns all rows.
 SET @snap_ts = NOW();
--- Zone 1: 주의 (남은 아이템 800개, 6명, 평균 속도 10개/시간 → 2시간 동안 120개만 처리 가능, risk=680 - 작업자 부족)
+-- Zone 1: 주의 (risk가 크게 나오도록 backlog↑, speed↓, deadline↓)
 INSERT INTO rebalance_snapshots (
   ts, batch_id, worker_id, zone_id,
   progress, remaining_qty,
@@ -833,193 +833,24 @@ INSERT INTO rebalance_snapshots (
 SELECT
   @snap_ts as ts,
   1 as batch_id,
-  user_id as worker_id,
+  u.user_id as worker_id,
   1 as zone_id,
-  0.27 as progress,
-  CASE user_id
-    WHEN 1 THEN 140
-    WHEN 2 THEN 135
-    WHEN 3 THEN 130
-    WHEN 4 THEN 130
-    WHEN 5 THEN 135
-    WHEN 6 THEN 130
-  END as remaining_qty,  -- 합계 800
-  -- time_to_planned_end_min: 남은 작업량 / 속도 * 60분
-  CASE user_id
-    WHEN 1 THEN CEIL(140 / 10.0 * 60)  -- 840분
-    WHEN 2 THEN CEIL(135 / 10.0 * 60)  -- 810분
-    WHEN 3 THEN CEIL(130 / 10.0 * 60)  -- 780분
-    WHEN 4 THEN CEIL(130 / 10.0 * 60)  -- 780분
-    WHEN 5 THEN CEIL(135 / 10.0 * 60)  -- 810분
-    WHEN 6 THEN CEIL(130 / 10.0 * 60)  -- 780분
-  END as time_to_planned_end_min,
+  0.10 as progress,
+  500 as remaining_qty,
+  1200 as time_to_planned_end_min,
   120 as time_to_deadline_min,  -- 마감까지 2시간 = 120분
-  800 as zone_backlog,  -- 400 → 800 (2시간 동안 120개만 처리 가능 → risk=680)
-  6 as zone_active_workers,
-  72 as zone_location_cnt,
-  0 as zone_blocking_issue_cnt,
-  ROUND(9 + RAND() * 2, 2) as worker_speed_30m_avg, -- 9~11개/시간
-  ROUND(9 + RAND() * 2, 2) as speed_label,
-  CASE user_id
-    WHEN 1 THEN 5
-    WHEN 2 THEN 5
-    WHEN 3 THEN 5
-    WHEN 4 THEN 5
-    WHEN 5 THEN 5
-    WHEN 6 THEN 5
-  END as picked_total,  -- 합계 30
-  CASE user_id
-    WHEN 1 THEN 145
-    WHEN 2 THEN 140
-    WHEN 3 THEN 135
-    WHEN 4 THEN 135
-    WHEN 5 THEN 140
-    WHEN 6 THEN 135
-  END as required_total  -- 합계 830 (picked 30 + remaining 800)
-FROM users
-WHERE user_id BETWEEN 1 AND 6 AND role = 'WORKER';
-
--- Zone 2: 양호 (남은 아이템 50개, 8명, 평균 속도 15개/시간 → 예상 3.33시간 < 4시간 마감)
-INSERT INTO rebalance_snapshots (
-  ts, batch_id, worker_id, zone_id,
-  progress, remaining_qty,
-  time_to_planned_end_min, time_to_deadline_min,
-  zone_backlog, zone_active_workers, zone_location_cnt, zone_blocking_issue_cnt,
-  worker_speed_30m_avg, speed_label,
-  picked_total, required_total
-)
-SELECT
-  @snap_ts as ts,
-  1 as batch_id,
-  user_id as worker_id,
-  2 as zone_id,
-  0.60 as progress,
-  CASE user_id
-    WHEN 13 THEN 7
-    WHEN 14 THEN 6
-    WHEN 15 THEN 6
-    WHEN 16 THEN 7
-    WHEN 17 THEN 6
-    WHEN 18 THEN 6
-    WHEN 19 THEN 6
-    WHEN 20 THEN 6
-  END as remaining_qty,
-  -- time_to_planned_end_min: 남은 작업량 / 속도 * 60분
-  CASE user_id
-    WHEN 13 THEN CEIL(7 / 15.0 * 60)   -- 28분
-    WHEN 14 THEN CEIL(6 / 15.0 * 60)   -- 24분
-    WHEN 15 THEN CEIL(6 / 15.0 * 60)   -- 24분
-    WHEN 16 THEN CEIL(7 / 15.0 * 60)   -- 28분
-    WHEN 17 THEN CEIL(6 / 15.0 * 60)   -- 24분
-    WHEN 18 THEN CEIL(6 / 15.0 * 60)   -- 24분
-    WHEN 19 THEN CEIL(6 / 15.0 * 60)   -- 24분
-    WHEN 20 THEN CEIL(6 / 15.0 * 60)   -- 24분
-  END as time_to_planned_end_min,
-  240 as time_to_deadline_min,  -- 마감까지 4시간 = 240분
-  50 as zone_backlog,
-  8 as zone_active_workers,
-  72 as zone_location_cnt,
-  0 as zone_blocking_issue_cnt,
-  ROUND(14 + RAND() * 2, 2) as worker_speed_30m_avg, -- 14~16개/시간
-  ROUND(14 + RAND() * 2, 2) as speed_label,
-  CASE user_id
-    WHEN 13 THEN 5
-    WHEN 14 THEN 6
-    WHEN 15 THEN 6
-    WHEN 16 THEN 5
-    WHEN 17 THEN 6
-    WHEN 18 THEN 6
-    WHEN 19 THEN 5
-    WHEN 20 THEN 6
-  END as picked_total,
-  CASE user_id
-    WHEN 13 THEN 12
-    WHEN 14 THEN 12
-    WHEN 15 THEN 12
-    WHEN 16 THEN 12
-    WHEN 17 THEN 12
-    WHEN 18 THEN 12
-    WHEN 19 THEN 11
-    WHEN 20 THEN 12
-  END as required_total
-FROM users
-WHERE user_id BETWEEN 13 AND 20 AND role = 'WORKER';
-
--- Zone 3: 양호 (남은 아이템 70개, 10명, 평균 속도 20개/시간 → 예상 3.5시간, 3시간 < 3.5시간 < 4시간 마감)
-INSERT INTO rebalance_snapshots (
-  ts, batch_id, worker_id, zone_id,
-  progress, remaining_qty,
-  time_to_planned_end_min, time_to_deadline_min,
-  zone_backlog, zone_active_workers, zone_location_cnt, zone_blocking_issue_cnt,
-  worker_speed_30m_avg, speed_label,
-  picked_total, required_total
-)
-SELECT
-  @snap_ts as ts,
-  1 as batch_id,
-  user_id as worker_id,
-  3 as zone_id,
-  0.46 as progress,
-  CASE user_id
-    WHEN 25 THEN 8
-    WHEN 26 THEN 7
-    WHEN 27 THEN 7
-    WHEN 28 THEN 7
-    WHEN 29 THEN 7
-    WHEN 30 THEN 7
-    WHEN 31 THEN 7
-    WHEN 32 THEN 7
-    WHEN 33 THEN 7
-    WHEN 34 THEN 6
-  END as remaining_qty,
-  -- time_to_planned_end_min: 남은 작업량 / 속도 * 60분
-  CASE user_id
-    WHEN 25 THEN CEIL(8 / 20.0 * 60)   -- 24분
-    WHEN 26 THEN CEIL(7 / 20.0 * 60)   -- 21분
-    WHEN 27 THEN CEIL(7 / 20.0 * 60)   -- 21분
-    WHEN 28 THEN CEIL(7 / 20.0 * 60)   -- 21분
-    WHEN 29 THEN CEIL(7 / 20.0 * 60)   -- 21분
-    WHEN 30 THEN CEIL(7 / 20.0 * 60)   -- 21분
-    WHEN 31 THEN CEIL(7 / 20.0 * 60)   -- 21분
-    WHEN 32 THEN CEIL(7 / 20.0 * 60)   -- 21분
-    WHEN 33 THEN CEIL(7 / 20.0 * 60)   -- 21분
-    WHEN 34 THEN CEIL(6 / 20.0 * 60)   -- 18분
-  END as time_to_planned_end_min,
-  240 as time_to_deadline_min,  -- 마감까지 4시간 = 240분
-  70 as zone_backlog,
+  3000 as zone_backlog,
   10 as zone_active_workers,
   72 as zone_location_cnt,
-  3 as zone_blocking_issue_cnt,
-  ROUND(19 + RAND() * 2, 2) as worker_speed_30m_avg, -- 19~21개/시간
-  ROUND(19 + RAND() * 2, 2) as speed_label,
-  CASE user_id
-    WHEN 25 THEN 5
-    WHEN 26 THEN 6
-    WHEN 27 THEN 6
-    WHEN 28 THEN 6
-    WHEN 29 THEN 6
-    WHEN 30 THEN 6
-    WHEN 31 THEN 6
-    WHEN 32 THEN 6
-    WHEN 33 THEN 7
-    WHEN 34 THEN 6
-  END as picked_total,
-  CASE user_id
-    WHEN 25 THEN 13
-    WHEN 26 THEN 13
-    WHEN 27 THEN 13
-    WHEN 28 THEN 13
-    WHEN 29 THEN 13
-    WHEN 30 THEN 13
-    WHEN 31 THEN 13
-    WHEN 32 THEN 13
-    WHEN 33 THEN 13
-    WHEN 34 THEN 12
-  END as required_total
-FROM users
-WHERE user_id BETWEEN 25 AND 34 AND role = 'WORKER';
+  0 as zone_blocking_issue_cnt,
+  1 as worker_speed_30m_avg,
+  1 as speed_label,
+  0 as picked_total,
+  500 as required_total
+FROM users u
+WHERE u.role = 'WORKER' AND u.assigned_zone_id = 1;
 
--- Zone 4: 안정 (남은 아이템 3개, 11명, 평균 속도 30개/시간 → 예상 0.1시간 << 4시간 마감, 작업자 과잉)
+-- Zone 2: 양호 (ETA가 deadline-60~deadline 사이)
 INSERT INTO rebalance_snapshots (
   ts, batch_id, worker_id, zone_id,
   progress, remaining_qty,
@@ -1031,57 +862,80 @@ INSERT INTO rebalance_snapshots (
 SELECT
   @snap_ts as ts,
   1 as batch_id,
-  user_id as worker_id,
-  4 as zone_id,
-  0.95 as progress,
-  CASE user_id
-    WHEN 37 THEN 1
-    WHEN 38 THEN 1
-    WHEN 39 THEN 1
-    ELSE 0
-  END as remaining_qty,
-  -- time_to_planned_end_min: 남은 작업량 / 속도 * 60분
-  CASE user_id
-    WHEN 37 THEN CEIL(1 / 30.0 * 60)   -- 2분
-    WHEN 38 THEN CEIL(1 / 30.0 * 60)   -- 2분
-    WHEN 39 THEN CEIL(1 / 30.0 * 60)   -- 2분
-    ELSE 0                                -- 0분 (작업 없음)
-  END as time_to_planned_end_min,
+  u.user_id as worker_id,
+  2 as zone_id,
+  0.60 as progress,
+  15 as remaining_qty,
+  180 as time_to_planned_end_min,
   240 as time_to_deadline_min,  -- 마감까지 4시간 = 240분
-  3 as zone_backlog,
-  11 as zone_active_workers,
+  200 as zone_backlog,
+  12 as zone_active_workers,
   72 as zone_location_cnt,
   0 as zone_blocking_issue_cnt,
-  ROUND(29 + RAND() * 2, 2) as worker_speed_30m_avg, -- 29~31개/시간
-  ROUND(29 + RAND() * 2, 2) as speed_label,
-  CASE user_id
-    WHEN 37 THEN 4
-    WHEN 38 THEN 5
-    WHEN 39 THEN 5
-    WHEN 40 THEN 5
-    WHEN 41 THEN 5
-    WHEN 42 THEN 6
-    WHEN 43 THEN 6
-    WHEN 44 THEN 6
-    WHEN 45 THEN 6
-    WHEN 46 THEN 5
-    WHEN 47 THEN 4
-  END as picked_total,
-  CASE user_id
-    WHEN 37 THEN 5
-    WHEN 38 THEN 6
-    WHEN 39 THEN 6
-    WHEN 40 THEN 5
-    WHEN 41 THEN 5
-    WHEN 42 THEN 6
-    WHEN 43 THEN 6
-    WHEN 44 THEN 6
-    WHEN 45 THEN 6
-    WHEN 46 THEN 5
-    WHEN 47 THEN 4
-  END as required_total
-FROM users
-WHERE user_id BETWEEN 37 AND 47 AND role = 'WORKER';
+  60 as worker_speed_30m_avg,
+  60 as speed_label,
+  10 as picked_total,
+  25 as required_total
+FROM users u
+WHERE u.role = 'WORKER' AND u.assigned_zone_id = 2;
+
+-- Zone 3: 양호 (ETA가 deadline-60~deadline 사이)
+INSERT INTO rebalance_snapshots (
+  ts, batch_id, worker_id, zone_id,
+  progress, remaining_qty,
+  time_to_planned_end_min, time_to_deadline_min,
+  zone_backlog, zone_active_workers, zone_location_cnt, zone_blocking_issue_cnt,
+  worker_speed_30m_avg, speed_label,
+  picked_total, required_total
+)
+SELECT
+  @snap_ts as ts,
+  1 as batch_id,
+  u.user_id as worker_id,
+  3 as zone_id,
+  0.50 as progress,
+  15 as remaining_qty,
+  180 as time_to_planned_end_min,
+  240 as time_to_deadline_min,  -- 마감까지 4시간 = 240분
+  200 as zone_backlog,
+  12 as zone_active_workers,
+  72 as zone_location_cnt,
+  0 as zone_blocking_issue_cnt,
+  60 as worker_speed_30m_avg,
+  60 as speed_label,
+  10 as picked_total,
+  25 as required_total
+FROM users u
+WHERE u.role = 'WORKER' AND u.assigned_zone_id = 3;
+
+-- Zone 4: 안정 (ETA가 deadline-60 이내)
+INSERT INTO rebalance_snapshots (
+  ts, batch_id, worker_id, zone_id,
+  progress, remaining_qty,
+  time_to_planned_end_min, time_to_deadline_min,
+  zone_backlog, zone_active_workers, zone_location_cnt, zone_blocking_issue_cnt,
+  worker_speed_30m_avg, speed_label,
+  picked_total, required_total
+)
+SELECT
+  @snap_ts as ts,
+  1 as batch_id,
+  u.user_id as worker_id,
+  4 as zone_id,
+  0.90 as progress,
+  5 as remaining_qty,
+  60 as time_to_planned_end_min,
+  240 as time_to_deadline_min,  -- 마감까지 4시간 = 240분
+  120 as zone_backlog,
+  13 as zone_active_workers,
+  72 as zone_location_cnt,
+  0 as zone_blocking_issue_cnt,
+  60 as worker_speed_30m_avg,
+  60 as speed_label,
+  10 as picked_total,
+  15 as required_total
+FROM users u
+WHERE u.role = 'WORKER' AND u.assigned_zone_id = 4;
 
 -- =====================================================
 -- 9. ISSUES (일부 이슈 데이터 - OPEN 상태)
@@ -1229,48 +1083,315 @@ WHERE bt.zone_id = 3 AND bt.status = 'IN_PROGRESS'
 LIMIT 1 OFFSET 2;
 
 -- =====================================================
--- 10. 데이터 검증 쿼리
+-- 9. 호버 데이터 보정 (IN_PROGRESS + current_location_id)
 -- =====================================================
-SELECT '=== 구역별 작업 현황 ===' AS info;
-SELECT
-  z.zone_id,
-  COUNT(DISTINCT CASE WHEN wl.ended_at IS NULL THEN bt.worker_id END) AS active_workers,
-  COUNT(CASE WHEN bt.status = 'UNASSIGNED' THEN 1 END) AS unassigned_tasks,
-  COUNT(CASE WHEN bt.status = 'IN_PROGRESS' THEN 1 END) AS in_progress_tasks,
-  COUNT(CASE WHEN bt.status = 'COMPLETED' THEN 1 END) AS completed_tasks,
-  COUNT(bt.batch_task_id) AS total_tasks,
-  ROUND(COUNT(CASE WHEN bt.status = 'COMPLETED' THEN 1 END) * 100.0 / COUNT(bt.batch_task_id), 2) AS completion_rate
-FROM zones z
-LEFT JOIN batch_tasks bt ON z.zone_id = bt.zone_id
-LEFT JOIN work_logs wl ON bt.worker_id = wl.worker_id AND wl.ended_at IS NULL
-GROUP BY z.zone_id
-ORDER BY z.zone_id;
+-- 9-0) 모든 작업자 출근 처리 (호버 조건 충족)
+-- 9-0a) 모든 WORKER의 근무 로그를 출근 상태로 강제 (ended_at = NULL)
+UPDATE work_logs wl
+JOIN users u ON u.user_id = wl.worker_id
+SET wl.ended_at = NULL
+WHERE u.role = 'WORKER';
 
-SELECT '=== 이슈 현황 ===' AS info;
+-- 9-0a-1) WORKER 배정 zone 정합성 강제 (id 범위 기준)
+UPDATE users
+SET assigned_zone_id = CASE
+  WHEN user_id BETWEEN 1 AND 10 THEN 1   -- zone1: 10명 (최소)
+  WHEN user_id BETWEEN 11 AND 22 THEN 2  -- zone2: 12명 (중간)
+  WHEN user_id BETWEEN 23 AND 34 THEN 3  -- zone3: 12명 (중간)
+  WHEN user_id BETWEEN 35 AND 47 THEN 4  -- zone4: 13명 (최대)
+  ELSE assigned_zone_id
+END
+WHERE role = 'WORKER';
+
+-- 9-0b) 근무 로그가 없는 WORKER는 신규 출근 로그 생성
+INSERT INTO work_logs (
+  worker_id,
+  started_at,
+  planned_end_at
+)
 SELECT
+  u.user_id,
+  NOW() AS started_at,
+  DATE_ADD(NOW(), INTERVAL 8 HOUR) AS planned_end_at
+FROM users u
+LEFT JOIN work_logs wl
+  ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+WHERE u.role = 'WORKER'
+  AND wl.work_log_id IS NULL;
+
+-- (선택) 출근 이벤트 기록
+INSERT INTO work_log_events (work_log_id, event_type, occurred_at)
+SELECT wl.work_log_id, 'START', wl.started_at
+FROM work_logs wl
+LEFT JOIN work_log_events we
+  ON we.work_log_id = wl.work_log_id AND we.event_type = 'START'
+WHERE wl.ended_at IS NULL
+  AND we.event_id IS NULL;
+
+-- 9-1) 출근 중이지만 IN_PROGRESS 작업이 없는 작업자에게 작업 할당
+WITH active_workers AS (
+  SELECT
+    u.user_id,
+    u.assigned_zone_id,
+    ROW_NUMBER() OVER (PARTITION BY u.assigned_zone_id ORDER BY u.user_id) AS rn
+  FROM users u
+  JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+  LEFT JOIN batch_tasks bt
+    ON bt.worker_id = u.user_id AND bt.status = 'IN_PROGRESS'
+  WHERE u.role = 'WORKER'
+    AND bt.batch_task_id IS NULL
+),
+unassigned_tasks AS (
+  SELECT
+    bt.batch_task_id,
+    bt.zone_id,
+    ROW_NUMBER() OVER (PARTITION BY bt.zone_id ORDER BY bt.batch_task_id) AS rn
+  FROM batch_tasks bt
+  WHERE bt.status = 'UNASSIGNED'
+),
+matched AS (
+  SELECT
+    aw.user_id,
+    ut.batch_task_id
+  FROM active_workers aw
+  JOIN unassigned_tasks ut
+    ON aw.assigned_zone_id = ut.zone_id
+   AND aw.rn = ut.rn
+)
+UPDATE batch_tasks bt
+JOIN matched m ON m.batch_task_id = bt.batch_task_id
+SET
+  bt.worker_id = m.user_id,
+  bt.status = 'IN_PROGRESS',
+  bt.action_status = 'SCAN_TOTE',
+  bt.started_at = NOW();
+
+-- 9-1b) 그래도 남은 작업자(배정할 UNASSIGNED가 부족한 경우)를 위해 작업 생성
+INSERT INTO batch_tasks (
+  batch_id,
   zone_id,
-  issue_type,
-  urgency,
-  COUNT(*) AS issue_count
-FROM issues i
-JOIN batch_tasks bt ON i.batch_task_id = bt.batch_task_id
-WHERE i.status = 'OPEN'
-GROUP BY zone_id, issue_type, urgency
-ORDER BY zone_id, urgency;
-
-SELECT '=== 작업자별 작업량 (IN_PROGRESS) ===' AS info;
+  worker_id,
+  status,
+  action_status,
+  started_at
+)
 SELECT
-  bt.worker_id,
-  u.name,
-  bt.zone_id,
-  COUNT(*) AS task_count,
-  SUM(CASE WHEN bt.status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed,
-  SUM(CASE WHEN bt.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS in_progress,
-  SUM(CASE WHEN bt.status = 'UNASSIGNED' THEN 1 ELSE 0 END) AS unassigned
-FROM batch_tasks bt
-JOIN users u ON bt.worker_id = u.user_id
-GROUP BY bt.worker_id, u.name, bt.zone_id
-HAVING in_progress > 0
-ORDER BY bt.zone_id, task_count DESC;
+  (SELECT b.batch_id FROM batches b WHERE b.status = 'IN_PROGRESS' ORDER BY b.deadline_at LIMIT 1),
+  u.assigned_zone_id,
+  u.user_id,
+  'IN_PROGRESS',
+  'SCAN_TOTE',
+  NOW()
+FROM users u
+JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+LEFT JOIN batch_tasks bt
+  ON bt.worker_id = u.user_id AND bt.status = 'IN_PROGRESS'
+WHERE u.role = 'WORKER'
+  AND bt.batch_task_id IS NULL;
 
-SELECT '=== 데이터 생성 완료 ===' AS result;
+-- 9-1c) 작업자당 IN_PROGRESS 작업 1개만 유지 (나머지는 UNASSIGNED로 되돌림)
+UPDATE batch_tasks bt
+JOIN (
+  SELECT worker_id, MAX(batch_task_id) AS keep_task_id
+  FROM batch_tasks
+  WHERE status = 'IN_PROGRESS' AND worker_id IS NOT NULL
+  GROUP BY worker_id
+  HAVING COUNT(*) > 1
+) k ON k.worker_id = bt.worker_id
+SET
+  bt.status = 'UNASSIGNED',
+  bt.worker_id = NULL,
+  bt.action_status = 'SCAN_TOTE',
+  bt.started_at = NULL,
+  bt.current_location_id = NULL,
+  bt.location_scanned_at = NULL
+WHERE bt.status = 'IN_PROGRESS'
+  AND bt.batch_task_id <> k.keep_task_id;
+
+-- 9-1d) 모든 WORKER가 자신의 zone에 IN_PROGRESS 작업을 갖도록 보장
+INSERT INTO batch_tasks (
+  batch_id,
+  zone_id,
+  worker_id,
+  status,
+  action_status,
+  started_at
+)
+SELECT
+  (SELECT b.batch_id FROM batches b WHERE b.status = 'IN_PROGRESS' ORDER BY b.deadline_at LIMIT 1),
+  u.assigned_zone_id,
+  u.user_id,
+  'IN_PROGRESS',
+  'SCAN_TOTE',
+  NOW()
+FROM users u
+JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+LEFT JOIN batch_tasks bt
+  ON bt.worker_id = u.user_id
+ AND bt.status = 'IN_PROGRESS'
+ AND bt.zone_id = u.assigned_zone_id
+WHERE u.role = 'WORKER'
+  AND bt.batch_task_id IS NULL;
+
+-- 9-2) IN_PROGRESS 작업 중 지번이 없는 경우 랜덤 지번 부여
+UPDATE batch_tasks bt
+JOIN users u ON u.user_id = bt.worker_id
+SET
+  bt.current_location_id = (
+    SELECT zl.location_id
+    FROM zone_locations zl
+    WHERE zl.zone_id = COALESCE(bt.zone_id, u.assigned_zone_id)
+      AND zl.is_active = 1
+    ORDER BY RAND()
+    LIMIT 1
+  ),
+  bt.location_scanned_at = NOW()
+WHERE bt.status = 'IN_PROGRESS'
+  AND bt.worker_id IS NOT NULL
+  AND bt.current_location_id IS NULL;
+
+-- 9-2b) batch_tasks.zone_id 기준으로 current_location_id 강제 재배정
+UPDATE batch_tasks bt
+SET
+  bt.current_location_id = (
+    SELECT zl.location_id
+    FROM zone_locations zl
+    WHERE zl.zone_id = bt.zone_id
+      AND zl.is_active = 1
+    ORDER BY RAND()
+    LIMIT 1
+  ),
+  bt.location_scanned_at = NOW()
+WHERE bt.status = 'IN_PROGRESS'
+  AND bt.zone_id IS NOT NULL;
+
+-- 9-3) 작업자 배정 zone과 작업 zone 동기화 (관제맵 필터 일치 보장)
+UPDATE batch_tasks bt
+JOIN users u ON u.user_id = bt.worker_id
+SET bt.zone_id = u.assigned_zone_id
+WHERE bt.status = 'IN_PROGRESS'
+  AND bt.worker_id IS NOT NULL
+  AND (bt.zone_id IS NULL OR bt.zone_id <> u.assigned_zone_id);
+
+-- 9-4) 동기화 후 지번을 다시 보정 (zone_id 변경 반영)
+UPDATE batch_tasks bt
+JOIN users u ON u.user_id = bt.worker_id
+SET
+  bt.current_location_id = (
+    SELECT zl.location_id
+    FROM zone_locations zl
+    WHERE zl.zone_id = u.assigned_zone_id
+      AND zl.is_active = 1
+    ORDER BY RAND()
+    LIMIT 1
+  ),
+  bt.location_scanned_at = NOW()
+WHERE bt.status = 'IN_PROGRESS'
+  AND bt.worker_id IS NOT NULL
+  AND bt.current_location_id IS NOT NULL;
+
+-- 9-5) 호버 보장: 작업자별 IN_PROGRESS + current_location_id 최종 보정
+-- (작업이 없거나 지번이 없는 작업자가 남아있지 않도록 마지막으로 보정)
+UPDATE batch_tasks bt
+JOIN users u ON u.user_id = bt.worker_id
+SET
+  bt.zone_id = u.assigned_zone_id,
+  bt.current_location_id = (
+    SELECT zl.location_id
+    FROM zone_locations zl
+    WHERE zl.zone_id = u.assigned_zone_id
+      AND zl.is_active = 1
+    ORDER BY RAND()
+    LIMIT 1
+  ),
+  bt.location_scanned_at = NOW()
+WHERE bt.status = 'IN_PROGRESS'
+  AND bt.worker_id IS NOT NULL
+  AND (bt.current_location_id IS NULL OR bt.zone_id <> u.assigned_zone_id);
+
+-- 9-6) 배치 미할당 작업자에게 작업 할당 + zone 지번 강제 지정
+-- (모든 WORKER가 IN_PROGRESS 작업 + current_location_id 보유하도록)
+INSERT INTO batch_tasks (
+  batch_id,
+  zone_id,
+  worker_id,
+  status,
+  action_status,
+  started_at
+)
+SELECT
+  (SELECT b.batch_id FROM batches b WHERE b.status = 'IN_PROGRESS' ORDER BY b.deadline_at LIMIT 1),
+  u.assigned_zone_id,
+  u.user_id,
+  'IN_PROGRESS',
+  'SCAN_TOTE',
+  NOW()
+FROM users u
+JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+LEFT JOIN batch_tasks bt
+  ON bt.worker_id = u.user_id AND bt.status = 'IN_PROGRESS'
+WHERE u.role = 'WORKER'
+  AND bt.batch_task_id IS NULL;
+
+UPDATE batch_tasks bt
+JOIN users u ON u.user_id = bt.worker_id
+SET
+  bt.zone_id = u.assigned_zone_id,
+  bt.current_location_id = (
+    SELECT zl.location_id
+    FROM zone_locations zl
+    WHERE zl.zone_id = u.assigned_zone_id
+      AND zl.is_active = 1
+    ORDER BY RAND()
+    LIMIT 1
+  ),
+  bt.location_scanned_at = NOW()
+WHERE bt.status = 'IN_PROGRESS'
+  AND bt.worker_id IS NOT NULL;
+
+-- -- =====================================================
+-- -- 10. 데이터 검증 쿼리
+-- -- =====================================================
+-- SELECT '=== 구역별 작업 현황 ===' AS info;
+-- SELECT
+--   z.zone_id,
+--   COUNT(DISTINCT CASE WHEN wl.ended_at IS NULL THEN bt.worker_id END) AS active_workers,
+--   COUNT(CASE WHEN bt.status = 'UNASSIGNED' THEN 1 END) AS unassigned_tasks,
+--   COUNT(CASE WHEN bt.status = 'IN_PROGRESS' THEN 1 END) AS in_progress_tasks,
+--   COUNT(CASE WHEN bt.status = 'COMPLETED' THEN 1 END) AS completed_tasks,
+--   COUNT(bt.batch_task_id) AS total_tasks,
+--   ROUND(COUNT(CASE WHEN bt.status = 'COMPLETED' THEN 1 END) * 100.0 / COUNT(bt.batch_task_id), 2) AS completion_rate
+-- FROM zones z
+-- LEFT JOIN batch_tasks bt ON z.zone_id = bt.zone_id
+-- LEFT JOIN work_logs wl ON bt.worker_id = wl.worker_id AND wl.ended_at IS NULL
+-- GROUP BY z.zone_id
+-- ORDER BY z.zone_id;
+
+-- -- SELECT '=== 이슈 현황 ===' AS info;
+-- -- SELECT
+-- --   zone_id,
+-- --   issue_type,
+-- --   urgency,
+-- --   COUNT(*) AS issue_count
+-- -- FROM issues i
+-- -- JOIN batch_tasks bt ON i.batch_task_id = bt.batch_task_id
+-- -- WHERE i.status = 'OPEN'
+-- -- GROUP BY zone_id, issue_type, urgency
+-- -- ORDER BY zone_id, urgency;
+
+-- SELECT '=== 작업자별 작업량 (IN_PROGRESS) ===' AS info;
+-- SELECT
+--   bt.worker_id,
+--   u.name,
+--   bt.zone_id,
+--   COUNT(*) AS task_count,
+--   SUM(CASE WHEN bt.status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed,
+--   SUM(CASE WHEN bt.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS in_progress,
+--   SUM(CASE WHEN bt.status = 'UNASSIGNED' THEN 1 ELSE 0 END) AS unassigned
+-- FROM batch_tasks bt
+-- JOIN users u ON bt.worker_id = u.user_id
+-- GROUP BY bt.worker_id, u.name, bt.zone_id
+-- HAVING in_progress > 0
+-- ORDER BY bt.zone_id, task_count DESC;
+
+-- SELECT '=== 데이터 생성 완료 ===' AS result;
