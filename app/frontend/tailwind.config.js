@@ -9,6 +9,7 @@ export default {
 					foreground: '#FFFFFF',
 					soft: '#F3F5FF', // User requested Primary Soft
 				},
+				'grey-f8': '#F8F8F8',
 				// Keep existing shadcn tokens but override if necessary using CSS vars
 				alert: '#EF4444',
 				background: 'hsl(var(--background))',

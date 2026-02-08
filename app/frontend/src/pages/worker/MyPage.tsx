@@ -53,12 +53,15 @@ export default function MyPage() {
           {view.name}님
         </h2>
         <p className="text-[13px] font-semibold text-slate-400">
-          오늘도 안전하게 화이팅!
+          오늘도 안전하게 근무하세요
         </p>
       </div>
 
       {/* Info List */}
       <div className="space-y-2 rounded-[32px] border border-slate-50 bg-white p-6 shadow-2xl shadow-slate-100/50">
+        <div className="px-4 pb-2">
+          <p className="text-[12x] font-black text-slate-400 uppercase tracking-widest">내 프로필</p>
+        </div>
         <InfoRow icon={User} label="이름" value={view.name} />
         <InfoRow icon={Phone} label="전화번호" value={view.phone} />
         <InfoRow icon={Calendar} label="생년월일" value={view.birth} />
@@ -69,12 +72,16 @@ export default function MyPage() {
       <div className="mt-auto px-2 pb-4">
         <button
           onClick={() => navigate("/worker/profile/edit")}
-          className="flex h-16 w-full items-center justify-center gap-2 rounded-[24px] bg-blue-600 text-[17px] font-black text-white shadow-xl shadow-blue-100 transition-all active:scale-[0.98]"
+          className="flex h-16 w-full items-center justify-center gap-2 rounded-[24px] bg-[#304FFF] text-[17px] font-black text-white shadow-xl shadow-[#304FFF]/10 transition-all active:scale-[0.98]"
         >
           내 정보 수정하기
           <ChevronRight size={20} strokeWidth={3} />
         </button>
       </div>
+
+      <footer className="mt-auto py-20 text-center text-xs font-bold tracking-[0.2em] text-slate-200 uppercase">
+        LOOKIE
+      </footer>
     </div>
   );
 }
@@ -90,14 +97,14 @@ function InfoRow({
 }) {
   return (
     <div className="group flex items-center rounded-2xl px-4 py-3 transition-colors hover:bg-slate-50">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-400 transition-colors group-hover:bg-white group-hover:text-blue-600">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-400 transition-colors group-hover:bg-white group-hover:text-[#304FFF]">
         <Icon size={18} strokeWidth={2} />
       </div>
       <div className="ml-4 flex-1">
-        <p className="text-sm font-bold uppercase tracking-wider text-slate-400">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
           {label}
         </p>
-        <p className="mt-0.5 text-lg font-bold text-slate-800">{value}</p>
+        <p className="mt-0.5 text-lg font-extrabold text-slate-800">{value}</p>
       </div>
     </div>
   );

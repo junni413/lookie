@@ -346,7 +346,7 @@ export default function WorkDetail() {
   if (loading) {
     return (
       <div className="h-full flex flex-col items-center justify-center space-y-4">
-        <div className="h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="h-12 w-12 border-4 border-[#304FFF] border-t-transparent rounded-full animate-spin" />
         <p className="font-bold text-gray-500 text-lg">작업 정보를 불러오는 중...</p>
       </div>
     );
@@ -362,7 +362,7 @@ export default function WorkDetail() {
           <p className="text-xl font-black text-gray-900">작업 정보가 없습니다.</p>
           <p className="mt-2 text-sm text-gray-400 font-medium leading-relaxed">진행 중인 작업 세션이 만료되었거나<br />할당된 아이템이 없습니다.</p>
         </div>
-        <button onClick={() => navigate("/worker/home")} className="w-full max-w-[200px] h-14 bg-blue-600 text-white rounded-[20px] font-black text-base shadow-lg active:scale-95 transition-all">
+        <button onClick={() => navigate("/worker/home")} className="w-full max-w-[200px] h-14 bg-[#304FFF] text-white rounded-[20px] font-black text-base shadow-lg active:scale-95 transition-all">
           홈으로 돌아가기
         </button>
       </div>
@@ -383,7 +383,7 @@ export default function WorkDetail() {
               <ChevronRight className="w-4 h-4 text-gray-400" />
             </div>
             <p className="mt-0.5 text-[11px] font-bold text-gray-400 uppercase tracking-tighter">
-              토트 바코드: <span className="text-blue-600/80">{toteBarcode}</span>
+              토트 바코드: <span className="text-[#304FFF]/80">{toteBarcode}</span>
             </p>
           </div>
 
@@ -425,7 +425,7 @@ export default function WorkDetail() {
                   {currentItem.productName}
                 </p>
                 <p className="mt-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider">상품 코드</p>
-                <p className="text-[17px] font-black text-blue-600 tabular-nums">{currentItem.barcode}</p>
+                <p className="text-[17px] font-black text-[#304FFF] tabular-nums">{currentItem.barcode}</p>
               </div>
             </div>
           </div>
@@ -438,19 +438,19 @@ export default function WorkDetail() {
                     onClick={openLocationScanner}
                     disabled={nextAction !== "SCAN_LOCATION"}
                     className={`flex flex-col items-center justify-center h-28 rounded-[32px] border-2 transition-all duration-300 ${nextAction === "SCAN_LOCATION"
-                      ? "bg-blue-50/60 border-blue-600 shadow-[0_12px_24px_-8px_rgba(37,99,235,0.3)] ring-4 ring-blue-600/5"
+                      ? "bg-[#304FFF]/5 border-[#304FFF] shadow-[0_12px_24px_-8px_rgba(48,79,255,0.3)] ring-4 ring-[#304FFF]/5"
                       : isLocationConfirmed
                         ? "bg-emerald-50/50 border-emerald-500"
                         : "bg-slate-50 border-transparent text-slate-300 opacity-60"
                       }`}
                   >
-                    <div className={`p-3 rounded-2xl mb-2 transition-all ${nextAction === "SCAN_LOCATION" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : isLocationConfirmed ? "bg-emerald-500 text-white shadow-lg shadow-emerald-100" : "bg-slate-200 text-slate-400"}`}>
+                    <div className={`p-3 rounded-2xl mb-2 transition-all ${nextAction === "SCAN_LOCATION" ? "bg-[#304FFF] text-white shadow-lg shadow-blue-200" : isLocationConfirmed ? "bg-emerald-500 text-white shadow-lg shadow-emerald-100" : "bg-slate-200 text-slate-400"}`}>
                       {nextAction === "SCAN_LOCATION" ? <MapPin className="w-4 h-4" strokeWidth={2.8} /> : isLocationConfirmed ? <Check className="w-4 h-4" strokeWidth={4} /> : <MapPin className="w-4 h-4" strokeWidth={2.5} />}
                     </div>
                     <p className={`text-[13px] font-black tracking-tight ${nextAction === "SCAN_LOCATION" ? "text-slate-900" : isLocationConfirmed ? "text-emerald-700" : "text-slate-400"}`}>
                       {nextAction === "SCAN_LOCATION" ? "지번 스캔" : isLocationConfirmed ? "지번 확인됨" : "지번 대기"}
                     </p>
-                    <p className={`text-[12px] font-bold mt-0.5 tracking-tight ${nextAction === "SCAN_LOCATION" ? "text-blue-600" : "text-slate-400"}`}>{currentItem.locationCode}</p>
+                    <p className={`text-[12px] font-bold mt-0.5 tracking-tight ${nextAction === "SCAN_LOCATION" ? "text-[#304FFF]" : "text-slate-400"}`}>{currentItem.locationCode}</p>
                   </motion.button>
 
                   <motion.button
@@ -458,19 +458,19 @@ export default function WorkDetail() {
                     onClick={openItemScanner}
                     disabled={nextAction !== "SCAN_ITEM"}
                     className={`flex flex-col items-center justify-center h-28 rounded-[32px] border-2 transition-all duration-300 ${nextAction === "SCAN_ITEM"
-                      ? "bg-blue-50/60 border-blue-600 shadow-[0_12px_24px_-8px_rgba(37,99,235,0.3)] ring-4 ring-blue-600/5"
+                      ? "bg-[#304FFF]/5 border-[#304FFF] shadow-[0_12px_24px_-8px_rgba(48,79,255,0.3)] ring-4 ring-[#304FFF]/5"
                       : isItemConfirmed
                         ? "bg-emerald-50/50 border-emerald-500"
                         : "bg-slate-50 border-transparent text-slate-300 opacity-60"
                       }`}
                   >
-                    <div className={`p-3 rounded-2xl mb-2 transition-all ${nextAction === "SCAN_ITEM" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : isItemConfirmed ? "bg-emerald-500 text-white shadow-lg shadow-emerald-100" : "bg-slate-200 text-slate-400"}`}>
+                    <div className={`p-3 rounded-2xl mb-2 transition-all ${nextAction === "SCAN_ITEM" ? "bg-[#304FFF] text-white shadow-lg shadow-blue-200" : isItemConfirmed ? "bg-emerald-500 text-white shadow-lg shadow-emerald-100" : "bg-slate-200 text-slate-400"}`}>
                       {nextAction === "SCAN_ITEM" ? <PackageSearch className="w-4 h-4" strokeWidth={2.5} /> : isItemConfirmed ? <Check className="w-4 h-4" strokeWidth={4} /> : <PackageSearch className="w-4 h-4" strokeWidth={2.2} />}
                     </div>
                     <p className={`text-[13px] font-black tracking-tight ${nextAction === "SCAN_ITEM" ? "text-slate-900" : isItemConfirmed ? "text-emerald-700" : "text-slate-400"}`}>
                       {nextAction === "SCAN_ITEM" ? "상품 스캔" : isItemConfirmed ? "상품 확인됨" : "상품 대기"}
                     </p>
-                    <p className={`text-[12px] font-bold mt-0.5 tracking-tight ${nextAction === "SCAN_ITEM" ? "text-blue-600" : "text-slate-400"}`}>{currentItem.barcode}</p>
+                    <p className={`text-[12px] font-bold mt-0.5 tracking-tight ${nextAction === "SCAN_ITEM" ? "text-[#304FFF]" : "text-slate-400"}`}>{currentItem.barcode}</p>
                   </motion.button>
                 </>
               );
@@ -490,7 +490,7 @@ export default function WorkDetail() {
               <div className="text-center min-w-[100px]">
                 <p className="text-[11px] font-bold text-gray-400 mb-1 uppercase tracking-tighter">담은 수량</p>
                 <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-[32px] font-black text-blue-600 tabular-nums">{currentItem.pickedQty}</span>
+                  <span className="text-[32px] font-black text-[#304FFF] tabular-nums">{currentItem.pickedQty}</span>
                   <span className="text-lg font-bold text-gray-300">/</span>
                   <span className="text-lg font-black text-gray-400 tabular-nums">{currentItem.requiredQty}</span>
                 </div>
@@ -499,7 +499,7 @@ export default function WorkDetail() {
               <button
                 onClick={() => handleQuantityChange(1)}
                 disabled={!isQuantityControlEnabled || currentItem.pickedQty >= currentItem.requiredQty}
-                className={`p-3.5 rounded-full shadow-sm transition-all active:scale-90 ${!isQuantityControlEnabled || currentItem.pickedQty >= currentItem.requiredQty ? "bg-gray-100 text-gray-300" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
+                className={`p-3.5 rounded-full shadow-sm transition-all active:scale-90 ${!isQuantityControlEnabled || currentItem.pickedQty >= currentItem.requiredQty ? "bg-gray-100 text-gray-300" : "bg-[#304FFF] hover:bg-[#2539CC] text-white"}`}
               >
                 <Plus className="w-5 h-5" strokeWidth={3} />
               </button>
@@ -511,14 +511,14 @@ export default function WorkDetail() {
               {items.map((_, idx) => (
                 <div
                   key={idx}
-                  className={`h-1.5 rounded-full transition-all duration-500 ${idx === currentIndex ? "w-6 bg-blue-600" : "w-1.5 bg-gray-200"}`}
+                  className={`h-1.5 rounded-full transition-all duration-500 ${idx === currentIndex ? "w-6 bg-[#304FFF]" : "w-1.5 bg-gray-200"}`}
                 />
               ))}
             </div>
             <button
               type="button"
               onClick={handleNextWork}
-              className="w-full h-16 rounded-[22px] bg-blue-600 text-[18px] font-black text-white shadow-lg active:scale-[0.98] transition-all"
+              className="w-full h-16 rounded-[22px] bg-[#304FFF] text-[18px] font-black text-white shadow-lg active:scale-[0.98] transition-all"
             >
               {currentIndex === items.length - 1 ? "모든 작업 완료" : "다음 작업 진행"}
             </button>

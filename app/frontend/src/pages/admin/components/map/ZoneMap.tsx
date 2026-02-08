@@ -27,7 +27,7 @@ export default function ZoneMap({ layout, workers }: ZoneMapProps) {
         <div className="h-full w-full bg-slate-50/50 p-6 overflow-hidden flex items-center justify-center">
             {/* Grid container - Fit height using dynamic rows */}
             <div 
-                className="grid grid-cols-4 gap-4 w-full h-full max-w-7xl mx-auto"
+                className="grid grid-cols-4 gap-3 w-full h-full max-w-7xl mx-auto"
                 style={{ gridTemplateRows: `repeat(${Math.max(rows, 1)}, minmax(0, 1fr))` }}
             >
                 {layout.lines.map((line) => (

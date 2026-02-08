@@ -42,7 +42,7 @@ function ZoneCard({ zone }: { zone: string }) {
       </div>
 
       <div className="mt-3 flex items-center justify-between pl-4">
-        <div className="text-[24px] font-black text-blue-600 tracking-tight">{zone}</div>
+        <div className="text-[24px] font-black text-[#304FFF] tracking-tight">{zone}</div>
         <p className="text-[12px] font-semibold text-slate-400">
           지정된 구역에서 작업을 진행하세요.
         </p>
@@ -244,18 +244,12 @@ export default function Home() {
   const taskBtnLabel = isTaskChecking
     ? "작업 확인 중..."
     : hasActiveTask
-    ? "작업 이어서하기"
+    ? "작업 이어서 하기"
     : "새로운 작업 시작";
 
-  // ✅ 새 코드의 안내문구 규칙 유지(예전 UI에서는 helpText 비워도 되지만 기능 그대로 둠)
-  const taskHelpText = isPaused
-    ? "근무 중단 상태에서는 작업을 진행할 수 없습니다."
-    : !isTaskChecking && hasActiveTask
-    ? "진행 중인 작업이 있습니다. 이어서 진행하세요."
-    : "새로운 작업을 할당 받으세요.";
 
   return (
-    <div className="space-y-4 pb-4">
+    <div className="space-y-4 pb-4 flex flex-col min-h-full relative">
       <div className="px-1 pt-2">
         <h1 className="text-[26px] font-black tracking-tight text-slate-900">
           {user?.name ?? "작업자"}님
@@ -269,9 +263,9 @@ export default function Home() {
       <section
         className="
           rounded-[32px]
-          bg-gradient-to-br from-blue-600 to-blue-700
+          bg-gradient-to-br from-[#304FFF] to-[#2539CC]
           p-7
-          shadow-[0_20px_40px_rgba(37,99,235,0.25)]
+          shadow-[0_25px_50px_rgba(48,79,255,0.4)]
           relative
           overflow-hidden
         "
@@ -281,7 +275,7 @@ export default function Home() {
         
         <div className="flex items-start justify-between relative z-10">
           <div className="flex flex-col">
-            <p className="text-[15px] font-bold text-blue-100/80 mb-1">출근 시간</p>
+            <p className="text-[15px] font-bold text-blue-50/80 mb-1">출근 시간</p>
             <p className="text-[38px] font-black leading-none tracking-tight text-white tabular-nums">
               {savedTime}
             </p>
@@ -290,7 +284,7 @@ export default function Home() {
           <div 
             className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-[13px] font-black shadow-sm transition-colors duration-500 ${
               workStatus === "WORKING" 
-              ? "bg-emerald-400 text-white" 
+              ? "bg-[#22C55E] text-white" 
               : "bg-amber-400 text-white"
             }`}
           >
@@ -401,16 +395,11 @@ export default function Home() {
             <ChevronRight className={`w-6 h-6 ${taskBtnDisabled ? "text-slate-400" : "text-white"}`} strokeWidth={3} />
           </div>
         </button>
-
-        <div className="flex flex-col items-center justify-center h-full">
-          {taskHelpText && (
-            <p className="px-10 text-[12px] font-semibold text-slate-400 text-center">
-              {taskHelpText}
-            </p>
-          )}
-        </div>
-
       </div>
+
+      <footer className="mt-auto py-3 text-center text-xs font-bold tracking-[0.2em] text-slate-200 uppercase">
+        LOOKIE
+      </footer>
     </div>
   );
 }

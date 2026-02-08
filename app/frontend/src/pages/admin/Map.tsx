@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useInterval } from "@/hooks/useInterval";
 import { useSearchParams } from "react-router-dom";
 import { manageService } from "@/services/manageService";
+import { adminService } from "@/services/adminService";
 
 import type { DB_Worker, ZoneLayout, ZoneStat } from "@/types/db";
 import ZoneSummaryCard from "./components/map/ZoneSummaryCard";
@@ -51,8 +53,16 @@ export default function Map() {
         }
     }, [selectedZoneId, isMapModalOpen]);
 
-    const loadData = async () => {
-        setLoading(true);
+    // Poll every 5 seconds
+    useInterval(() => {
+        loadData(true);
+        if (isMapModalOpen && selectedZoneId !== null) {
+            updateMapWorkers(selectedZoneId);
+        }
+    }, 5000);
+
+    const loadData = async (isBackground = false) => {
+        if (!isBackground) setLoading(true);
         setError(null);
         try {
             const [fetchedStats, fetchedWorkers] = await Promise.all([
@@ -65,7 +75,7 @@ export default function Map() {
             console.error("Failed to load manage data", error);
             setError(error.message || "Unknown error");
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     };
 
@@ -81,22 +91,17 @@ export default function Map() {
     // Map Modal Data
     const [mapZoneWorkers, setMapZoneWorkers] = useState<DB_Worker[]>([]);
 
-    // 1. Click on Card Body -> Show Map Modal & Fetch Data
-    const handleCardClick = async (zoneId: number) => {
-        setSelectedZoneId(zoneId);
-        setIsMapModalOpen(true);
-        
+    const updateMapWorkers = async (zoneId: number) => {
         try {
             // Fetch real map data
-            const adminServiceWrapper = await import("@/services/adminService");
-            const mapData = await adminServiceWrapper.getZoneMap(zoneId);
+            const mapData = await adminService.getZoneMap(zoneId);
             
             // Convert DTO to DB_Worker format for UI
             // API Response: { zoneId, zoneName, lines, workers: [...] }
             const workersList = mapData.workers || [];
 
             const parsedWorkers = workersList.map((dto: any) => {
-                const { lineNumber, binNumber } = adminServiceWrapper.parseLocationCode(dto.currentLocationCode);
+                const { lineNumber, binNumber } = adminService.parseLocationCode(dto.currentLocationCode);
                 
                 return {
                     userId: dto.workerId,
@@ -122,8 +127,15 @@ export default function Map() {
             setMapZoneWorkers(parsedWorkers);
         } catch (error) {
             console.error("Failed to load map workers", error);
-            setMapZoneWorkers([]); // Fallback to empty or keep previous? Empty is safer.
+            // setMapZoneWorkers([]); // Don't clear on failure during polling to avoid flicker
         }
+    }
+
+    // 1. Click on Card Body -> Show Map Modal & Fetch Data
+    const handleCardClick = async (zoneId: number) => {
+        setSelectedZoneId(zoneId);
+        setIsMapModalOpen(true);
+        await updateMapWorkers(zoneId);
     };
 
     // 2. Click on Zone List Button -> Toggle Worker Panel
@@ -184,7 +196,7 @@ export default function Map() {
 
             </AdminPageHeader>
 
-            <div className="flex-1 flex overflow-hidden min-h-0 gap-4 h-full pb-6 px-8">
+            <div className="flex-1 flex overflow-hidden min-h-0 h-full pb-6 px-8">
                 {/* Left Panel: Zone Cards Grid - Resizes when panel opens */}
                 <div className={cn(
                     "flex flex-col overflow-y-auto transition-all duration-300 rounded-xl border border-slate-200 bg-white/50 shadow-sm h-full",
@@ -193,7 +205,7 @@ export default function Map() {
                     {/* Zone Cards Grid */}
                     <div className="p-6 h-full">
                         <div className={cn(
-                            "grid gap-4 w-full mx-auto h-full content-stretch",
+                            "grid gap-3 w-full mx-auto h-full content-stretch",
                             isWorkerPanelOpen ? "grid-cols-1 xl:grid-cols-2" : "grid-cols-1 md:grid-cols-2"
                         )}>
                             {stats.map(stat => (
@@ -215,11 +227,11 @@ export default function Map() {
 
                 {/* Right Panel: Worker List - Slides in */}
                 <div className={cn(
-                    "flex flex-col rounded-xl border border-slate-200 bg-white shadow-xl h-full transition-all duration-300 overflow-hidden",
-                    isWorkerPanelOpen ? "w-[40%] translate-x-0 opacity-100 ml-2" : "w-0 translate-x-full opacity-0 ml-0 border-0"
+                    "flex flex-col h-full transition-all duration-300",
+                    isWorkerPanelOpen ? "w-[40%] translate-x-0 opacity-100 pl-4" : "w-0 translate-x-full opacity-0 ml-0 border-0 overflow-hidden"
                 )}>
                     {isWorkerPanelOpen && (
-                        <div className="flex-1 overflow-hidden p-0">
+                        <div className="flex-1 overflow-hidden p-0 bg-white border border-slate-200 shadow-xl rounded-xl">
                             <WorkerList
                                 currentZoneId={selectedZoneId}
                                 allWorkers={workers}

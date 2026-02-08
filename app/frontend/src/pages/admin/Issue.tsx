@@ -57,7 +57,7 @@ function PageSizeDropdown({ value, onChange }: { value: number; onChange: (val: 
                             className={cn(
                                 "w-full px-3 py-2 text-left text-[11px] font-bold transition-colors",
                                 value === option 
-                                    ? "text-blue-600 bg-blue-50" 
+                                    ? "text-primary bg-primary/5" 
                                     : "text-slate-600 hover:bg-slate-50"
                             )}
                         >
@@ -144,7 +144,7 @@ export default function Issue() {
                 description="작업자가 요청한 판정 내역을 검토하고 처리합니다."
             />
 
-            <div className="flex-1 px-6 pb-6 min-h-0 flex gap-6 overflow-hidden">
+            <div className="flex-1 px-8 pb-6 min-h-0 flex gap-4 overflow-hidden">
                 {/* Main List Area - Resizes when split */}
                 <Card className={cn(
                     "flex flex-col h-full transition-all duration-300 ease-in-out border-0 shadow-sm border rounded-xl overflow-hidden",
@@ -162,7 +162,7 @@ export default function Issue() {
                                         onClick={() => handleTabChange(tab)}
                                         className={cn(
                                             "relative z-10 flex items-center justify-center h-8 px-5 rounded-full text-[13px] font-bold transition-colors duration-200",
-                                            isActive ? "text-blue-600" : "text-slate-500 hover:text-slate-700"
+                                            isActive ? "text-primary" : "text-slate-500 hover:text-slate-700"
                                         )}
                                     >
                                         {isActive && (
@@ -189,12 +189,12 @@ export default function Issue() {
                                         className={cn(
                                             "h-8 text-[11px] font-bold rounded-full px-3.5 flex items-center gap-1.5 transition-all duration-200 border",
                                             sortType === "LATEST" 
-                                                ? "bg-blue-50/50 border-blue-100 text-blue-600" 
+                                                ? "bg-primary/5 border-primary/20 text-primary" 
                                                 : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                                         )}
                                         onClick={() => handleSortChange("LATEST")}
                                     >
-                                        <Clock className={cn("w-3.5 h-3.5", sortType === "LATEST" ? "text-blue-500" : "text-slate-400")} />
+                                        <Clock className={cn("w-3.5 h-3.5", sortType === "LATEST" ? "text-primary" : "text-slate-400")} />
                                         최신순
                                     </Button>
                                     <Button
@@ -246,7 +246,7 @@ export default function Issue() {
                             </Button>
                             
                             <div className="flex items-center gap-1.5 mx-2">
-                                <div className="w-8 h-8 rounded-full bg-[#304FFF] text-white flex items-center justify-center text-[11px] font-bold shadow-sm">
+                                <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-[11px] font-bold shadow-sm">
                                     {page}
                                 </div>
                                 {page * pageSize < totalCount && (

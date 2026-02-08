@@ -92,46 +92,46 @@ export default function TaskList() {
                                     <div className="font-black text-[17px] text-slate-900 truncate tracking-tight">
                                         {item.productName}
                                     </div>
-                                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 mt-0.5">
+                                    <div className="flex items-center gap-1.5 text-[12px] font-bold text-slate-400 mt-1">
                                         <Hash className="w-3 h-3" />
                                         <span>{item.barcode}</span>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                                        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100/60 text-slate-500 rounded-md text-[10px] font-black">
-                                            <Package className="w-2.5 h-2.5 text-slate-400" />
-                                            <span><span className="text-blue-600">{item.requiredQty}</span>개</span>
+                                    <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px] font-black">
+                                        <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
+                                            <Package className="w-3 h-3 text-slate-400" />
+                                            <span><span className="text-[#304FFF] font-black">{item.requiredQty}</span>개</span>
                                         </div>
-                                        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100/60 text-slate-500 rounded-md text-[10px] font-black">
-                                            <MapPin className="w-2.5 h-2.5 text-slate-400" />
-                                            <span><span className="text-blue-600">{item.locationCode}</span></span>
+                                        <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
+                                            <MapPin className="w-3 h-3 text-slate-400" />
+                                            <span><span className="text-[#304FFF] font-black">{item.locationCode}</span></span>
                                         </div>
 
                                         {/* 상태 라벨 표시 */}
                                         {item.status === 'DONE' && (
-                                            <div className="px-2 py-0.5 bg-emerald-100/80 text-emerald-700 rounded-md text-[10px] font-black">
+                                            <div className="px-2 py-1 bg-emerald-100/80 text-emerald-700 rounded-lg text-[10px] font-black">
                                                 {item.adminDecision === 'DAMAGED' ? '완료 (파손 확정)' :
                                                     item.adminDecision === 'OUT_OF_STOCK' ? '완료 (결품 확정)' : '완료'}
                                             </div>
                                         )}
                                         {item.status === 'ISSUE_PENDING' && (
-                                            <div className="px-2 py-0.5 bg-amber-100/80 text-amber-700 rounded-md text-[10px] font-black tabular-nums">
+                                            <div className="px-2 py-1 bg-amber-100/80 text-amber-700 rounded-lg text-[10px] font-black tabular-nums">
                                                 신고됨 (패스)
                                             </div>
                                         )}
                                         {item.status === 'IN_PROGRESS' && (
-                                            <div className="px-2 py-0.5 bg-blue-100/80 text-blue-700 rounded-md text-[10px] font-black animate-pulse">
+                                            <div className="px-2 py-1 bg-blue-100/80 text-blue-700 rounded-lg text-[10px] font-black animate-pulse">
                                                 집품 중
                                             </div>
                                         )}
                                         {item.status === 'PENDING' && (
-                                            <div className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md text-[10px] font-black">
+                                            <div className="px-2 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black">
                                                 대기 중
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                <div className="shrink-0">
+                                <div className="shrink-0 ml-auto">
                                     {item.status === 'DONE' && (
                                         <div className="bg-emerald-50 text-emerald-500 p-2 rounded-xl border border-emerald-100">
                                             <CheckCircle2 className="w-5 h-5" strokeWidth={3} />
@@ -175,7 +175,7 @@ export default function TaskList() {
                     onClick={() => navigate("/worker/task/work-detail", {
                         state: { task, toteBarcode }
                     })}
-                    className="w-full h-16 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-black text-[17px] rounded-[22px] shadow-[0_12px_24px_-8px_rgba(37,99,235,0.4)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    className="w-full h-16 bg-[#304FFF] text-white font-black text-[17px] rounded-[22px] shadow-[0_12px_24px_-8px_rgba(48,79,255,0.4)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                     <span>작업 계속하기</span>
                 </button>

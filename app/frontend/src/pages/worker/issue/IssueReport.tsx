@@ -163,7 +163,7 @@ export default function IssueReport() {
               </div>
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">토트</p>
-                <p className="text-[13px] font-bold text-blue-600/80">{nav?.toteBarcode || "-"}</p>
+                <p className="text-[13px] font-bold text-[#304FFF]/80">{nav?.toteBarcode || "-"}</p>
               </div>
             </div>
           </div>
@@ -183,12 +183,12 @@ export default function IssueReport() {
             <button
               type="button"
               onClick={openPicker}
-              className="group relative flex h-72 w-full flex-col items-center justify-center rounded-[32px] border-2 border-dashed border-slate-100 bg-slate-50 transition-all active:scale-95 hover:border-blue-200 hover:bg-blue-50/30"
+              className="group relative flex h-72 w-full flex-col items-center justify-center rounded-[32px] border-2 border-dashed border-slate-100 bg-slate-50 transition-all active:scale-95 hover:border-[#304FFF]/20 hover:bg-[#304FFF]/5"
             >
               <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white shadow-sm transition-transform group-hover:scale-110">
-                <Camera className="h-8 w-8 text-slate-400 group-hover:text-blue-500" />
+                <Camera className="h-8 w-8 text-slate-400 group-hover:text-[#304FFF]" />
               </div>
-              <p className="mt-4 text-sm font-bold text-slate-500 group-hover:text-blue-600">사진 촬영 / 갤러리 선택</p>
+              <p className="mt-4 text-sm font-bold text-slate-500 group-hover:text-[#304FFF]">사진 촬영 / 갤러리 선택</p>
             </button>
           ) : (
             <div className="relative overflow-hidden rounded-[32px] border border-slate-100 shadow-sm">
@@ -217,7 +217,7 @@ export default function IssueReport() {
               <button
                 type="button"
                 onClick={openPicker}
-                className="flex w-full h-15 items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 text-base font-black text-white shadow-[0_8px_20px_-8px_rgba(59,130,246,0.5)] active:scale-[0.98] transition-all"
+                className="flex w-full h-15 items-center justify-center gap-2 rounded-2xl bg-[#304FFF] py-4 text-base font-black text-white shadow-[0_8px_20px_-8px_rgba(48,79,255,0.5)] active:scale-[0.98] transition-all"
               >
                 <Camera className="h-5 w-5" />
                 촬영 / 선택하기
@@ -228,7 +228,7 @@ export default function IssueReport() {
                   type="button"
                   onClick={submitIssue}
                   disabled={loading}
-                  className="flex w-full h-15 items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 text-base font-black text-white shadow-[0_8px_20px_-8px_rgba(59,130,246,0.5)] active:scale-[0.98] transition-all disabled:opacity-50"
+                  className="flex w-full h-15 items-center justify-center gap-2 rounded-2xl bg-[#304FFF] py-4 text-base font-black text-white shadow-[0_8px_20px_-8px_rgba(48,79,255,0.5)] active:scale-[0.98] transition-all disabled:opacity-50"
                 >
                   {loading ? (
                     <>

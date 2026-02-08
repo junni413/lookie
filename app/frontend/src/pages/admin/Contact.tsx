@@ -82,7 +82,7 @@ export default function Contact() {
         <div className="flex flex-col h-full bg-[#f8f9fc]">
             <AdminPageHeader
                 title="실시간 통화"
-                description="작업자 그리고 또다른 관리자와 실시간 화상 통화를 진행합니다."
+                description="작업자 그리고 또 다른 관리자와 실시간 화상 통화를 진행합니다."
             />
 
             <div className="flex-1 px-8 pb-6 pt-0 flex gap-6 min-h-0">
@@ -174,7 +174,7 @@ export default function Contact() {
 
                 {/* 오른쪽: WebRTC 화면 */}
                 <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-12 relative overflow-hidden">
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-12 relative overflow-hidden animate-in fade-in zoom-in-95 duration-700">
                         {/* 배경 장식 */}
                         <div className="absolute inset-0 bg-gradient-to-br from-primary/3 via-transparent to-purple-500/3" />
                         <div className="absolute top-10 right-10 w-32 h-32 bg-primary/3 rounded-full blur-3xl" />
@@ -194,10 +194,10 @@ export default function Contact() {
                             </div>
 
                             {/* 텍스트 */}
-                            <h2 className="text-2xl font-bold text-slate-800 mb-3">
+                            <h2 className="text-base font-bold text-slate-800 mb-3">
                                 통화 대기 중
                             </h2>
-                            <p className="text-slate-500 max-w-md leading-relaxed mb-6">
+                            <p className="text-sm text-slate-400 max-w-md leading-relaxed mb-6">
                                 왼쪽 목록에서 온라인 상태인 관리자를 선택하여<br />
                                 실시간 화상 통화를 시작하세요
                             </p>

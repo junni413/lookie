@@ -22,7 +22,9 @@ export default function StatusCard({
             onClick ? "cursor-pointer" : ""
         )}
     >
-      <div className="px-8 py-12 flex items-center h-full">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/5 to-transparent rounded-full -mr-16 -mt-16 pointer-events-none" />
+
+      <div className="px-8 py-12 flex items-center h-full relative z-10">
 
         {/* Left: Circular Icon */}
         <div className="shrink-0 w-14 h-14 rounded-full bg-[#EEF2FF] flex items-center justify-center text-primary transition-transform group-hover:scale-110">

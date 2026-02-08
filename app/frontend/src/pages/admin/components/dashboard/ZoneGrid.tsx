@@ -16,7 +16,7 @@ export default function ZoneGrid({ zones, onZoneClick }: { zones: ZoneItem[], on
 
   return (
     <div className="h-full flex flex-col">
-      <div className="grid grid-cols-2 gap-4 auto-rows-fr h-full">
+      <div className="grid grid-cols-2 gap-3 auto-rows-fr h-full">
         {zones.map((z) => {
           const style = getZoneStyle(z.status);
 
