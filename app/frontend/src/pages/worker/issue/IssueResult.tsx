@@ -449,7 +449,6 @@ export default function IssueResult() {
               <span className="font-bold text-slate-800">
                 AI 판정: {(detail.aiResult === 'FAIL' || verdict === 'DAMAGED') ? '❌ 파손 감지' : '✅ 정상'}
               </span>
-              <span className="text-slate-400">신뢰도: {((detail.confidence || 0) * 100).toFixed(1)}%</span>
             </div>
             {detail.summary && <p className="mt-1 leading-relaxed">{detail.summary}</p>}
           </div>
