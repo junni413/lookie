@@ -98,6 +98,8 @@ services:
     volumes:
       # 로그를 EC2 디스크에 남기기(운영 분석/장애 대응)
       - ./data/logs/backend:/var/log/app
+      # 이미지 업로드용 볼륨 (nginx와 공유)
+      - ./data/prod/images:/data/images
     networks: [lookie]
     depends_on:
       # DB ready + migrate 성공 이후 backend 구동
