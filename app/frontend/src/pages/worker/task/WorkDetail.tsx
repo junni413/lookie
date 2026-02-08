@@ -418,7 +418,17 @@ export default function WorkDetail() {
 
           <div className="mt-8 flex items-center px-4">
             <div className="flex-1 flex gap-5 items-center">
-              <div className="h-28 w-28 rounded-2xl bg-gray-100 flex-shrink-0 animate-pulse border border-gray-100 shadow-inner" />
+              <div className="h-28 w-28 rounded-2xl bg-gray-50 flex-shrink-0 overflow-hidden border border-gray-100 shadow-sm flex items-center justify-center">
+                {currentItem.productImage ? (
+                  <img
+                    src={currentItem.productImage}
+                    alt={currentItem.productName}
+                    className="w-full h-full object-contain p-2"
+                  />
+                ) : (
+                  <PackageSearch className="w-10 h-10 text-gray-200" strokeWidth={1.5} />
+                )}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">상품 정보</p>
                 <p className="text-xl font-black text-gray-900 break-keep leading-tight line-clamp-2 mt-1">
