@@ -122,14 +122,13 @@ export default function WorkDetail() {
           if (targetIdx !== -1) {
             if (currentIndex !== targetIdx) {
               setCurrentIndex(targetIdx);
+              prevIndexRef.current = targetIdx; // ✅ 복구 시점에는 변경으로 간주하지 않도록 즉시 동기화
               console.log("📍 세션 복구: 현재 인덱스 설정 ->", targetIdx);
             }
           }
-          // ✅ 인덱스 복구 완료 후 플래그 설정
-          setTimeout(() => {
-            processedHydrationRef.current = true;
-            console.log("🌊 Hydration & Index restoration final:", { targetIdx });
-          }, 0);
+          // ✅ 모든 인덱스/상태 복구가 끝난 것이 확실할 때 플래그 설정
+          processedHydrationRef.current = true;
+          console.log("🌊 Hydration & Index restoration final complete.");
         }
       } catch (err: any) {
         console.error("Fetch data error:", err);
@@ -175,12 +174,13 @@ export default function WorkDetail() {
     // ✅ 2) 첫 진입(Hydration) 직후라면 서버가 준 nextAction 유지
     if (!processedHydrationRef.current) {
       console.log("🌊 Maintaining server-provided action during hydration:", nextAction);
+      prevIndexRef.current = currentIndex; // 복구 중 상태 동기화
       return;
     }
 
     // ✅ 3) 그 외 사용자가 직접 아이템을 바꿨으면 무조건 지번 스캔부터 시작 (보안/정확도)
     if (indexChanged) {
-      console.log("🔄 Manual index change, resetting to SCAN_LOCATION");
+      console.log("🔄 Manual index change detected, resetting to SCAN_LOCATION");
       setNextAction("SCAN_LOCATION");
       return;
     }

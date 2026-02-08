@@ -266,8 +266,9 @@ public class IssueServiceNew {
                 taskItemMapper.updateStatus(item.getBatchTaskItemId(), "PENDING");
                 taskItemMapper.setPickedQty(item.getBatchTaskItemId(), 0);
 
-                // [FSM] 이슈 복구 시 다시 지번 스캔부터 시작하도록 상태 초기화
-                taskMapper.updateActionStatus(task.getBatchTaskId(), TaskActionStatus.SCAN_LOCATION);
+                // [FSM] 이슈 복구 시 전역 상태를 리셋하지 않고, 나중에 해당 아이템 진입 시 지번 스캔 유도
+                // taskMapper.updateActionStatus(task.getBatchTaskId(),
+                // TaskActionStatus.SCAN_LOCATION);
 
                 // [Inventory] 파손 임시 차감분 복구
                 if ("DAMAGED".equals(issue.getIssueType())) {

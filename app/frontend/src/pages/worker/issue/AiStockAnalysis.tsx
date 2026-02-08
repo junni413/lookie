@@ -18,6 +18,7 @@ type NavState = {
 };
 
 type AiResultData = {
+    issueId?: number;
     aiDecision: string;
     reasonCode?: string;
     summary?: string;
@@ -37,6 +38,10 @@ export default function AiStockAnalysis() {
     const [step, setStep] = useState<"REQUEST" | "LOADING" | "RESULT">("REQUEST");
     const [result, setResult] = useState<AnalysisResult>("OUT_OF_STOCK");
     const [aiData, setAiData] = useState<AiResultData | null>(null);
+
+    // ✅ 관리자 연결 시도 상태 (부모에서 관리하여 리렌더링 시에도 보존)
+    const [connectionAttempted, setConnectionAttempted] = useState(false);
+    const [adminConnected, setAdminConnected] = useState(false);
 
     useEffect(() => {
         if (!nav || !nav.product) {
@@ -157,7 +162,17 @@ export default function AiStockAnalysis() {
     }
 
     if (step === "RESULT") {
-        return <RenderResult result={result} aiData={aiData} />;
+        return (
+            <RenderResult
+                result={result}
+                aiData={aiData}
+                nav={nav}
+                connectionAttempted={connectionAttempted}
+                setConnectionAttempted={setConnectionAttempted}
+                adminConnected={adminConnected}
+                setAdminConnected={setAdminConnected}
+            />
+        );
     }
 
     return (
@@ -219,21 +234,35 @@ function mapAiResultToUI(aiResult: AiResultData): AnalysisResult {
     return "OUT_OF_STOCK";
 }
 
-function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiResultData | null }) {
+function RenderResult({
+    result,
+    aiData,
+    nav,
+    connectionAttempted,
+    setConnectionAttempted,
+    adminConnected,
+    setAdminConnected
+}: {
+    result: AnalysisResult;
+    aiData: AiResultData | null;
+    nav: NavState | null;
+    connectionAttempted: boolean;
+    setConnectionAttempted: (val: boolean) => void;
+    adminConnected: boolean;
+    setAdminConnected: (val: boolean) => void;
+}) {
     const { user } = useAuthStore();
     const navigate = useNavigate();
     const { toast } = useToast();
     const startCall = useCallStore((s) => s.startCall);
     const callStatus = useCallStore((s) => s.status);
-    const [connectionAttempted, setConnectionAttempted] = useState(false);
-    const [adminConnected, setAdminConnected] = useState(false);
 
     // [FSM] 관리자 연결 성공 여부 추적 (통화가 한 번이라도 ACTIVE 됐으면 true)
     useEffect(() => {
         if (callStatus === "ACTIVE") {
             setAdminConnected(true);
         }
-    }, [callStatus]);
+    }, [callStatus, setAdminConnected]);
 
     const getContent = () => {
         // AI 결과의 summary가 있으면 우선 사용
@@ -248,7 +277,7 @@ function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiRe
                 case "ERROR":
                     return { title: "분석 실패", desc: "AI 분석에 실패했습니다.\n관리자에게 문의하세요." };
                 default:
-                    return { title: "재고 없음", desc: aiData.summary };
+                    return { title: "재고 부족", desc: aiData.summary };
             }
         }
 
@@ -275,7 +304,7 @@ function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiRe
         if (!user || !aiData) return;
         setConnectionAttempted(true);
         try {
-            const issueId = (aiData as any).issueId;
+            const issueId = aiData.issueId;
             if (issueId) {
                 await issueService.connectAdmin(issueId);
                 await startCall(user.userId, null, issueId, "관리자");
@@ -297,7 +326,7 @@ function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiRe
     const isNextDisabled = result === "ADMIN" && !adminConnected && !connectionAttempted && callStatus !== "ACTIVE";
 
     const handleNextTask = async () => {
-        if (!aiData || !nav?.product) return;
+        if (!aiData?.issueId || !nav?.product) return;
 
         try {
             await issueService.workerChooseNextItem(aiData.issueId, nav.product.batchTaskId);
