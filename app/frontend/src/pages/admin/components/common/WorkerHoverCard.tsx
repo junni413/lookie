@@ -132,7 +132,7 @@ export default function WorkerHoverCard({ workerId, children, className }: Worke
                                 {/* Header: Name & Status */}
                                 <div>
                                     <div className="flex items-center justify-between mb-1">
-                                        <h4 className="font-bold text-slate-800 text-lg tracking-tight">
+                                        <h4 className="font-bold text-slate-800 text-base tracking-tight">
                                             {data.name}
                                         </h4>
                                         <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100/50 rounded-full">

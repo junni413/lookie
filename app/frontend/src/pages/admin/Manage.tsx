@@ -187,32 +187,32 @@ export default function Manage() {
                 <div className="flex gap-2">
                     <Button
                         onClick={handleAiReallocate}
-                        className="bg-primary hover:bg-primary/90 text-white gap-2 shadow-sm"
+                        className="bg-[#304FFF] hover:bg-[#304FFF]/90 text-white gap-2 shadow-lg shadow-indigo-500/20 border-0 h-9 px-4 font-semibold rounded-full hover:scale-105 active:scale-95 transition-all duration-200"
                         size="sm"
                     >
-                        <Wand2 size={16} />
+                        <Wand2 size={16} className="text-white/90" />
                         AI 추천 재배치
                     </Button>
-                    <div className="w-px h-8 bg-slate-200 mx-1" />
+                    <div className="w-px h-6 bg-slate-200 mx-2 self-center rounded-full" />
                     
                     <Button
-                        variant="outline"
+                        variant="ghost"
                         onClick={handleRestorePrevious}
                         disabled={!prevAppliedWorkers}
-                        className="gap-2 text-slate-600 shadow-sm"
+                        className="gap-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100/80 rounded-full transition-all duration-200 h-9 px-3"
                         title="이전 적용 배치 가져오기"
                         size="sm"
                     >
                         <RotateCcw size={16} />
-                        이전 배치
+                        <span className="text-xs font-medium">되돌리기</span>
                     </Button>
 
                     <Button
                         onClick={handleApply}
-                        className="gap-2 shadow-sm"
+                        className="gap-2 bg-[#0F172A] hover:bg-[#0F172A]/90 text-white shadow-md hover:shadow-xl transition-all duration-200 h-9 px-5 font-bold rounded-full hover:-translate-y-0.5"
                         size="sm"
                     >
-                        <Check size={16} />
+                        <Check size={16} strokeWidth={2.5} />
                         적용
                     </Button>
                 </div>
@@ -220,7 +220,7 @@ export default function Manage() {
 
             <div className="flex-1 flex flex-col min-h-0 px-8 pb-6 space-y-5 overflow-hidden">
                 {/* Top Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
                     {stats.map(stat => (
                         <ManageStatisticCard
                             key={stat.zoneId}
@@ -234,7 +234,7 @@ export default function Manage() {
 
                 {/* Bottom Zones Columns */}
                 <div className="flex-1 overflow-x-auto min-h-0 pb-2">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 h-full min-w-[1000px] lg:min-w-0">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 h-full min-w-[1000px] lg:min-w-0">
                         {stats.map(stat => (
                             <ManageZoneColumn
                                 key={stat.zoneId}

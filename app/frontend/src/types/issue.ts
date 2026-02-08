@@ -55,11 +55,13 @@ export type IssueDetailData = {
 };
 
 /** Admin Issue List Request */
+export type IssueSortType = "LATEST" | "URGENCY";
+
 export type AdminIssueListRequest = {
   page?: number;
   size?: number;
   status?: IssueStatus;
-  sort?: "TIME" | "PRIORITY";
+  sortType?: IssueSortType;
 };
 
 /** Admin Issue List Response */

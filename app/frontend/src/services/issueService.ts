@@ -141,7 +141,7 @@ export const issueService = {
     if (params?.page) qs.append("page", String(params.page));
     if (params?.size) qs.append("size", String(params.size));
     if (params?.status) qs.append("status", params.status);
-    if (params?.sort) qs.append("sort", params.sort);
+    if (params?.sortType) qs.append("sortType", params.sortType);
 
     const queryString = qs.toString();
     const url = `/api/issues${queryString ? `?${queryString}` : ""}`;
