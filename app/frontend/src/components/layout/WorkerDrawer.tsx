@@ -63,8 +63,6 @@ export default function WorkerDrawer() {
     navigate("/login", { replace: true });
   };
 
-  const initial = (user?.name?.trim()?.[0] ?? "작").toUpperCase();
-
   return (
     <div className="fixed inset-0 z-[1001] flex justify-end">
       {/* Overlay */}
