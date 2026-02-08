@@ -92,7 +92,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
     handleCallEnd: (status: string, message?: string) => {
         const { status: currentStatus, cleanupSession } = get();
-        
+
         // 이미 IDLE 상태라면 중복 처리를 방지합니다.
         if (currentStatus === 'IDLE') return;
 
@@ -122,7 +122,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
             }, 30000);
 
             const handleStatusChange = (status: string) => {
-                 if (["REJECTED", "ENDED", "CANCELED", "NO_ANSWER"].includes(status)) {
+                if (["REJECTED", "ENDED", "CANCELED", "NO_ANSWER"].includes(status)) {
                     console.log(`🚫 [Polling/WS] 통화 종료: ${status}`);
                     get().handleCallEnd(status);
                 } else if (status === 'ACCEPTED') {
@@ -131,7 +131,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
                     const { timeoutId } = get();
                     if (timeoutId) clearTimeout(timeoutId);
                     set({ status: "ACTIVE", timeoutId: null });
-                    
+
                     // Start polling for end
                     startPolling(response.callId, handleStatusChange);
                 }
@@ -233,7 +233,9 @@ export const useCallStore = create<CallStore>((set, get) => ({
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorMap: Record<string, string> = {
             RTC_001: "통화 세션을 찾을 수 없습니다.",
-            // ... (keep existing map)
+            RTC_002: "관리자가 현재 부재중이거나 통화 중입니다.",
+            RTC_005: "상대방이 자리 비움 상태입니다.",
+            RTC_006: "상대방이 작업 중지 상태입니다.",
             WEBRTC_USER_UNAVAILABLE: "상대방이 현재 통화 가능한 상태가 아닙니다.",
         };
         const message = errorMap[errorMessage] || "통화 연결에 실패했습니다.";
@@ -253,7 +255,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
         const cleanup = subscribeIncomingCalls(authStore.token, authStore.user.userId, (event) => {
             console.log("📨 [CallStore] 수신 이벤트:", event);
-            
+
             if (event.type === 'REQUESTED') {
                 set({
                     status: "INCOMING",
@@ -271,7 +273,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
                     console.log(`🚫 [CallStore] Ignoring '${event.type}' event (Duplicate or Handled elsewhere)`);
                     return;
                 }
-                
+
                 console.warn(`🚫 [CallStore] '${event.type}' event received via global listener.`);
                 get().handleCallEnd(event.type);
             }

@@ -44,8 +44,8 @@ async function requestJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
  * ----------------------------- */
 
 export type CreateIssueRequest = {
-  batchTaskId: number;
-  batchTaskItemId: number;
+  taskId: number;        // ✅ 백엔드와 일치 (batchTaskId → taskId)
+  taskItemId: number;    // ✅ 백엔드와 일치 (batchTaskItemId → taskItemId)
   issueType: string; // "DAMAGED" | "OUT_OF_STOCK"
   imageUrl?: string;
 };
@@ -54,8 +54,8 @@ export type CreateIssueResponseData = {
   issueId: number;
   issueType: string;
   status: string;
-  batchTaskId: number;
-  batchTaskItemId: number;
+  taskId: number;          // ✅ 백엔드와 일치
+  taskItemId: number;      // ✅ 백엔드와 일치
   urgency: number;
   issueHandling: string;
 };
@@ -147,7 +147,7 @@ export const issueService = {
     const url = `/api/issues${queryString ? `?${queryString}` : ""}`;
 
     const response = await requestJSON<ApiResponse<AdminIssueListResponse & { paging: { totalCount: number } }>>(url, { method: "GET" });
-    
+
     // Check if data exists and map totalCount to total for frontend consistency
     if (response.data) {
       return {
@@ -159,7 +159,7 @@ export const issueService = {
         }
       };
     }
-    
+
     return { issues: [], paging: { total: 0, page: 1, size: 10 } };
   },
 
@@ -170,7 +170,7 @@ export const issueService = {
         `/api/issues/${issueId}`,
         { method: "GET" }
       );
-      
+
       if (response.data) {
         // 백엔드와의 타입 혼용 방지를 위해 issueType으로 통일
         const data = response.data;
@@ -194,6 +194,39 @@ export const issueService = {
     await requestJSON(`/api/issues/${issueId}/admin/confirm`, {
       method: "POST",
       body: JSON.stringify(body),
+    });
+  },
+
+  // ========== FSM 전용 API ==========
+
+  /** ✅ [FSM] 작업자 다음 아이템 진행 */
+  workerChooseNextItem: async (
+    issueId: number,
+    taskId: number
+  ): Promise<ApiResponse<void>> => {
+    return requestJSON(`/api/issues/${issueId}/next-item?taskId=${taskId}`, {
+      method: "POST",
+    });
+  },
+
+  /** ✅ [FSM] 관리자 연결 시작 */
+  connectAdmin: async (issueId: number): Promise<ApiResponse<void>> => {
+    return requestJSON(`/api/issues/${issueId}/connect-admin`, {
+      method: "POST",
+    });
+  },
+
+  /** ✅ [FSM] WebRTC 연결 완료 */
+  onWebrtcConnected: async (issueId: number): Promise<ApiResponse<void>> => {
+    return requestJSON(`/api/issues/${issueId}/webrtc/connected`, {
+      method: "POST",
+    });
+  },
+
+  /** ✅ [FSM] WebRTC 연결 실패 (부재) */
+  onWebrtcMissed: async (issueId: number): Promise<ApiResponse<void>> => {
+    return requestJSON(`/api/issues/${issueId}/webrtc/missed`, {
+      method: "POST",
     });
   },
 };

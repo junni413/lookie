@@ -17,6 +17,7 @@ type NavState = {
   toteBarcode: string;
   product: { productName: string; barcode: string; locationCode: string };
   imageUrl: string;
+  batchTaskId?: number; // ✅ FSM API에 필요
 };
 
 function ResultCard({ verdict }: { verdict: AiVerdict }) {
@@ -245,6 +246,9 @@ export default function IssueResult() {
     if (!user) return;
     setConnectionAttempted(true);
     try {
+      // ✅ [FSM] 관리자 연결 시작 API 호출
+      await issueService.connectAdmin(nav.issueId);
+
       // Start auto-assignment call
       await startCall(user.userId, null, nav.issueId, "관리자");
     } catch (err) {
@@ -265,8 +269,42 @@ export default function IssueResult() {
   // Note: handleSendToAdmin will now be handled via global modal or simplified logic
   // For now, if auto-assignment starts, we consider the attempt "done" for the worker flow.
 
-  const goNext = () => {
-    navigate(-2);
+  const goNext = async () => {
+    if (!nav.batchTaskId) {
+      toast({ title: "작업 정보가 없습니다.", description: "작업 ID를 찾을 수 없어 진행할 수 없습니다." });
+      return;
+    }
+
+    try {
+      // ✅ [FSM] 작업자 다음 아이템 진행 API 호출
+      await issueService.workerChooseNextItem(nav.issueId, nav.batchTaskId);
+      navigate(-2);
+    } catch (err: any) {
+      console.error("workerChooseNextItem error:", err);
+
+      // ⚠️ NEED_CHECK 정책 에러 처리
+      const errorMsg = err?.message || err?.response?.data?.message || "";
+
+      if (errorMsg.includes("ADMIN_CALL_REQUIRED") || errorMsg.includes("관리자 연결")) {
+        toast({
+          title: "관리자 연결이 필요합니다",
+          description: "NEED_CHECK 이슈는 관리자 연결 시도가 필수입니다.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (errorMsg.includes("ADMIN_CALL_IN_PROGRESS") || errorMsg.includes("대기 중")) {
+        toast({
+          title: "관리자 연결 대기 중",
+          description: "관리자 연결을 기다려주세요.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({ title: "다음 아이템 진행 실패", description: errorMsg || "다시 시도해주세요." });
+    }
   };
 
   // ✅ Retake Logic

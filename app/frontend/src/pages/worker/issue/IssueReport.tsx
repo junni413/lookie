@@ -40,11 +40,11 @@ export default function IssueReport() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        if (!nav || !nav.product) {
-            console.error("❌ [IssueReport] Missing navigation state");
-        }
-    }, [nav]);
+  useEffect(() => {
+    if (!nav || !nav.product) {
+      console.error("❌ [IssueReport] Missing navigation state");
+    }
+  }, [nav]);
 
   useEffect(() => {
     if (nav) setTitle(TITLE[nav.issueType]);
@@ -110,8 +110,8 @@ export default function IssueReport() {
       const imageUrl = uploadRes.data;
 
       const issueRes = await issueService.createIssue({
-        batchTaskId,
-        batchTaskItemId,
+        taskId: batchTaskId,        // ✅ 백엔드는 taskId로 받음
+        taskItemId: batchTaskItemId, // ✅ 백엔드는 taskItemId로 받음
         issueType: nav.issueType,
         imageUrl,
       });
@@ -132,6 +132,7 @@ export default function IssueReport() {
             locationCode: nav.product.locationCode,
           },
           imageUrl,
+          batchTaskId, // ✅ FSM API에 필요
         },
       });
     } catch (e) {

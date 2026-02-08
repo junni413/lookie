@@ -84,6 +84,8 @@ export interface TaskItemVO {
     productImage?: string;
     barcode: string;
     locationCode: string;
+    issueType?: string;
+    adminDecision?: string;
 }
 
 export interface TaskResponse<T> {

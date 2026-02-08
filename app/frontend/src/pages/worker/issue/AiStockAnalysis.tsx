@@ -57,8 +57,8 @@ export default function AiStockAnalysis() {
         try {
             // 1. 이슈 생성 (OUT_OF_STOCK, 이미지 없이)
             const issueRes = await issueService.createIssue({
-                batchTaskId: nav?.product?.batchTaskId || 0,
-                batchTaskItemId: nav?.product?.batchTaskItemId || 0,
+                taskId: nav?.product?.batchTaskId || 0,        // ✅ 백엔드는 taskId로 받음
+                taskItemId: nav?.product?.batchTaskItemId || 0, // ✅ 백엔드는 taskItemId로 받음
                 issueType: "OUT_OF_STOCK",
             });
 
