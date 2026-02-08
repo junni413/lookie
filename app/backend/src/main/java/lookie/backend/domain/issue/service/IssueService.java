@@ -409,7 +409,7 @@ public class IssueService {
         if (existing != null && !"UNKNOWN".equals(existing.getAiDecision())) {
             log.warn("[IssueService] AI result already applied. Skip overwrite. issueId={}, existingDecision={}",
                     issueId, existing.getAiDecision());
-            return AiResultResponse.from(issue, calculateNextAction(issue),
+            return AiResultResponse.from(issue, calculateNextAction(issue).name(),
                     generateAvailableActions(issue),
                     existing.getAiDecision(), existing.getSummary(),
                     existing.getConfidence(), existing.getAiResult(), existing.getImageUrl());
@@ -456,7 +456,7 @@ public class IssueService {
         List<String> availableActions = generateAvailableActions(issue);
 
         // [Fix] Response에 이미지 URL 포함
-        AiResultResponse response = AiResultResponse.from(issue, issueNextAction, availableActions,
+        AiResultResponse response = AiResultResponse.from(issue, issueNextAction.name(), availableActions,
                 judgment.getAiDecision(), judgment.getSummary(),
                 judgment.getConfidence(), judgment.getAiResult(), judgment.getImageUrl());
 

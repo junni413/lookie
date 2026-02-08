@@ -83,17 +83,20 @@ export default function WorkDetail() {
         if (taskRes.success && taskRes.data) {
           const fetchedTask = taskRes.data.payload as any;
           setCurrentTask(fetchedTask);
-          setNextAction(taskRes.data.nextAction as NextAction);
+
+          // 2) 서버가 준 nextAction을 즉시 적용
+          const serverAction = taskRes.data.nextAction as NextAction;
+          setNextAction(serverAction);
+
           // toteBarcode 복구
           const recoveredTote = (taskRes.data as any).toteBarcode || (fetchedTask as any).toteBarcode;
           if (recoveredTote) setToteBarcode(recoveredTote);
 
           taskIdToUse = fetchedTask.batchTaskId;
-          processedHydrationRef.current = true;
-          console.log("🌊 Hydration complete:", { nextAction: taskRes.data.nextAction, taskId: taskIdToUse });
+          console.log("🌊 Hydration - Server Action:", serverAction);
         }
 
-        // 2) 아이템 목록 조회
+        // 3) 아이템 목록 조회
         if (!taskIdToUse) {
           console.warn("⚠️ Task ID missing");
           return;
@@ -103,38 +106,34 @@ export default function WorkDetail() {
         if (response.success && Array.isArray(response.data)) {
           setItems(response.data);
 
-          // ✅ 3) 복구 우선순위: 1순위(내비게이션 state), 2순위(서버 nextItem), 3순위(첫 미완료 건)
+          // 4) 복구 인덱스 계산
           let targetIdx = -1;
           const srvNextItem = taskRes.data.nextItem as any;
 
           if (state?.currentIndex !== undefined) {
             targetIdx = Number(state.currentIndex);
-            console.log("📍 [WorkDetail] 내비게이션 상태에서 인덱스 복구:", targetIdx);
           } else if (srvNextItem?.batchTaskItemId) {
             targetIdx = response.data.findIndex((it) => it.batchTaskItemId === srvNextItem.batchTaskItemId);
           }
 
           if (targetIdx === -1) {
-            // 아직 처리되지 않은 첫 번째 아이템 찾기
-            targetIdx = response.data.findIndex((it) => it.status !== "DONE" && it.status !== "ISSUE");
+            targetIdx = response.data.findIndex((it) => it.status !== "DONE" && it.status !== "ISSUE" && it.status !== "ISSUE_PENDING");
           }
 
           if (targetIdx !== -1) {
-            if (currentIndex !== targetIdx) {
-              setCurrentIndex(targetIdx);
-              prevIndexRef.current = targetIdx; // ✅ 복구 시점에는 변경으로 간주하지 않도록 즉시 동기화
-              console.log("📍 세션 복구: 현재 인덱스 설정 ->", targetIdx);
-            }
+            setCurrentIndex(targetIdx);
+            prevIndexRef.current = targetIdx; // ✅ 복구 시점에는 변경으로 간주하지 않도록 전환
+            console.log("📍 Hydration - Index Restored:", targetIdx);
           }
-          // ✅ 모든 인덱스/상태 복구가 끝난 것이 확실할 때 플래그 설정
-          processedHydrationRef.current = true;
-          console.log("🌊 Hydration & Index restoration final complete.");
         }
       } catch (err: any) {
         console.error("Fetch data error:", err);
         toast({ title: "데이터 조회 실패", description: err?.message, variant: "destructive" });
       } finally {
+        // ✅ 모든 데이터 세팅 및 인덱스 복구가 끝난 후 플래그 설정
+        processedHydrationRef.current = true;
         setLoading(false);
+        console.log("🌊 Hydration Complete.");
       }
     };
 
@@ -149,42 +148,29 @@ export default function WorkDetail() {
 
   // ✅ 현재 아이템이 바뀔 때 nextAction 저장/복원
   useEffect(() => {
-    if (!items[currentIndex]) return;
-    if (loading) return;
+    if (!items[currentIndex] || loading) return;
+
+    // ✅ 복구(Hydration) 중에는 서버가 준 상태를 유지해야 하므로 로직 건너뜀
+    if (!processedHydrationRef.current) return;
 
     const item = items[currentIndex];
-    const itemId = item.batchTaskItemId;
     const indexChanged = prevIndexRef.current !== currentIndex;
     prevIndexRef.current = currentIndex;
 
-    console.log("🔄 useEffect: Syncing item state", {
-      itemId,
-      status: item.status,
-      indexChanged,
-      isHydrated: processedHydrationRef.current,
-      currentAction: nextAction
-    });
-
-    // ✅ 1) 아이템 완료/이슈 상태면 다음 단계로 강제 설정
+    // 1) 아이템 완료/이슈 상태면 다음 단계로 강제 설정
     if (item.status === "DONE" || item.status === "ISSUE" || item.status === "ISSUE_PENDING") {
       setNextAction("NEXT_ITEM");
       return;
     }
 
-    // ✅ 2) 첫 진입(Hydration) 직후라면 서버가 준 nextAction 유지
-    if (!processedHydrationRef.current) {
-      console.log("🌊 Maintaining server-provided action during hydration:", nextAction);
-      prevIndexRef.current = currentIndex; // 복구 중 상태 동기화
-      return;
-    }
-
-    // ✅ 3) 그 외 사용자가 직접 아이템을 바꿨으면 무조건 지번 스캔부터 시작 (보안/정확도)
-    if (indexChanged) {
-      console.log("🔄 Manual index change detected, resetting to SCAN_LOCATION");
+    // 2) 신규 진입이거나 수동으로 아이템을 바꿨으면 안전을 위해 지번 스캔부터 시작
+    if (indexChanged && processedHydrationRef.current) {
+      console.log("🔄 Manual Index change detected - resetting to SCAN_LOCATION for safety");
       setNextAction("SCAN_LOCATION");
       return;
     }
   }, [currentIndex, items, loading]);
+
 
   // ✅ nextAction이 바뀔 때 현재 아이템 상태 저장
   useEffect(() => {
@@ -206,7 +192,12 @@ export default function WorkDetail() {
 
   const handleScanned = useCallback(
     async (barcode: string) => {
-      console.log("🚀 scanLocation body =", { locationCode: barcode });
+      // ✅ 로그 정상화: 타입별로 정확하게 출력
+      if (scanType === "LOCATION") {
+        console.log("📍 [SCAN] Location Code =", barcode);
+      } else {
+        console.log("📦 [SCAN] Item Barcode =", barcode);
+      }
 
       if (!currentItem || !currentTask) return;
 

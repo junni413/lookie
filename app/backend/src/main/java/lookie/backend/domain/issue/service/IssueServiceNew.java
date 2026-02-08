@@ -2,10 +2,12 @@ package lookie.backend.domain.issue.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import lookie.backend.domain.issue.dto.AdminCallRequiredException;
-import lookie.backend.domain.issue.dto.AdminCallInProgressException;
+import lookie.backend.domain.issue.dto.*;
 import lookie.backend.domain.issue.mapper.IssueMapper;
+import lookie.backend.domain.issue.vo.AiJudgmentVO;
+import lookie.backend.domain.issue.vo.IssueImageVO;
 import lookie.backend.domain.issue.vo.IssueVO;
+import lookie.backend.domain.task.event.TaskItemCompletedEvent;
 import lookie.backend.domain.task.vo.TaskActionStatus;
 import lookie.backend.domain.task.exception.InvalidItemStatusException;
 import lookie.backend.domain.task.exception.InvalidTaskStatusException;
@@ -17,19 +19,25 @@ import lookie.backend.domain.inventory.service.InventoryService;
 import lookie.backend.infra.ai.AiAnalysisClient;
 import lookie.backend.infra.ai.dto.AiAnalysisRequest;
 import lookie.backend.infra.ai.dto.InventoryStateDto;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import lookie.backend.domain.location.mapper.LocationMapper;
+import lookie.backend.domain.location.vo.LocationVO;
 import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
  * IssueServiceNew - 새 FSM 기준 Issue 처리 구현
  * Pseudo Code 3~6장 기준
+ * 레거시 IssueService 기능을 통합한 최종 버전
  */
 @Slf4j
 @Service
@@ -41,36 +49,73 @@ public class IssueServiceNew {
     private final TaskItemMapper taskItemMapper;
     private final AiAnalysisClient aiAnalysisClient;
     private final InventoryService inventoryService;
+    private final LocationMapper locationMapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ========== 3.1 createIssue ==========
 
     @Transactional
-    public Long createIssue(Long workerId, Long taskId, Long taskItemId, String issueType) {
+    public IssueResponse createIssue(Long workerId, CreateIssueRequest request) {
         log.info("[IssueServiceNew] createIssue - workerId={}, taskId={}, itemId={}, type={}",
-                workerId, taskId, taskItemId, issueType);
+                workerId, request.getTaskId(), request.getTaskItemId(), request.getIssueType());
 
-        TaskVO task = taskMapper.findByIdForUpdate(taskId);
+        TaskVO task = taskMapper.findByIdForUpdate(request.getTaskId());
         assertTaskOwnership(task, workerId);
         assertTaskStatus(task, "IN_PROGRESS");
 
-        TaskItemVO item = taskItemMapper.findById(taskItemId);
+        TaskItemVO item = taskItemMapper.findById(request.getTaskItemId());
         if (item == null || (!("PENDING".equals(item.getStatus()) || "IN_PROGRESS".equals(item.getStatus())))) {
             throw new InvalidItemStatusException();
         }
 
-        taskItemMapper.updateStatus(taskItemId, "ISSUE_PENDING");
-        taskItemMapper.setPickedQty(taskItemId, 0);
+        // 1. TaskItem 상태 변경 및 초기화
+        taskItemMapper.updateStatus(request.getTaskItemId(), "ISSUE_PENDING");
+        taskItemMapper.setPickedQty(request.getTaskItemId(), 0);
 
-        IssueVO issue = IssueVO.createInitial(workerId, item, issueType);
+        // 2. Issue 생성
+        IssueVO issue = IssueVO.createInitial(workerId, item, request.getIssueType());
         issueMapper.insertIssue(issue);
+
+        // 3. 증빙 이미지 저장 및 AI 초기 결과 생성
+        if (request.getImageUrl() != null && !request.getImageUrl().isEmpty()) {
+            IssueImageVO image = new IssueImageVO();
+            image.setIssueId(issue.getIssueId());
+            image.setImageUrl(request.getImageUrl());
+            issueMapper.insertIssueImage(image);
+        }
+
+        AiJudgmentVO judgment = new AiJudgmentVO();
+        judgment.setIssueId(issue.getIssueId());
+        judgment.setImageUrl(request.getImageUrl());
+        judgment.setAiDecision("UNKNOWN");
+        issueMapper.insertAiJudgment(judgment);
+
+        // 4. [Inventory] 파손 임시 차감
+        if ("DAMAGED".equals(request.getIssueType())) {
+            inventoryService.recordEvent(
+                    "PICK_DAMAGED_TEMP",
+                    item.getProductId(),
+                    item.getLocationId(),
+                    -1,
+                    "ISSUE",
+                    issue.getIssueId(),
+                    workerId);
+        }
+
+        // 5. [Event] Redis 집계용 이벤트 발행
+        eventPublisher.publishEvent(new TaskItemCompletedEvent(
+                item.getBatchTaskItemId(),
+                item.getBatchTaskId(),
+                task.getZoneId(),
+                task.getBatchId()));
 
         log.info("[IssueServiceNew] Issue created - issueId={}", issue.getIssueId());
 
-        // AI 요청은 트랜잭션 커밋 후 처리 (기존 IssueService 패턴 참고)
+        // 6. AI 요청 (커밋 후 실행)
         Long issueIdForAi = issue.getIssueId();
         TaskItemVO itemForAi = item;
-        String issueTypeForAi = issueType;
+        String issueTypeForAi = request.getIssueType();
 
         Runnable aiTask = () -> {
             try {
@@ -92,7 +137,7 @@ public class IssueServiceNew {
             aiTask.run();
         }
 
-        return issue.getIssueId();
+        return IssueResponse.from(issue);
     }
 
     // ========== 3.2 workerChooseNextItem (NEED_CHECK 가드 반영) ==========
@@ -146,6 +191,78 @@ public class IssueServiceNew {
         taskMapper.updateTask(task);
 
         log.info("[IssueServiceNew] Worker chose next item - taskId={}", taskId);
+    }
+
+    // ========== 3.3 retakeIssue / reportImage ==========
+
+    @Transactional
+    public void retakeIssue(Long workerId, Long issueId, String imageUrl) {
+        log.info("[IssueServiceNew] retakeIssue - workerId={}, issueId={}", workerId, issueId);
+
+        IssueVO issue = issueMapper.findByIdForUpdate(issueId);
+        if (issue == null || !"OPEN".equals(issue.getStatus())) {
+            throw new ApiException(ErrorCode.ISSUE_ALREADY_RESOLVED);
+        }
+        if (!workerId.equals(issue.getWorkerId())) {
+            throw new ApiException(ErrorCode.ISSUE_TASK_NOT_ASSIGNED);
+        }
+
+        // 이미지 및 판정 리셋
+        IssueImageVO image = new IssueImageVO();
+        image.setIssueId(issueId);
+        image.setImageUrl(imageUrl);
+        issueMapper.insertIssueImage(image);
+
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
+        if (judgment == null) {
+            judgment = new AiJudgmentVO();
+            judgment.setIssueId(issueId);
+            issueMapper.insertAiJudgment(judgment);
+        }
+        judgment.setImageUrl(imageUrl);
+        judgment.setAiDecision("UNKNOWN");
+        judgment.setConfidence(null);
+        issueMapper.updateAiJudgment(judgment);
+
+        // AI 재요청 (커밋 후)
+        TaskItemVO item = taskItemMapper.findById(issue.getBatchTaskItemId());
+        String issueType = issue.getIssueType();
+
+        Runnable aiTask = () -> requestAiAnalysis(issueId, item, issueType);
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    aiTask.run();
+                }
+            });
+        } else {
+            aiTask.run();
+        }
+    }
+
+    @Transactional
+    public void reportImage(Long workerId, Long issueId, String imageUrl) {
+        log.info("[IssueServiceNew] reportImage - workerId={}, issueId={}", workerId, issueId);
+
+        IssueVO issue = issueMapper.findByIdForUpdate(issueId);
+        if (issue == null || !"OPEN".equals(issue.getStatus())) {
+            throw new ApiException(ErrorCode.ISSUE_ALREADY_RESOLVED);
+        }
+        if (!workerId.equals(issue.getWorkerId())) {
+            throw new ApiException(ErrorCode.ISSUE_TASK_NOT_ASSIGNED);
+        }
+
+        IssueImageVO image = new IssueImageVO();
+        image.setIssueId(issueId);
+        image.setImageUrl(imageUrl);
+        issueMapper.insertIssueImage(image);
+
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
+        if (judgment != null) {
+            judgment.setImageUrl(imageUrl);
+            issueMapper.updateAiJudgment(judgment);
+        }
     }
 
     // ========== 4) 관리자 연결 (시도/결과) ==========
@@ -204,33 +321,135 @@ public class IssueServiceNew {
     // ========== 5) AI 결과 반영 ==========
 
     @Transactional
-    public void onAiResult(Long issueId, String aiDecision, String reasonCode) {
+    public void onAiResult(Long issueId, AiResultRequest request) {
         log.info("[IssueServiceNew] onAiResult - issueId={}, aiDecision={}, reasonCode={}",
-                issueId, aiDecision, reasonCode);
+                issueId, request.getAiDecision(), request.getReasonCode());
 
+        // 1. 이슈 조회
         IssueVO issue = issueMapper.findByIdForUpdate(issueId);
         if (issue == null) {
             throw new IllegalStateException("Issue not found");
         }
 
-        issue.setAiDecision(aiDecision);
-        issue.setReasonCode(reasonCode);
+        // 2. AI 판정 결과 정규화 (DB ENUM 규격 준수)
+        String decision = request.getAiDecision();
+        String rawReason = request.getReasonCode();
+        String mappedReason = "UNKNOWN";
 
-        if ("MOVE_LOCATION".equals(reasonCode)) {
+        // ENUM에 없는 값(예: banana_defect) 필터링 및 매핑
+        if ("MOVE_LOCATION".equals(rawReason))
+            mappedReason = "MOVE_LOCATION";
+        else if ("STOCK_EXISTS".equals(rawReason))
+            mappedReason = "STOCK_EXISTS";
+        else if ("WAITING_RETURN".equals(rawReason))
+            mappedReason = "WAITING_RETURN";
+        else if ("DAMAGED".equals(rawReason) || (rawReason != null && rawReason.contains("defect")))
+            mappedReason = "DAMAGED";
+        else if ("AUTO_RESOLVED".equals(rawReason))
+            mappedReason = "AUTO_RESOLVED";
+
+        issue.setAiDecision(decision);
+        issue.setReasonCode(mappedReason);
+
+        // 3. FSM 정책 적용 (우선순위, 관리자 호출 필요성 등)
+        applyAiPolicy(issue, decision, mappedReason);
+
+        // 4. [FSM] MOVE_LOCATION 특수 처리: 자동 해결 및 아이템 복구
+        if ("MOVE_LOCATION".equals(mappedReason)) {
             issue.setStatus("RESOLVED");
-            // [FSM] 지번 이동 시 태스크 화면도 지번 스캔으로 초기화
+            issue.setResolvedAt(java.time.LocalDateTime.now());
+
+            // 새 지번 정보가 있다면 매핑
+            if (request.getNewLocation() != null) {
+                // Assuming locationMapper is injected, e.g., via constructor
+                // private final LocationMapper locationMapper;
+                LocationVO loc = locationMapper.findByCode(request.getNewLocation());
+                if (loc != null) {
+                    issue.setNewLocationId(loc.getLocationId());
+                    log.info("[IssueServiceNew] MOVE_LOCATION - newLocationId mapped: {} -> {}",
+                            request.getNewLocation(), loc.getLocationId());
+                }
+            }
+
+            // 아이템 상태를 다시 PENDING으로 되돌려 다른 지번에서 집품 가능하게 함
+            taskItemMapper.updateStatus(issue.getBatchTaskItemId(), "PENDING");
+            // 태스크 상태를 지번 스캔으로 되돌림 (INV-1)
             taskMapper.updateActionStatus(issue.getBatchTaskId(), TaskActionStatus.SCAN_LOCATION);
-            log.info("[IssueServiceNew] MOVE_LOCATION -> actionStatus reset to SCAN_LOCATION. taskId={}",
+
+            log.info("[IssueServiceNew] MOVE_LOCATION -> Issue RESOLVED & TaskItem Reverted to PENDING. taskId={}",
                     issue.getBatchTaskId());
         }
 
         issueMapper.updateIssue(issue);
 
-        log.info("[IssueServiceNew] AI result applied - issueId={}", issueId);
+        // 5. 판정 근거 기록 (ai_judgments 테이블 기록)
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
+        if (judgment == null) {
+            judgment = new AiJudgmentVO();
+            judgment.setIssueId(issueId);
+            issueMapper.insertAiJudgment(judgment);
+        }
+        judgment.setAiDecision(decision);
+        judgment.setConfidence(request.getConfidence() != null ? request.getConfidence().floatValue() : null);
+        judgment.setSummary(request.getSummary());
+        judgment.setAiResult(request.getAiResult());
+        issueMapper.updateAiJudgment(judgment);
 
-        // [WebSocket] AI 판정 결과를 프론트엔드에 실시간 전송
-        messagingTemplate.convertAndSend("/topic/issues/" + issueId, issue);
-        log.info("[IssueServiceNew] AI result sent via WebSocket. issueId={}, aiDecision={}", issueId, aiDecision);
+        log.info("[IssueServiceNew] AI result applied and synced - issueId={}", issueId);
+
+        // 6. [WebSocket] UI 실시간 업데이트를 위해 상세 정보 전송
+        // 프론트엔드 호환성을 위해 AiResultResponse 규격 사용
+        AiResultResponse wsResponse = new AiResultResponse();
+        wsResponse.setIssueId(issueId);
+        wsResponse.setAiResult(decision);
+        wsResponse.setReasonCode(mappedReason);
+        wsResponse.setStatus(issue.getStatus());
+        wsResponse.setUrgency(issue.getUrgency());
+        wsResponse.setAdminRequired(issue.getAdminRequired());
+        wsResponse.setIssueHandling(issue.getIssueHandling());
+        wsResponse.setSummary(request.getSummary());
+        wsResponse.setConfidence(request.getConfidence() != null ? request.getConfidence().floatValue() : null);
+        wsResponse.setAiDetail(request.getAiResult()); // AI 상세 좌표 JSON 추가
+        wsResponse.setResolvedAt(issue.getResolvedAt());
+
+        // 이미지 URL 포함 (재조회 없이 기존 judgment 정보 사용)
+        wsResponse.setImageUrl(judgment.getImageUrl());
+
+        // FSM 상태에 기반한 다음 액션 계산 추가
+        wsResponse.setIssueNextAction(calculateWorkerNextAction(issue, judgment).name()); // Changed to
+        // calculateWorkerNextAction to match
+        // existing method
+        wsResponse.setAvailableActions(generateAvailableActions(issue));
+
+        messagingTemplate.convertAndSend("/topic/issues/" + issueId, wsResponse);
+        log.info("[IssueServiceNew] AI result broadcasted via WebSocket. issueId={}, decision={}", issueId, decision);
+    }
+
+    /**
+     * AI 결과에 따른 FSM 정책 매핑 (Urgency, AdminRequired 등)
+     */
+    private void applyAiPolicy(IssueVO issue, String decision, String reasonCode) {
+        // 기본값 설정
+        issue.setUrgency(3);
+        issue.setAdminRequired(true);
+        issue.setIssueHandling("NON_BLOCKING");
+
+        if ("PASS".equals(decision)) {
+            issue.setUrgency(4); // 신뢰도 높음 -> 낮은 우선순위
+        } else if ("NEED_CHECK".equals(decision)) {
+            issue.setUrgency(1); // 관리자 확인 필수 -> 높은 우선순위
+            issue.setIssueHandling("BLOCKING");
+        } else if ("RETAKE".equals(decision)) {
+            issue.setUrgency(0); // 관제 대상 제외
+            issue.setIssueHandling("BLOCKING");
+            issue.setAdminRequired(false);
+        }
+
+        // 지번 이동은 특수 정책
+        if ("MOVE_LOCATION".equals(reasonCode)) {
+            issue.setUrgency(0);
+            issue.setAdminRequired(false);
+        }
     }
 
     // ========== 6) AdminConfirmService (복구 유일 경로 유지) ==========
@@ -266,10 +485,6 @@ public class IssueServiceNew {
                 taskItemMapper.updateStatus(item.getBatchTaskItemId(), "PENDING");
                 taskItemMapper.setPickedQty(item.getBatchTaskItemId(), 0);
 
-                // [FSM] 이슈 복구 시 전역 상태를 리셋하지 않고, 나중에 해당 아이템 진입 시 지번 스캔 유도
-                // taskMapper.updateActionStatus(task.getBatchTaskId(),
-                // TaskActionStatus.SCAN_LOCATION);
-
                 // [Inventory] 파손 임시 차감분 복구
                 if ("DAMAGED".equals(issue.getIssueType())) {
                     inventoryService.recordEvent(
@@ -300,6 +515,7 @@ public class IssueServiceNew {
                         item.getLocationId(),
                         0,
                         "ISSUE",
+
                         issue.getIssueId(),
                         null);
             }
@@ -309,7 +525,80 @@ public class IssueServiceNew {
         log.info("[IssueServiceNew] Admin confirmed and synced - issueId={}, decision={}", issueId, decision);
     }
 
+    // ========== 조회 관련 메서드 ==========
+
+    @Transactional(readOnly = true)
+    public IssueDetailResponse getIssueDetail(Long issueId) {
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
+
+        // FSM 기반 가이드 계산
+        IssueNextAction workerNextAction = calculateWorkerNextAction(issue, judgment);
+        List<String> availableActions = generateAvailableActions(issue);
+
+        // IssueDetailResponse.from 내부에서 judgment를 사용하여 aiDetail 등을 이미 매핑하고 있으나,
+        // 확실히 하기 위해 workerNextAction과 issueNextAction을 명확히 전달
+        return IssueDetailResponse.from(issue, judgment,
+                workerNextAction != null ? workerNextAction.name() : null,
+                workerNextAction != null ? workerNextAction.name() : null,
+                null, availableActions);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MyIssueSummary> getMyIssueList(Long workerId, IssueStatus status) {
+        return issueMapper.findMyIssues(workerId, status);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminIssueListResponse getAdminIssueList(Long adminId, AdminIssueListRequest request) {
+        List<AdminIssueSummary> issues = issueMapper.findAdminIssues(adminId, request);
+        long totalCount = issueMapper.countAdminIssues(adminId, request);
+        return AdminIssueListResponse.of(issues, request.getPage(), request.getSize(), totalCount);
+    }
+
     // ========== 유틸리티 메서드 ==========
+
+    private IssueNextAction calculateWorkerNextAction(IssueVO issue, AiJudgmentVO judgment) {
+        TaskItemVO item = taskItemMapper.findById(issue.getBatchTaskItemId());
+        if (item != null && "PENDING".equals(item.getStatus())) {
+            return IssueNextAction.NEXT_ITEM;
+        }
+
+        String aiDecision = judgment != null ? judgment.getAiDecision() : "UNKNOWN";
+
+        if ("RETAKE".equals(aiDecision)) {
+            return IssueNextAction.WAIT_RETAKE;
+        }
+
+        if ("NEED_CHECK".equals(aiDecision)) {
+            if ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null) {
+                return IssueNextAction.WAIT_ADMIN;
+            }
+            if ("MISSED".equals(issue.getWebrtcStatus())) {
+                // 관리자 연결 실패 시 사진 촬영 요구 또는 다음 아이템 진행
+                return "OUT_OF_STOCK".equals(issue.getIssueType()) ? IssueNextAction.WAIT_REPORT_IMAGE
+                        : IssueNextAction.NEXT_ITEM;
+            }
+        }
+
+        if ("RESOLVED".equals(issue.getStatus()) && "MOVE_LOCATION".equals(issue.getReasonCode())) {
+            return IssueNextAction.MOVE_LOCATION;
+        }
+
+        return IssueNextAction.NEXT_ITEM;
+    }
+
+    private List<String> generateAvailableActions(IssueVO issue) {
+        List<String> actions = new ArrayList<>();
+        if ("NEED_CHECK".equals(issue.getAiDecision())
+                && ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null)) {
+            actions.add("CONNECT_ADMIN");
+        }
+        return actions;
+    }
 
     /**
      * [WebRTC] 화상 연결 전 이슈 상태 검증
@@ -340,7 +629,7 @@ public class IssueServiceNew {
             throw new InvalidTaskStatusException();
         }
         if (!workerId.equals(task.getWorkerId())) {
-            throw new InvalidTaskStatusException();
+            throw new ApiException(ErrorCode.ISSUE_TASK_NOT_ASSIGNED);
         }
     }
 
@@ -367,11 +656,13 @@ public class IssueServiceNew {
     private AiAnalysisRequest buildAiAnalysisRequest(Long issueId, TaskItemVO item, String issueType) {
         // DAMAGED 케이스: 이미지 없이 전달 (FSM에서는 이슈 생성 시 이미지 없음)
         if ("DAMAGED".equals(issueType)) {
+            // 이미지 조회를 위해 mapper 직접 호출 (이미지 URL이 필요함)
+            AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issueId);
             return AiAnalysisRequest.create(
                     issueId,
                     item.getProductId(),
                     issueType,
-                    null, // FSM: 이미지는 나중에 별도 업로드
+                    judgment != null ? judgment.getImageUrl() : null,
                     null);
         }
 

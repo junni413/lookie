@@ -22,7 +22,7 @@ public class AiResultResponse {
     private Boolean adminRequired; // 관리자 확인 필요 여부
     private String reasonCode; // 이슈 사유 코드
     private LocalDateTime resolvedAt; // 자동 해결 시각 (PASS 케이스)
-    private IssueNextAction issueNextAction; // 다음 권고 행동 (Renamed from nextAction)
+    private String issueNextAction; // 다음 권고 행동 (Renamed from nextAction)
     private java.util.List<String> availableActions; // UI 힌트용 가능한 액션 목록
 
     // AI 상세 정보 추가 (WebSocket 실시간 통보용)
@@ -35,7 +35,7 @@ public class AiResultResponse {
     /**
      * IssueVO와 nextAction으로부터 응답 생성
      */
-    public static AiResultResponse from(IssueVO issue, IssueNextAction issueNextAction,
+    public static AiResultResponse from(IssueVO issue, String issueNextAction,
             java.util.List<String> availableActions, String aiResult, String summary,
             Float confidence, String aiDetail, String imageUrl) {
         return new AiResultResponse(
