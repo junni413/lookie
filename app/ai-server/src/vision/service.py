@@ -100,7 +100,8 @@ class VisionService:
     def _run_expert(self, img: Image.Image, model: YOLO) -> tuple[list, list, float, float]:
         """2단계: 전문가 모델 추론"""
         t1 = time.perf_counter()
-        results = model(img, verbose=False, conf=0.5)
+        # [변경] threshold를 0.3으로 낮춤 (중간 구간 탐지 위해)
+        results = model(img, verbose=False, conf=0.3)
         elapsed = round(time.perf_counter() - t1, 4)
 
         max_conf = 0.0
@@ -274,13 +275,25 @@ class VisionService:
                 detail_data["detections"] = detections
 
                 if defects:
-                    logger.info(f"🔍 Defect: {defects}")
-                    webhook_payload.update({
-                        "aiDecision": "FAIL",
-                        "confidence": round(defect_conf, 2),
-                        "summary": f"불량 검출: {', '.join(defects)}"
-                    })
+                    logger.info(f"🔍 Defect Found: {defects} (Max Conf: {defect_conf:.2f})")
+                    
+                    # [변경] Confidence 기반 3단 분기 (FAIL vs NEED_CHECK)
+                    if defect_conf >= 0.7:
+                        # 70% 이상 -> 확실한 불량 (FAIL)
+                        webhook_payload.update({
+                            "aiDecision": "FAIL",
+                            "confidence": round(defect_conf, 2),
+                            "summary": f"불량 검출 (확실): {', '.join(defects)}"
+                        })
+                    else:
+                        # 30% 이상 70% 미만 -> 애매함 (NEED_CHECK)
+                        webhook_payload.update({
+                            "aiDecision": "NEED_CHECK",
+                            "confidence": round(defect_conf, 2),
+                            "summary": f"불량 의심 (확인 필요): {', '.join(defects)}"
+                        })
                 else:
+                    # 30% 미만 (검출 안됨) -> 정상 (PASS)
                     logger.info("✅ Clean")
                     webhook_payload.update({
                         "aiDecision": "PASS",

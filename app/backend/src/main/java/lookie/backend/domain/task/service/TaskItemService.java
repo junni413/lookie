@@ -68,8 +68,9 @@ public class TaskItemService {
         TaskItemVO item = taskItemMapper.findById(itemId);
 
         // 1. 이미 완료되거나 이슈 상태인 경우 체크 (건너뛰기/Pass)
+        // 새 FSM: IN_PROGRESS, ISSUE_PENDING, DONE 상태는 건너뛰기
         if ("DONE".equals(item.getStatus()) ||
-                "ISSUE".equals(item.getStatus()) ||
+                "IN_PROGRESS".equals(item.getStatus()) ||
                 "ISSUE_PENDING".equals(item.getStatus())) {
             return item;
         }
@@ -79,7 +80,11 @@ public class TaskItemService {
             throw new ItemQuantityNotSufficientException();
         }
 
-        // 3. 상태 업데이트 (PENDING -> DONE)
+        // 3. 상태 업데이트 (IN_PROGRESS -> DONE)
+        // 새 FSM에서는 IN_PROGRESS 상태에서만 완료 가능
+        if (!"IN_PROGRESS".equals(item.getStatus())) {
+            throw new IllegalStateException("Item must be IN_PROGRESS to complete");
+        }
         taskItemMapper.updateStatus(itemId, "DONE");
 
         // 4. 재고 차감 이벤트 발행 (정상 집품 확정)
@@ -108,7 +113,8 @@ public class TaskItemService {
     }
 
     public TaskItemVO getNextItem(Long taskId) {
-        return taskItemMapper.findNextItem(taskId);
+        // TaskItemService는 단순 조회가 많으므로 현재 위치 고려 없이 조회 (null 전달)
+        return taskItemMapper.findNextItem(taskId, null);
     }
 
     public List<TaskItemVO> getAllItems(Long taskId) {
@@ -133,12 +139,13 @@ public class TaskItemService {
     }
 
     /**
-     * [이슈] 아이템 상태를 ISSUE(최종 완료)로 확정
-     * - 파손 확정, 재고 없음 등으로 완전히 죽은 상태
+     * [이슈] 아이템 상태를 DONE(최종 완료)로 확정
+     * - 파손 확정, 재고 없음 등으로 완전히 처리 완료된 상태
+     * - 새 FSM: ISSUE 상태 제거, DONE으로 통합
      */
     @Transactional
-    public void markAsIssueFinal(Long itemId) {
-        taskItemMapper.updateStatus(itemId, "ISSUE");
+    public void markAsDone(Long itemId) {
+        taskItemMapper.updateStatus(itemId, "DONE");
 
         // [Inventory] 파손 확정 시 재고 차감 (결손 처리)
         // picked_qty와 무관하게 할당된 요구 수량 전체를 파손으로 간주하고 차감
@@ -168,6 +175,7 @@ public class TaskItemService {
     @Transactional
     public void reviveItem(Long itemId) {
         taskItemMapper.updateStatus(itemId, "PENDING");
+        taskItemMapper.setPickedQty(itemId, 0);
 
         // Redis 집계 정합성을 위해 Reverted 이벤트 발행 (-1 처리)
         TaskItemVO item = taskItemMapper.findById(itemId);

@@ -17,9 +17,16 @@ public class IssueVO {
     private String issueType; // ENUM('DAMAGED','OUT_OF_STOCK')
     private String status; // ENUM('OPEN','RESOLVED')
     // private String priority; // 삭제됨 (urgency 대체)
-    private String reasonCode; // ENUM('DAMAGED','MOVE_LOCATION','WAITING_RETURN','STOCK_EXISTS','UNKNOWN')
-    private String issueHandling; // ENUM('BLOCKING','NON_BLOCKING')
-    private Boolean adminRequired;
+    // AI 판정 결과 (FSM 가드용)
+    private String aiDecision; // ENUM('PASS','FAIL','NEED_CHECK','RETAKE','UNKNOWN')
+    private String reasonCode; // ENUM('DAMAGED','MOVE_LOCATION',WAITING_RETURN','STOCK_EXISTS','UNKNOWN','AUTO_RESOLVED')
+
+    // WebRTC 연결 상태 (NEED_CHECK 정책용)
+    private String webrtcStatus; // ENUM('NONE','WAITING','CONNECTED','MISSED')
+
+    // LEGACY 필드 (FSM 판단에 사용 금지, UI/DTO용으로만 유지)
+    private String issueHandling; // ENUM('BLOCKING','NON_BLOCKING') - LEGACY
+    private Boolean adminRequired; // LEGACY: aiDecision==NEED_CHECK로 계산
 
     // 신규 정책 필드 (분기표 기준)
     private Integer urgency; // 관제 큐 우선순위 (0=큐 제외, 1=최상위, 5=최하위)
@@ -37,19 +44,23 @@ public class IssueVO {
     private String note;
 
     /**
-     * 이슈 초기 생성
-     * 분기표 D0/S0 노드 기준
+     * 이슈 초기 생성 (새 FSM 기준)
+     * pseudo_code.md createIssue 참조
      */
     public static IssueVO createInitial(Long workerId, TaskItemVO item, String issueType) {
         IssueVO issue = new IssueVO();
 
-        // 기본 정책 (분기표 D0/S0 노드)
-        issue.setIssueType(issueType); // 입력받은 유형으로 설정 (DAMAGED 또는 OUT_OF_STOCK)
-        issue.setStatus("OPEN"); // 상태: 열림
-        issue.setUrgency(3); // 관제 큐 우선순위: 3 (중간)
-        issue.setIssueHandling("NON_BLOCKING"); // 처리 방식: 비차단
-        issue.setAdminRequired(false); // 관리자 필요: 아니오
-        issue.setReasonCode("UNKNOWN"); // 사유 코드: 미확인
+        // 기본 FSM 상태 초기화
+        issue.setIssueType(issueType); // DAMAGED or OUT_OF_STOCK
+        issue.setStatus("OPEN"); // Issue FSM 시작 상태
+        issue.setAiDecision("UNKNOWN"); // AI 판정 전
+        issue.setReasonCode("UNKNOWN"); // 원인 미확인
+        issue.setWebrtcStatus("NONE"); // WebRTC 연결 시도 전
+
+        // LEGACY 필드 (초기값, FSM 판단에는 미사용)
+        issue.setUrgency(3); // 기본 우선순위: 중간
+        issue.setIssueHandling("NON_BLOCKING"); // 기본: 비차단
+        issue.setAdminRequired(false); // 기본: 관리자 불필요
 
         // 연관 데이터
         issue.setWorkerId(workerId);

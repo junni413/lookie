@@ -5,6 +5,8 @@ import { ChevronRight, MapPin, Loader2 } from "lucide-react";
 import { issueService } from "@/services/issueService";
 import { subscribeIssueResult } from "@/services/stompService";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuthStore } from "@/stores/authStore";
+import { useCallStore } from "@/stores/callStore";
 import type { TaskItemVO } from "@/types/task";
 
 type AnalysisResult = "OUT_OF_STOCK" | "WAIT" | "ADMIN" | "LOCATION_MOVE" | "ERROR";
@@ -16,6 +18,7 @@ type NavState = {
 };
 
 type AiResultData = {
+    issueId?: number;
     aiDecision: string;
     reasonCode?: string;
     summary?: string;
@@ -35,6 +38,10 @@ export default function AiStockAnalysis() {
     const [step, setStep] = useState<"REQUEST" | "LOADING" | "RESULT">("REQUEST");
     const [result, setResult] = useState<AnalysisResult>("OUT_OF_STOCK");
     const [aiData, setAiData] = useState<AiResultData | null>(null);
+
+    // ✅ 관리자 연결 시도 상태 (부모에서 관리하여 리렌더링 시에도 보존)
+    const [connectionAttempted, setConnectionAttempted] = useState(false);
+    const [adminConnected, setAdminConnected] = useState(false);
 
     useEffect(() => {
         if (!nav || !nav.product) {
@@ -57,8 +64,8 @@ export default function AiStockAnalysis() {
         try {
             // 1. 이슈 생성 (OUT_OF_STOCK, 이미지 없이)
             const issueRes = await issueService.createIssue({
-                batchTaskId: nav?.product?.batchTaskId || 0,
-                batchTaskItemId: nav?.product?.batchTaskItemId || 0,
+                taskId: nav?.product?.batchTaskId || 0,        // ✅ 백엔드는 taskId로 받음
+                taskItemId: nav?.product?.batchTaskItemId || 0, // ✅ 백엔드는 taskItemId로 받음
                 issueType: "OUT_OF_STOCK",
             });
 
@@ -83,7 +90,8 @@ export default function AiStockAnalysis() {
                 }
 
                 // AI 결과 매핑
-                const aiResult: AiResultData = {
+                const aiResult: AiResultData & { issueId: number } = {
+                    issueId, // ✅ Store the issueId for later WebRTC call
                     aiDecision: event.aiDecision || "UNKNOWN",
                     reasonCode: event.reasonCode,
                     summary: event.summary,
@@ -91,11 +99,14 @@ export default function AiStockAnalysis() {
                 };
 
                 setAiData(aiResult);
-                setResult(mapAiResultToUI(aiResult));
+                const nextUIResult = mapAiResultToUI(aiResult);
+                setResult(nextUIResult);
                 setStep("RESULT");
 
-                // 구독 해제
-                unsubscribe();
+                // ✅ [FSM] 관리자 확인이 필요한 경우 구독을 유지하여 후속 상태(RESOLVED 등)를 수신함
+                if (nextUIResult !== "ADMIN") {
+                    unsubscribe();
+                }
             });
 
             // 3. 타임아웃 설정 (30초)
@@ -151,7 +162,17 @@ export default function AiStockAnalysis() {
     }
 
     if (step === "RESULT") {
-        return <RenderResult result={result} aiData={aiData} />;
+        return (
+            <RenderResult
+                result={result}
+                aiData={aiData}
+                nav={nav}
+                connectionAttempted={connectionAttempted}
+                setConnectionAttempted={setConnectionAttempted}
+                adminConnected={adminConnected}
+                setAdminConnected={setAdminConnected}
+            />
+        );
     }
 
     return (
@@ -213,86 +234,112 @@ function mapAiResultToUI(aiResult: AiResultData): AnalysisResult {
     return "OUT_OF_STOCK";
 }
 
-function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiResultData | null }) {
+function RenderResult({
+    result,
+    aiData,
+    nav,
+    connectionAttempted,
+    setConnectionAttempted,
+    adminConnected,
+    setAdminConnected
+}: {
+    result: AnalysisResult;
+    aiData: AiResultData | null;
+    nav: NavState | null;
+    connectionAttempted: boolean;
+    setConnectionAttempted: (val: boolean) => void;
+    adminConnected: boolean;
+    setAdminConnected: (val: boolean) => void;
+}) {
+    const { user } = useAuthStore();
     const navigate = useNavigate();
-    const [adminConnected, setAdminConnected] = useState(false);
+    const { toast } = useToast();
+    const startCall = useCallStore((s) => s.startCall);
+    const callStatus = useCallStore((s) => s.status);
+
+    // [FSM] 관리자 연결 성공 여부 추적 (통화가 한 번이라도 ACTIVE 됐으면 true)
+    useEffect(() => {
+        if (callStatus === "ACTIVE") {
+            setAdminConnected(true);
+        }
+    }, [callStatus, setAdminConnected]);
 
     const getContent = () => {
         // AI 결과의 summary가 있으면 우선 사용
         if (aiData?.summary) {
             switch (result) {
                 case "LOCATION_MOVE":
-                    return {
-                        title: "지번 이동",
-                        desc: aiData.summary,
-                    };
+                    return { title: "지번 이동", desc: aiData.summary };
                 case "ADMIN":
-                    return {
-                        title: "관리자 확인 필요",
-                        desc: aiData.summary,
-                    };
+                    return { title: "관리자 확인 필요", desc: aiData.summary };
                 case "WAIT":
-                    return {
-                        title: "원복 대기",
-                        desc: aiData.summary,
-                    };
+                    return { title: "원복 대기", desc: aiData.summary };
                 case "ERROR":
-                    return {
-                        title: "분석 실패",
-                        desc: "AI 분석에 실패했습니다.\n관리자에게 문의하세요.",
-                    };
+                    return { title: "분석 실패", desc: "AI 분석에 실패했습니다.\n관리자에게 문의하세요." };
                 default:
-                    return {
-                        title: "재고 없음",
-                        desc: aiData.summary,
-                    };
+                    return { title: "재고 부족", desc: aiData.summary };
             }
         }
 
         // Fallback: 기본 메시지
         switch (result) {
             case "OUT_OF_STOCK":
-                return {
-                    title: "재고 없음",
-                    desc: "해당 제품은 결손 상태로 확인됩니다.\n작업을 이어서 진행하세요.",
-                };
+                return { title: "재고 없음", desc: "해당 제품은 결손 상태로 확인됩니다.\n작업을 이어서 진행하세요." };
             case "WAIT":
-                return {
-                    title: "원복 대기",
-                    desc: "상품의 재고가 곧 채워질 예정입니다.\n다른 작업을 먼저 진행해주세요.",
-                };
+                return { title: "원복 대기", desc: "상품의 재고가 곧 채워질 예정입니다.\n다른 작업을 먼저 진행해주세요." };
             case "ADMIN":
-                return {
-                    title: "관리자 연결",
-                    desc: "해당 문제는 관리자의 검토가 필요합니다.\n관리자에게 연결하세요.",
-                };
+                return { title: "관리자 확인", desc: "해당 문제는 관리자의 검토가 필요합니다.\n관리자에게 연결하세요." };
             case "LOCATION_MOVE":
-                return {
-                    title: "지번 이동",
-                    desc: "해당 상품은 지번이 이동되었습니다.\n아래 지번으로 이동하여 작업을 진행하세요.",
-                };
+                return { title: "지번 이동", desc: "해당 상품은 지번이 이동되었습니다.\n아래 지번으로 이동하여 작업을 진행하세요." };
             case "ERROR":
-                return {
-                    title: "분석 실패",
-                    desc: "AI 분석에 실패했습니다.\n관리자에게 문의하세요.",
-                };
+                return { title: "분석 실패", desc: "AI 분석에 실패했습니다.\n관리자에게 문의하세요." };
             default:
-                return {
-                    title: "분석 완료",
-                    desc: "분석이 완료되었습니다.",
-                };
+                return { title: "분석 완료", desc: "분석이 완료되었습니다." };
         }
     };
 
     const content = getContent();
 
-    const handleConnectAdmin = () => {
-        alert("관리자에게 연결합니다.");
-        setAdminConnected(true);
+    const handleConnectAdmin = async () => {
+        if (!user || !aiData) return;
+        setConnectionAttempted(true);
+        try {
+            const issueId = aiData.issueId;
+            if (issueId) {
+                await issueService.connectAdmin(issueId);
+                await startCall(user.userId, null, issueId, "관리자");
+            } else {
+                toast({ title: "이슈 정보를 찾을 수 없습니다.", variant: "destructive" });
+            }
+        } catch (err: any) {
+            console.error("Failed to start call:", err);
+            toast({
+                title: "통화 연결 실패",
+                description: err.message || "관리자가 부재중입니다.",
+                variant: "destructive"
+            });
+        }
     };
 
-    // 관리자 연결이 필수인 경우 (ADMIN 결과)
-    const isNextDisabled = result === "ADMIN" && !adminConnected;
+    // 관리자 확인이 필수인 경우 (ADMIN 결과), 통화가 연결된 적이 있거나 현재 통화 중이면 버튼 활송
+    // 단, 부재중(connectionAttempted) 상황에서도 넘어가야 하므로 adminConnected 또는 connectionAttempted 체크
+    const isNextDisabled = result === "ADMIN" && !adminConnected && !connectionAttempted && callStatus !== "ACTIVE";
+
+    const handleNextTask = async () => {
+        if (!aiData?.issueId || !nav?.product) return;
+
+        try {
+            await issueService.workerChooseNextItem(aiData.issueId, nav.product.batchTaskId);
+            navigate(-1);
+        } catch (err: any) {
+            console.error("Failed to proceed to next item:", err);
+            toast({
+                title: "작업 진행 실패",
+                description: err.message || "서버 통신 중 오류가 발생했습니다.",
+                variant: "destructive"
+            });
+        }
+    };
 
     return (
         <div className="flex flex-col h-full space-y-6 px-2">
@@ -317,17 +364,21 @@ function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiRe
 
             <div className="mt-auto pb-6 space-y-3.5">
                 <button
-                    className={`w-full h-16 rounded-[24px] font-black text-[17px] transition-all ${adminConnected
-                        ? "bg-gray-100 text-gray-400"
-                        : "bg-slate-50 text-blue-600 active:scale-[0.98]"
+                    className={`w-full h-16 rounded-[24px] font-black text-[17px] transition-all ${callStatus === "ACTIVE"
+                        ? "bg-emerald-50 text-emerald-600"
+                        : callStatus === "WAITING"
+                            ? "bg-blue-50 text-blue-400"
+                            : "bg-slate-50 text-blue-600 active:scale-[0.98]"
                         }`}
                     onClick={handleConnectAdmin}
-                    disabled={adminConnected}
+                    disabled={callStatus === "WAITING" || callStatus === "ACTIVE"}
                 >
-                    {adminConnected ? "관리자 연결됨" : "관리자 연결하기"}
+                    {callStatus === "ACTIVE" ? "관리자 연결됨" :
+                        callStatus === "WAITING" ? "연결 중..." :
+                            connectionAttempted ? "관리자 다시 연결하기" : "관리자 연결하기"}
                 </button>
                 <button
-                    onClick={() => navigate(-1)}
+                    onClick={handleNextTask}
                     disabled={isNextDisabled}
                     className={`w-full h-16 rounded-[24px] font-black text-[17px] transition-all shadow-lg ${isNextDisabled
                         ? "bg-gray-200 text-gray-400 shadow-none"

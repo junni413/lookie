@@ -47,7 +47,7 @@ public class LiveKitService {
     private final io.livekit.server.RoomServiceClient roomServiceClient;
     private final SimpMessagingTemplate messagingTemplate;
     private final UserMapper userMapper;
-    private final lookie.backend.domain.issue.service.IssueService issueService;
+    private final lookie.backend.domain.issue.service.IssueServiceNew issueService;
 
     private static final String STATUS_BUSY = "BUSY";
 
@@ -90,7 +90,7 @@ public class LiveKitService {
                 // 관리자 부재 시에도 이슈 상태 변경 (NON_BLOCKING) -> 작업자 진행 가능
                 if (request.getIssueId() != null) {
                     try {
-                        issueService.handleWebRtcMissed(request.getIssueId());
+                        issueService.onWebrtcMissed(request.getIssueId());
                         log.info("🚫 [makeCall] 관리자 부재 -> 이슈 상태 NON_BLOCKING 전환. issueId={}", request.getIssueId());
                     } catch (Exception ex) {
                         log.error("❌ [makeCall] 이슈 상태 변경 실패", ex);
@@ -122,7 +122,7 @@ public class LiveKitService {
 
         // [Refactored] Single Payload Generation
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REQUESTED, call.getId(), null,
-                request.getCallerId());
+                request.getCallerId(), request.getIssueId());
 
         runAfterCommit(() -> sendDualPathSignal(resolvedCalleeId, payload));
 
@@ -158,7 +158,7 @@ public class LiveKitService {
 
         // [Refactored] Single Payload Generation
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ACCEPTED, call.getId(),
-                call.getRoomName(), call.getCalleeId());
+                call.getRoomName(), call.getCalleeId(), call.getIssueId());
 
         runAfterCommit(() -> sendSignal(payload));
 
@@ -190,7 +190,7 @@ public class LiveKitService {
 
         // [Refactored] Single Payload Generation (Shared UUID)
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REJECTED, call.getId(),
-                call.getRoomName(), call.getCalleeId());
+                call.getRoomName(), call.getCalleeId(), call.getIssueId());
 
         runAfterCommit(() -> {
             // 1. Waiting 중인 Caller가 보고 있는 Call Topic
@@ -228,7 +228,7 @@ public class LiveKitService {
         } finally {
             // [Refactored] Single Payload Generation (Shared UUID)
             WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ENDED, call.getId(), null,
-                    senderId);
+                    senderId, call.getIssueId());
 
             runAfterCommit(() -> {
                 // To Call Topic
@@ -270,7 +270,7 @@ public class LiveKitService {
 
         // [Refactored] Single Payload Generation
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.CANCELED, call.getId(), null,
-                call.getCallerId());
+                call.getCallerId(), call.getIssueId());
 
         runAfterCommit(() -> sendDualPathSignal(call.getCalleeId(), payload));
     }
@@ -337,6 +337,11 @@ public class LiveKitService {
         // 3. Redis에서 가용 상태 필터링
         List<UserVO> availableManagers = managers.stream()
                 .filter(manager -> {
+                    // 1) 자기 자신 제외 (루프 방지)
+                    if (manager.getUserId().equals(workerId))
+                        return false;
+
+                    // 2) Redis 상태 확인 (가용성)
                     String key = RedisKeyConstants.USER_STATUS_KEY + manager.getUserId();
                     String status = redisTemplate.opsForValue().get(key);
                     return status == null; // BUSY/AWAY/PAUSED가 아닌 경우만
@@ -432,7 +437,7 @@ public class LiveKitService {
      * WebSocket 시그널 전송 공통 메서드 (Legacy Wrapper)
      */
     private void sendSignal(Long callId, WebRtcSignalType type, String roomName, Long senderId) {
-        sendSignal(WebRtcSignalResponse.from(type, callId, roomName, senderId));
+        sendSignal(WebRtcSignalResponse.from(type, callId, roomName, senderId, null));
     }
 
     /**
@@ -448,7 +453,7 @@ public class LiveKitService {
      * [Refactored] 사용자에게 확실하게 알림 전송 (Dual-Path Strategy) (Legacy Wrapper)
      */
     private void sendDualPathSignal(Long userId, WebRtcSignalType type, Long callId, String roomName, Long senderId) {
-        sendDualPathSignal(userId, WebRtcSignalResponse.from(type, callId, roomName, senderId));
+        sendDualPathSignal(userId, WebRtcSignalResponse.from(type, callId, roomName, senderId, null));
     }
 
     /**

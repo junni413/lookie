@@ -17,6 +17,7 @@ type NavState = {
   toteBarcode: string;
   product: { productName: string; barcode: string; locationCode: string };
   imageUrl: string;
+  batchTaskId?: number; // ✅ FSM API에 필요
 };
 
 function ResultCard({ verdict }: { verdict: AiVerdict }) {
@@ -82,6 +83,24 @@ function ResultCard({ verdict }: { verdict: AiVerdict }) {
             AI가 명확히 판단하지 못했습니다.
             <br />
             관리자에게 연결해주세요.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WaitingImageCard() {
+  return (
+    <div className="rounded-2xl border bg-amber-50 p-4">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5">📸</div>
+        <div>
+          <p className="text-sm font-extrabold text-amber-900">증빙 사진 업로드 필요</p>
+          <p className="mt-1 text-xs text-amber-700">
+            관리자 부재로 다음 단계로 가기 위해 현장 사진 등록이 필요합니다.
+            <br />
+            아래 버튼을 눌러 피킹 위치를 촬영해주세요.
           </p>
         </div>
       </div>
@@ -245,28 +264,69 @@ export default function IssueResult() {
     if (!user) return;
     setConnectionAttempted(true);
     try {
+      // ✅ [FSM] 관리자 연결 시작 API 호출
+      await issueService.connectAdmin(nav.issueId);
+
       // Start auto-assignment call
       await startCall(user.userId, null, nav.issueId, "관리자");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to start call:", err);
-    } finally {
-      // [Fix] API 완료 후(성공/실패 무관) 잠시 후 상태 갱신 (백엔드 처리 대기)
-      // callStatus가 IDLE 유지되는 경우(즉시 실패) 대비
-      setTimeout(() => {
-        if (nav) {
-          issueService.getIssueDetail(nav.issueId).then((res) => {
-            if (res) setDetail(res);
-          });
-        }
-      }, 500);
+      toast({
+        title: "통화 연결 실패",
+        description: err.message || "관리자가 부재중입니다.",
+        variant: "destructive"
+      });
     }
   };
 
   // Note: handleSendToAdmin will now be handled via global modal or simplified logic
   // For now, if auto-assignment starts, we consider the attempt "done" for the worker flow.
 
-  const goNext = () => {
-    navigate(-2);
+  const goNext = async () => {
+    if (!nav.batchTaskId) {
+      toast({ title: "작업 정보가 없습니다.", description: "작업 ID를 찾을 수 없어 진행할 수 없습니다." });
+      return;
+    }
+
+    try {
+      // ✅ [FSM] 작업자 다음 아이템 진행 API 호출
+      await issueService.workerChooseNextItem(nav.issueId, nav.batchTaskId);
+      navigate(-2);
+    } catch (err: any) {
+      console.error("workerChooseNextItem error:", err);
+
+      // ⚠️ NEED_CHECK 정책 에러 처리
+      const errorMsg = err?.message || err?.response?.data?.message || "";
+
+      if (errorMsg.includes("ADMIN_CALL_REQUIRED") || errorMsg.includes("관리자 연결")) {
+        toast({
+          title: "관리자 연결 시도 필수",
+          description: "NEED_CHECK 이슈는 최소 1회의 관리자 연결 시도가 필요합니다.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (errorMsg.includes("IMAGE_REQUIRED") || errorMsg.includes("이미지")) {
+        toast({
+          title: "현장 증빙 사진 필요",
+          description: "관리자 부재 시 이동 전 현장 사진 업로드가 필수입니다.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (errorMsg.includes("ADMIN_CALL_IN_PROGRESS") || errorMsg.includes("대기 중")) {
+        toast({
+          title: "관리자 연결 대기 중",
+          description: "관리자 연결을 기다려주세요.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({ title: "다음 아이템 진행 실패", description: errorMsg || "다시 시도해주세요." });
+    }
   };
 
   // ✅ Retake Logic
@@ -286,8 +346,12 @@ export default function IssueResult() {
       const uploadRes = await issueService.uploadImage(file);
       if (!uploadRes.success) throw new Error(uploadRes.message);
 
-      // 2. Call Retake API
-      await issueService.retakeIssue(nav.issueId, uploadRes.data);
+      // 2. Call Repoart or Retake API
+      if (detail?.issueNextAction === "WAIT_REPORT_IMAGE") {
+        await issueService.reportImage(nav.issueId, uploadRes.data);
+      } else {
+        await issueService.retakeIssue(nav.issueId, uploadRes.data);
+      }
       // WebSocket이 있으므로 추가 조치 없이 분석 중 상태로 기다림
 
     } catch (err) {
@@ -302,7 +366,8 @@ export default function IssueResult() {
   // [Modified] NON_BLOCKING이면 활성화
   const isNextDisabled = analyzing ||
     (verdict === "RETAKE") ||
-    (verdict === "NEED_REVIEW" && detail?.issueHandling !== "NON_BLOCKING");
+    (detail?.issueNextAction === "WAIT_REPORT_IMAGE") ||
+    (verdict === "NEED_REVIEW" && detail?.issueHandling !== "NON_BLOCKING" && !detail?.availableActions?.includes("NEXT_ITEM"));
 
   return (
     <div className="space-y-4">
@@ -391,9 +456,11 @@ export default function IssueResult() {
         )}
       </section>
 
-      {/* 결과 카드 Or 분석중 */}
+      {/* 결과 카드 Or 분석중 Or 이미지 업로드 대기 */}
       {analyzing ? (
         <AnalyzingCard />
+      ) : detail?.issueNextAction === "WAIT_REPORT_IMAGE" ? (
+        <WaitingImageCard />
       ) : (
         <ResultCard verdict={verdict} />
       )}
@@ -410,13 +477,13 @@ export default function IssueResult() {
           </button>
         )}
 
-        {/* Retake Button */}
-        {!analyzing && (detail?.availableActions?.includes("RETAKE") || verdict === "RETAKE" || verdict === "NEED_REVIEW") && (
+        {/* Retake or Report Button */}
+        {!analyzing && (detail?.availableActions?.includes("RETAKE") || verdict === "RETAKE" || verdict === "NEED_REVIEW" || detail?.issueNextAction === "WAIT_REPORT_IMAGE") && (
           <button
             onClick={handleRetake}
             className="h-12 rounded-2xl border-2 border-[#304FFF] bg-white font-extrabold text-[#304FFF] active:scale-95 shadow-sm"
           >
-            다시 촬영하기
+            {detail?.issueNextAction === "WAIT_REPORT_IMAGE" ? "현장 사진 업로드하기" : "다시 촬영하기"}
           </button>
         )}
 

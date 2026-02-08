@@ -4,6 +4,7 @@ export interface CallStatusEvent {
     type: 'ACCEPTED' | 'REJECTED' | 'CANCELED' | 'ENDED' | 'REQUESTED';
     callId: number;
     roomId?: string;
+    issueId?: number; // [New] Added for admin redirection
     reason?: string;
     timestamp: number;
     messageId?: string; // [New] UUID for deduplication
@@ -53,6 +54,7 @@ export function subscribeCallStatus(
                     type: backendMessage.type,
                     callId: backendMessage.callId,
                     roomId: backendMessage.roomId || undefined,
+                    issueId: backendMessage.issueId || undefined, // Map issueId
                     timestamp: backendMessage.timestamp,
                     messageId: backendMessage.messageId, // Map messageId
                 };
@@ -181,6 +183,7 @@ export function subscribeIncomingCalls(
                     type: body.type,
                     callId: body.callId,
                     roomId: body.roomId,
+                    issueId: body.issueId, // Map issueId
                     timestamp: body.timestamp || Date.now(),
                     reason: body.callerName,
                     messageId: messageId

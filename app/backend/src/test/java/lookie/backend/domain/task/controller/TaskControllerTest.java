@@ -1,10 +1,8 @@
 package lookie.backend.domain.task.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lookie.backend.domain.task.constant.NextAction;
 import lookie.backend.domain.task.dto.TaskResponse;
 import lookie.backend.domain.task.dto.*;
-import lookie.backend.domain.task.service.TaskWorkflowFacade;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.task.vo.TaskVO;
 import org.junit.jupiter.api.DisplayName;
@@ -35,13 +33,16 @@ class TaskControllerTest {
         private MockMvc mockMvc;
 
         @MockBean
-        private TaskWorkflowFacade taskWorkflowFacade;
+        private lookie.backend.domain.task.service.TaskWorkflowService taskWorkflowService;
 
         @MockBean
-        private lookie.backend.domain.task.infra.TaskLockExecutor taskLockExecutor;
+        private lookie.backend.domain.task.mapper.TaskMapper taskMapper;
 
         @MockBean
-        private lookie.backend.domain.task.service.TaskItemService taskItemService;
+        private lookie.backend.domain.task.mapper.TaskItemMapper taskItemMapper;
+
+        @MockBean
+        private lookie.backend.domain.user.mapper.UserMapper userMapper;
 
         @Autowired
         private ObjectMapper objectMapper;
@@ -51,12 +52,16 @@ class TaskControllerTest {
         @WithMockUser(username = "1")
         void startTask() throws Exception {
                 // given
+                Long workerId = 1L;
                 TaskVO task = new TaskVO();
                 task.setBatchTaskId(1L);
                 task.setStatus("IN_PROGRESS");
+                task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.SCAN_TOTE);
 
-                when(taskLockExecutor.startTask(any()))
-                                .thenReturn(TaskResponse.of(task, NextAction.SCAN_TOTE));
+                when(userMapper.findById(workerId)).thenReturn(java.util.Optional.empty());
+                when(taskMapper.findInProgressByWorkerId(workerId)).thenReturn(task);
+                when(taskMapper.findById(1L)).thenReturn(task);
+                when(taskItemMapper.findNextItem(eq(1L), any())).thenReturn(null);
 
                 // when & then
                 mockMvc.perform(post("/api/tasks")
@@ -68,7 +73,7 @@ class TaskControllerTest {
 
         @Test
         @DisplayName("토트 스캔 API 테스트")
-        @WithMockUser
+        @WithMockUser(username = "1")
         void scanTote() throws Exception {
                 // given
                 Long taskId = 1L;
@@ -77,9 +82,10 @@ class TaskControllerTest {
                 TaskVO task = new TaskVO();
                 task.setBatchTaskId(taskId);
                 task.setToteId(100L);
+                task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.SCAN_LOCATION);
 
-                when(taskWorkflowFacade.scanTote(eq(taskId), eq(barcode)))
-                                .thenReturn(TaskResponse.of(task, NextAction.SCAN_LOCATION));
+                when(taskMapper.findById(taskId)).thenReturn(task);
+                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(null);
 
                 ToteScanRequest request = new ToteScanRequest();
                 request.setBarcode(barcode);
@@ -96,7 +102,7 @@ class TaskControllerTest {
 
         @Test
         @DisplayName("지번 스캔 API 테스트")
-        @WithMockUser
+        @WithMockUser(username = "1")
         void scanLocation() throws Exception {
                 // given
                 Long taskId = 1L;
@@ -104,9 +110,10 @@ class TaskControllerTest {
 
                 TaskVO task = new TaskVO();
                 task.setBatchTaskId(taskId);
+                task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.SCAN_ITEM);
 
-                when(taskWorkflowFacade.scanLocation(eq(taskId), eq(locationCode)))
-                                .thenReturn(TaskResponse.of(task, NextAction.SCAN_ITEM));
+                when(taskMapper.findById(taskId)).thenReturn(task);
+                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(null);
 
                 LocationScanRequest request = new LocationScanRequest();
                 request.setLocationCode(locationCode);
@@ -122,7 +129,7 @@ class TaskControllerTest {
 
         @Test
         @DisplayName("상품 스캔 API 테스트")
-        @WithMockUser
+        @WithMockUser(username = "1")
         void scanItem() throws Exception {
                 // given
                 Long taskId = 1L;
@@ -131,8 +138,18 @@ class TaskControllerTest {
                 item.setBatchTaskItemId(10L);
                 item.setProductId(100L);
 
-                when(taskWorkflowFacade.scanItem(eq(taskId), eq(barcode)))
-                                .thenReturn(TaskResponse.of(item, NextAction.ADJUST_QUANTITY));
+                TaskVO task = new TaskVO();
+                task.setBatchTaskId(taskId);
+                task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.ADJUST_QUANTITY);
+
+                TaskResponse<TaskItemVO> serviceResponse = TaskResponse.<TaskItemVO>builder()
+                                .payload(item)
+                                .build();
+
+                when(taskWorkflowService.scanItem(any(), eq(taskId), eq(barcode)))
+                                .thenReturn(serviceResponse);
+                when(taskMapper.findById(taskId)).thenReturn(task);
+                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(item);
 
                 ItemScanRequest request = new ItemScanRequest();
                 request.setBarcode(barcode);
@@ -149,17 +166,30 @@ class TaskControllerTest {
 
         @Test
         @DisplayName("수량 반영 API 테스트")
-        @WithMockUser
+        @WithMockUser(username = "1")
         void updateQuantity() throws Exception {
                 // given
                 Long itemId = 10L;
+                Long taskId = 1L;
                 int increment = 5;
                 TaskItemVO item = new TaskItemVO();
                 item.setBatchTaskItemId(itemId);
+                item.setBatchTaskId(taskId);
                 item.setPickedQty(5);
 
-                when(taskWorkflowFacade.pickItem(eq(itemId), eq(increment)))
-                                .thenReturn(TaskResponse.of(item, NextAction.SCAN_ITEM));
+                TaskVO task = new TaskVO();
+                task.setBatchTaskId(taskId);
+                task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.SCAN_ITEM);
+
+                TaskResponse<TaskItemVO> serviceResponse = TaskResponse.<TaskItemVO>builder()
+                                .payload(item)
+                                .build();
+
+                when(taskItemMapper.findById(itemId)).thenReturn(item);
+                when(taskWorkflowService.adjustQuantity(any(), eq(taskId), eq(itemId), eq(increment)))
+                                .thenReturn(serviceResponse);
+                when(taskMapper.findById(taskId)).thenReturn(task);
+                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(null);
 
                 QuantityUpdateRequest request = new QuantityUpdateRequest();
                 request.setIncrement(increment);
@@ -176,13 +206,13 @@ class TaskControllerTest {
 
         @Test
         @DisplayName("전체 아이템 목록 조회 API 테스트")
-        @WithMockUser
+        @WithMockUser(username = "1")
         void getTaskItems() throws Exception {
                 // given
                 Long taskId = 1L;
                 java.util.List<TaskItemVO> items = java.util.Collections.singletonList(new TaskItemVO());
 
-                when(taskItemService.getAllItems(taskId)).thenReturn(items);
+                when(taskItemMapper.findAllByTaskId(taskId)).thenReturn(items);
 
                 // when & then
                 mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders

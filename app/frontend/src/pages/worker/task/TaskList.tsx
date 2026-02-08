@@ -69,55 +69,85 @@ export default function TaskList() {
                                 transition={{ duration: 0.25, ease: "easeOut" }}
                                 key={item.batchTaskItemId}
                                 className={`h-[120px] rounded-[24px] border px-4 flex items-center gap-4 transition-all duration-300 ${item.status === 'DONE'
-                                    ? 'bg-slate-50/50 border-slate-100 opacity-60 grayscale-[0.5]' :
-                                    item.status === 'ISSUE'
-                                        ? 'bg-rose-50/30 border-rose-100/50 shadow-[0_4px_15px_-5px_rgba(244,63,94,0.1)]' :
-                                        'bg-white border-slate-100 shadow-[0_4px_12px_-5px_rgba(30,41,59,0.08)]'
+                                    ? 'bg-slate-50/50 border-slate-100 opacity-60' :
+                                    item.status === 'ISSUE_PENDING'
+                                        ? 'bg-amber-50/30 border-amber-100/50' :
+                                        item.status === 'IN_PROGRESS'
+                                            ? 'bg-blue-50/30 border-blue-100 shadow-[0_4px_15px_-5px_rgba(37,99,235,0.1)]' :
+                                            'bg-white border-slate-100 shadow-[0_4px_12px_-5px_rgba(30,41,59,0.08)]'
                                     }`}
                             >
-                            {/* Product Image */}
-                            <div className="h-20 w-20 rounded-2xl bg-slate-50 flex-shrink-0 overflow-hidden border border-slate-100/50 p-1">
-                                {item.productImage ? (
-                                    <img src={item.productImage} alt={item.productName} className="w-full h-full object-contain" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                        <Package className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                )}
-                            </div>
+                                {/* Product Image */}
+                                <div className="h-20 w-20 rounded-2xl bg-slate-50 flex-shrink-0 overflow-hidden border border-slate-100/50 p-1">
+                                    {item.productImage ? (
+                                        <img src={item.productImage} alt={item.productName} className="w-full h-full object-contain" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                            <Package className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                    )}
+                                </div>
 
-                            <div className="flex-1 min-w-0">
-                                <div className="font-black text-[17px] text-slate-900 truncate tracking-tight">
-                                    {item.productName}
-                                </div>
-                                <div className="flex items-center gap-1.5 text-[12px] font-bold text-slate-400 mt-1">
-                                    <Hash className="w-3 h-3" />
-                                    <span>{item.barcode}</span>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px] font-black">
-                                    <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
-                                        <Package className="w-3 h-3 text-slate-400" />
-                                        <span><span className="text-[#304FFF] font-black">{item.requiredQty}</span>개</span>
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-black text-[17px] text-slate-900 truncate tracking-tight">
+                                        {item.productName}
                                     </div>
-                                    <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
-                                        <MapPin className="w-3 h-3 text-slate-400" />
-                                        <span><span className="text-[#304FFF] font-black">{item.locationCode}</span></span>
+                                    <div className="flex items-center gap-1.5 text-[12px] font-bold text-slate-400 mt-1">
+                                        <Hash className="w-3 h-3" />
+                                        <span>{item.barcode}</span>
                                     </div>
-                                </div>
-                            </div>
+                                    <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px] font-black">
+                                        <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
+                                            <Package className="w-3 h-3 text-slate-400" />
+                                            <span><span className="text-[#304FFF] font-black">{item.requiredQty}</span>개</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
+                                            <MapPin className="w-3 h-3 text-slate-400" />
+                                            <span><span className="text-[#304FFF] font-black">{item.locationCode}</span></span>
+                                        </div>
 
-                            {item.status === 'DONE' && (
-                                <div className="bg-emerald-50 text-emerald-500 p-2 rounded-xl border border-emerald-100 shrink-0">
-                                    <CheckCircle2 className="w-5 h-5" strokeWidth={3} />
+                                        {/* 상태 라벨 표시 */}
+                                        {item.status === 'DONE' && (
+                                            <div className="px-2 py-1 bg-emerald-100/80 text-emerald-700 rounded-lg text-[10px] font-black">
+                                                {item.adminDecision === 'DAMAGED' ? '완료 (파손 확정)' :
+                                                    item.adminDecision === 'OUT_OF_STOCK' ? '완료 (결품 확정)' : '완료'}
+                                            </div>
+                                        )}
+                                        {item.status === 'ISSUE_PENDING' && (
+                                            <div className="px-2 py-1 bg-amber-100/80 text-amber-700 rounded-lg text-[10px] font-black tabular-nums">
+                                                신고됨 (패스)
+                                            </div>
+                                        )}
+                                        {item.status === 'IN_PROGRESS' && (
+                                            <div className="px-2 py-1 bg-blue-100/80 text-blue-700 rounded-lg text-[10px] font-black animate-pulse">
+                                                집품 중
+                                            </div>
+                                        )}
+                                        {item.status === 'PENDING' && (
+                                            <div className="px-2 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black">
+                                                대기 중
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            )}
-                            {item.status === 'ISSUE' && (
-                                <div className="bg-rose-50 text-rose-500 p-2 rounded-xl border border-rose-100 shrink-0">
-                                    <AlertCircle className="w-5 h-5" strokeWidth={3} />
+
+                                <div className="shrink-0 ml-auto">
+                                    {item.status === 'DONE' && (
+                                        <div className="bg-emerald-50 text-emerald-500 p-2 rounded-xl border border-emerald-100">
+                                            <CheckCircle2 className="w-5 h-5" strokeWidth={3} />
+                                        </div>
+                                    )}
+                                    {item.status === 'ISSUE_PENDING' && (
+                                        <div className="bg-amber-50 text-amber-500 p-2 rounded-xl border border-amber-100">
+                                            <AlertCircle className="w-5 h-5" strokeWidth={3} />
+                                        </div>
+                                    )}
+                                    {item.status === 'IN_PROGRESS' && (
+                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-ping mr-2" />
+                                    )}
                                 </div>
-                            )}
-                        </motion.div>
-                    ))}
+                            </motion.div>
+                        ))}
                     </AnimatePresence>
 
                     {items.length === 0 && (

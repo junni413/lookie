@@ -13,15 +13,18 @@ public class WebRtcSignalResponse {
     private Long callId;
     private String roomId; // Nullable (only for ACCEPTED)
     private Long senderId;
+    private Long issueId; // [New] Added for admin redirection
     private Long timestamp;
 
-    public static WebRtcSignalResponse from(WebRtcSignalType type, Long callId, String roomId, Long senderId) {
+    public static WebRtcSignalResponse from(WebRtcSignalType type, Long callId, String roomId, Long senderId,
+            Long issueId) {
         return WebRtcSignalResponse.builder()
                 .messageId(UUID.randomUUID().toString())
                 .type(type)
                 .callId(callId)
                 .roomId(roomId)
                 .senderId(senderId)
+                .issueId(issueId)
                 .timestamp(System.currentTimeMillis())
                 .build();
     }

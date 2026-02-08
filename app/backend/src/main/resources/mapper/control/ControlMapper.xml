@@ -58,14 +58,14 @@
         INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
         LEFT JOIN (
             SELECT bt.worker_id, 
-                   -- Daily Count: Items done today
-                   SUM(CASE WHEN bti.status = 'DONE' AND DATE(bti.last_scanned_at) = CURDATE() THEN 1 ELSE 0 END) AS daily_count,
+                   -- Daily Count: Tasks completed today
+                   COUNT(CASE WHEN bt.status = 'COMPLETED' AND DATE(bt.completed_at) = CURDATE() THEN 1 END) AS daily_count,
                    -- Progress: Total done / Total items for current task
                    (SUM(CASE WHEN bti.status = 'DONE' THEN 1 ELSE 0 END) * 100.0) / NULLIF(COUNT(bti.batch_task_item_id), 0) AS progress,
                    -- Speed (Dummy logic for now: 10 items/hour?)
                    10.0 AS processing_speed
             FROM batch_tasks bt
-            JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
+            LEFT JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
             GROUP BY bt.worker_id
         ) wc ON wc.worker_id = u.user_id
         WHERE u.assigned_zone_id = #{zoneId}
@@ -110,7 +110,7 @@
                 FROM batch_tasks bt_sub
                 JOIN batch_task_items bti ON bti.batch_task_id = bt_sub.batch_task_id
                 WHERE bt_sub.worker_id = u.user_id
-                  AND bti.status != 'PENDING'
+                  AND bti.status NOT IN ('PENDING', 'IN_PROGRESS')
                   AND DATE(bti.last_scanned_at) = CURDATE()
             ) AS todayWorkCount,
             -- 최근 발생한 이슈 (서브쿼리)

@@ -83,17 +83,20 @@ export default function WorkDetail() {
         if (taskRes.success && taskRes.data) {
           const fetchedTask = taskRes.data.payload as any;
           setCurrentTask(fetchedTask);
-          setNextAction(taskRes.data.nextAction as NextAction);
+
+          // 2) 서버가 준 nextAction을 즉시 적용
+          const serverAction = taskRes.data.nextAction as NextAction;
+          setNextAction(serverAction);
+
           // toteBarcode 복구
           const recoveredTote = (taskRes.data as any).toteBarcode || (fetchedTask as any).toteBarcode;
           if (recoveredTote) setToteBarcode(recoveredTote);
 
           taskIdToUse = fetchedTask.batchTaskId;
-          processedHydrationRef.current = true;
-          console.log("🌊 Hydration complete:", { nextAction: taskRes.data.nextAction, taskId: taskIdToUse });
+          console.log("🌊 Hydration - Server Action:", serverAction);
         }
 
-        // 2) 아이템 목록 조회
+        // 3) 아이템 목록 조회
         if (!taskIdToUse) {
           console.warn("⚠️ Task ID missing");
           return;
@@ -103,39 +106,40 @@ export default function WorkDetail() {
         if (response.success && Array.isArray(response.data)) {
           setItems(response.data);
 
-          // ✅ 3) 복구 우선순위: 1순위(내비게이션 state), 2순위(서버 nextItem), 3순위(첫 미완료 건)
+          // 4) 복구 인덱스 계산
           let targetIdx = -1;
           const srvNextItem = taskRes.data.nextItem as any;
 
           if (state?.currentIndex !== undefined) {
-            targetIdx = Number(state.currentIndex);
-            console.log("📍 [WorkDetail] 내비게이션 상태에서 인덱스 복구:", targetIdx);
-          } else if (srvNextItem?.batchTaskItemId) {
+            // ✅ [수정] 사용자가 이미 특정 인덱스를 보고 있었다면 우선 복원 (납치 방지)
+            const idx = Number(state.currentIndex);
+            if (idx >= 0 && idx < response.data.length && response.data[idx].status !== "DONE") {
+              targetIdx = idx;
+            }
+          }
+
+          if (targetIdx === -1 && srvNextItem?.batchTaskItemId) {
             targetIdx = response.data.findIndex((it) => it.batchTaskItemId === srvNextItem.batchTaskItemId);
           }
 
           if (targetIdx === -1) {
-            // 아직 처리되지 않은 첫 번째 아이템 찾기
-            targetIdx = response.data.findIndex((it) => it.status !== "DONE" && it.status !== "ISSUE");
+            targetIdx = response.data.findIndex((it) => it.status !== "DONE" && it.status !== "ISSUE" && it.status !== "ISSUE_PENDING");
           }
 
           if (targetIdx !== -1) {
-            if (currentIndex !== targetIdx) {
-              setCurrentIndex(targetIdx);
-              console.log("📍 세션 복구: 현재 인덱스 설정 ->", targetIdx);
-            }
+            setCurrentIndex(targetIdx);
+            prevIndexRef.current = targetIdx; // ✅ 복구 시점에는 변경으로 간주하지 않도록 전환
+            console.log("📍 Hydration - Index Restored:", targetIdx);
           }
-          // ✅ 인덱스 복구 완료 후 플래그 설정
-          setTimeout(() => {
-            processedHydrationRef.current = true;
-            console.log("🌊 Hydration & Index restoration final:", { targetIdx });
-          }, 0);
         }
       } catch (err: any) {
         console.error("Fetch data error:", err);
         toast({ title: "데이터 조회 실패", description: err?.message, variant: "destructive" });
       } finally {
+        // ✅ 모든 데이터 세팅 및 인덱스 복구가 끝난 후 플래그 설정
+        processedHydrationRef.current = true;
         setLoading(false);
+        console.log("🌊 Hydration Complete.");
       }
     };
 
@@ -145,54 +149,8 @@ export default function WorkDetail() {
 
   const currentItem = items[currentIndex];
 
-  // ✅ 각 아이템별 워크플로우 상태 추적 (itemId -> NextAction)
-  const itemStatesRef = useRef<Map<number, NextAction>>(new Map());
-
-  // ✅ 현재 아이템이 바뀔 때 nextAction 저장/복원
-  useEffect(() => {
-    if (!items[currentIndex]) return;
-    if (loading) return;
-
-    const item = items[currentIndex];
-    const itemId = item.batchTaskItemId;
-    const indexChanged = prevIndexRef.current !== currentIndex;
-    prevIndexRef.current = currentIndex;
-
-    console.log("🔄 useEffect: Syncing item state", {
-      itemId,
-      status: item.status,
-      indexChanged,
-      isHydrated: processedHydrationRef.current,
-      currentAction: nextAction
-    });
-
-    // ✅ 1) 아이템 완료/이슈 상태면 다음 단계로 강제 설정
-    if (item.status === "DONE" || item.status === "ISSUE" || item.status === "ISSUE_PENDING") {
-      setNextAction("NEXT_ITEM");
-      return;
-    }
-
-    // ✅ 2) 첫 진입(Hydration) 직후라면 서버가 준 nextAction 유지
-    if (!processedHydrationRef.current) {
-      console.log("🌊 Maintaining server-provided action during hydration:", nextAction);
-      return;
-    }
-
-    // ✅ 3) 그 외 사용자가 직접 아이템을 바꿨으면 무조건 지번 스캔부터 시작 (보안/정확도)
-    if (indexChanged) {
-      console.log("🔄 Manual index change, resetting to SCAN_LOCATION");
-      setNextAction("SCAN_LOCATION");
-      return;
-    }
-  }, [currentIndex, items, loading]);
-
-  // ✅ nextAction이 바뀔 때 현재 아이템 상태 저장
-  useEffect(() => {
-    const item = items[currentIndex];
-    if (item && item.status !== "DONE" && nextAction !== "NEXT_ITEM") {
-      itemStatesRef.current.set(item.batchTaskItemId, nextAction);
-    }
-  }, [nextAction, currentIndex, items]);
+  // ✅ [수정] 복잡한 로컬 상태 추적 및 리셋 로직 삭제
+  // 프론트엔드에서 임의로 단계를 리셋하지 않고, 오직 백엔드가 내려주는 상태(nextAction)를 따릅니다.
 
   const openLocationScanner = () => {
     setScanType("LOCATION");
@@ -206,7 +164,12 @@ export default function WorkDetail() {
 
   const handleScanned = useCallback(
     async (barcode: string) => {
-      console.log("🚀 scanLocation body =", { locationCode: barcode });
+      // ✅ 로그 정상화: 타입별로 정확하게 출력
+      if (scanType === "LOCATION") {
+        console.log("📍 [SCAN] Location Code =", barcode);
+      } else {
+        console.log("📦 [SCAN] Item Barcode =", barcode);
+      }
 
       if (!currentItem || !currentTask) return;
 
@@ -219,7 +182,6 @@ export default function WorkDetail() {
           setScannerOpen(false);
           const res = await taskService.scanLocation(currentTask.batchTaskId, barcode);
           if (res.success && res.data) {
-            itemStatesRef.current.set(currentItem.batchTaskItemId, res.data.nextAction);
             setNextAction(res.data.nextAction);
             if (res.data.payload) {
               setCurrentTask(res.data.payload as any);
@@ -253,7 +215,6 @@ export default function WorkDetail() {
         setScannerOpen(false);
         const res = await taskService.scanItem(currentTask.batchTaskId, barcode);
         if (res.success && res.data) {
-          itemStatesRef.current.set(currentItem.batchTaskItemId, res.data.nextAction);
           setNextAction(res.data.nextAction);
           const updatedPayload = res.data.payload;
           setItems(itms => itms.map((it) => it.batchTaskItemId === updatedPayload.batchTaskItemId ? updatedPayload : it));

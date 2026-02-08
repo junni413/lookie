@@ -40,8 +40,10 @@ public interface TaskItemMapper {
         int updateLocationOfItem(@Param("batchTaskItemId") Long batchTaskItemId,
                         @Param("newLocationId") Long newLocationId);
 
-        // [조회] 다음 수행할 PENDING 아이템 조회
-        TaskItemVO findNextItem(@Param("batchTaskId") Long batchTaskId);
+        // [조회] 다음 수행할 PENDING 아이템 조회 (현재 위치 우선)
+        TaskItemVO findNextItem(
+                        @Param("batchTaskId") Long batchTaskId,
+                        @Param("currentLocationId") Long currentLocationId);
 
         // [목록] 작업 전체 아이템 목록 조회
         List<TaskItemVO> findAllByTaskId(@Param("batchTaskId") Long batchTaskId);
@@ -54,4 +56,10 @@ public interface TaskItemMapper {
 
         // [집계] 배치+구역 기준 완료(DONE/ISSUE)된 아이템 수
         int countCompletedItemsByBatchAndZone(@Param("batchId") Long batchId, @Param("zoneId") Long zoneId);
+
+        // [수정] picked_qty 단독 업데이트 (새 FSM용)
+        int setPickedQty(@Param("batchTaskItemId") Long batchTaskItemId, @Param("pickedQty") Integer pickedQty);
+
+        // [집계] IN_PROGRESS 상태 아이템 개수 조회 (새 FSM용)
+        int countInProgressItems(@Param("batchTaskId") Long batchTaskId);
 }
