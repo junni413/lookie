@@ -1,9 +1,26 @@
 import { useRef, useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { cn } from "@/utils/cn";
 
-type Phase = "START" | "L" | "EYES" | "K" | "LOOKIE";
+type Phase = "START" | "L" | "EYES" | "K" | "LOOKie";
 
-export default function LogoAnimation() {
+interface LogoAnimationProps {
+  scale?: number;
+  color?: string;
+  eyeColor?: string;
+  showTagline?: boolean;
+  origin?: string;
+  className?: string;
+}
+
+export default function LogoAnimation({ 
+  scale = 1, 
+  color = "#304FFF", 
+  eyeColor,
+  showTagline = true,
+  origin = "center center",
+  className 
+}: LogoAnimationProps) {
   const [phase, setPhase] = useState<Phase>("START");
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -17,7 +34,7 @@ export default function LogoAnimation() {
       await wait(500);
       setPhase("K");
       await wait(700);
-      setPhase("LOOKIE");
+      setPhase("LOOKie");
     };
     sequence();
 
@@ -50,21 +67,20 @@ export default function LogoAnimation() {
   }, []);
 
   const showL = phase !== "START";
-  const showEyes = phase === "EYES" || phase === "K" || phase === "LOOKIE";
-  const showK = phase === "K" || phase === "LOOKIE";
-  const showIE = phase === "LOOKIE";
+  const showEyes = phase === "EYES" || phase === "K" || phase === "LOOKie";
+  const showK = phase === "K" || phase === "LOOKie";
+  const showIE = phase === "LOOKie";
 
   return (
     <div 
       ref={containerRef}
-      className="flex flex-col items-center justify-center mb-10 select-none group"
+      className={cn("flex flex-col items-center justify-center mb-10 select-none group", className)}
+      style={{ 
+        transform: `scale(${scale})`, 
+        transformOrigin: origin,
+      }}
     >
       <div className="relative flex items-center h-[90px]">
-        {/* 
-          CRITICAL: Every element is rendered from the start to lock the center position. 
-          We only animate opacity/scale/y.
-        */}
-
         {/* L */}
         <motion.span
           animate={{ 
@@ -77,16 +93,16 @@ export default function LogoAnimation() {
             ease: "circOut",
             y: { duration: 2, repeat: Infinity, ease: "easeInOut" } 
           }}
-          className="text-[72px] font-black tracking-tighter text-[#304FFF] leading-none drop-shadow-sm"
-          style={{ fontFamily: "'Inter', sans-serif" }}
+          className="text-[72px] font-black tracking-tighter leading-none drop-shadow-sm"
+          style={{ fontFamily: "'Inter', sans-serif", color }}
         >
           L
         </motion.span>
 
         {/* Eyes (OO) */}
         <div className="flex items-center mx-1">
-            <Eye mousePos={mousePos} isVisible={showEyes} delay={0} />
-            <Eye mousePos={mousePos} isVisible={showEyes} delay={0.1} />
+            <Eye mousePos={mousePos} isVisible={showEyes} delay={0} color={eyeColor || color} />
+            <Eye mousePos={mousePos} isVisible={showEyes} delay={0.1} color={eyeColor || color} />
         </div>
 
         {/* K */}
@@ -101,13 +117,13 @@ export default function LogoAnimation() {
             ease: "circOut",
             y: { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.2 } 
           }}
-          className="text-[72px] font-black tracking-tighter text-[#304FFF] leading-none ml-1 drop-shadow-sm"
-          style={{ fontFamily: "'Inter', sans-serif" }}
+          className="text-[72px] font-black tracking-tighter leading-none ml-1 drop-shadow-sm"
+          style={{ fontFamily: "'Inter', sans-serif", color }}
         >
           K
         </motion.span>
 
-        {/* IE (Always in DOM) */}
+        {/* IE */}
         <div className="flex items-center ml-2">
           <motion.span 
             animate={{ 
@@ -118,11 +134,12 @@ export default function LogoAnimation() {
             transition={{ 
               duration: 1.0, 
               ease: "circOut",
-              y: { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.4 } 
+              y: { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.6 } 
             }}
-            className="text-[72px] font-black tracking-tighter text-[#304FFF] leading-none drop-shadow-sm"
+            className="text-[72px] font-black tracking-tighter leading-none drop-shadow-sm"
+            style={{ color }}
           >
-            I
+            i
           </motion.span>
           <motion.span 
             animate={{ 
@@ -135,39 +152,34 @@ export default function LogoAnimation() {
               ease: "circOut",
               y: { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.6 } 
             }}
-            className="text-[72px] font-black tracking-tighter text-[#304FFF] leading-none ml-1 drop-shadow-sm"
+            className="text-[72px] font-black tracking-tighter leading-none ml-1 drop-shadow-sm"
+            style={{ color }}
           >
-            E
+            e
           </motion.span>
         </div>
 
-        {/* Glow */}
-        <motion.div
-          animate={{ 
-            opacity: showIE ? [0.2, 0.4, 0.2] : 0,
-            scale: [1, 1.1, 1]
-          }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute -inset-10 -z-10 rounded-[40px] blur-3xl bg-[#304FFF]/10"
-        />
-        <div className="absolute -inset-4 -z-10 rounded-[28px] bg-gradient-to-b from-blue-50/50 to-transparent opacity-50" />
+        {/* Glow Effects - Only if showEffects is true */}
+
       </div>
 
       {/* Tagline */}
-      <div className="overflow-hidden mt-4">
-        <motion.p
-          animate={showIE ? { opacity: 0.25, y: 0 } : { opacity: 0, y: 20 }}
-          transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-          className="text-[12px] font-bold text-slate-500 tracking-[0.3em] uppercase"
-        >
-          Smart Logistics Partner
-        </motion.p>
-      </div>
+      {showTagline && (
+        <div className="overflow-hidden mt-4">
+          <motion.p
+            animate={showIE ? { opacity: 0.25, y: 0 } : { opacity: 0, y: 20 }}
+            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+            className="text-[12px] font-bold text-slate-500 tracking-[0.3em] uppercase"
+          >
+            Smart Logistics Partner
+          </motion.p>
+        </div>
+      )}
     </div>
   );
 }
 
-function Eye({ mousePos, isVisible, delay }: { mousePos: { x: number; y: number }; isVisible: boolean; delay: number }) {
+function Eye({ mousePos, isVisible, delay, color }: { mousePos: { x: number; y: number }; isVisible: boolean; delay: number; color?: string }) {
   const [isBlinking, setIsBlinking] = useState(false);
 
   useEffect(() => {
@@ -217,12 +229,13 @@ function Eye({ mousePos, isVisible, delay }: { mousePos: { x: number; y: number 
         <motion.div
           animate={{ x: pupilX, y: pupilY, scale: isBlinking ? 0.8 : 1 }}
           transition={{ type: "spring", stiffness: 200, damping: 20, mass: 0.4 }}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[28px] h-[28px] rounded-full bg-[#304FFF]"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[28px] h-[28px] rounded-full"
           style={{ 
+            backgroundColor: color || "#304FFF",
             boxShadow: "0 4px 12px rgba(37,99,235,0.4), inset 0 6px 8px rgba(255,255,255,0.2)" 
           }}
         >
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[12px] h-[12px] rounded-full bg-blue-900/30" />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[12px] h-[12px] rounded-full bg-black/10" />
         </motion.div>
 
         <motion.div

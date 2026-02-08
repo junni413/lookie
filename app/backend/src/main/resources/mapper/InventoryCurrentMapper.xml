@@ -54,7 +54,7 @@
             END,
             damaged_temp_qty = CASE
                 WHEN #{eventType} = 'PICK_DAMAGED_TEMP' THEN damaged_temp_qty - #{quantityChange}
-                WHEN #{eventType} = 'REVERT_DAMAGED' THEN damaged_temp_qty + #{quantityChange}
+                WHEN #{eventType} = 'REVERT_DAMAGED' THEN damaged_temp_qty - #{quantityChange}
                 ELSE damaged_temp_qty
             END,
             last_event_id = #{eventId},

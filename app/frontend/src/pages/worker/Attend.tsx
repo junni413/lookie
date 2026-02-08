@@ -177,9 +177,9 @@ export default function AttendPage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 0.4 }}
         transition={{ delay: 1 }}
-        className="absolute bottom-10 text-[11px] font-black text-slate-300 tracking-[0.3em] uppercase"
+        className="absolute bottom-10 text-[11px] font-black text-slate-300 tracking-[0.3em]"
       >
-        Lookie
+        LOOKie
       </motion.p>
     </div>
   );

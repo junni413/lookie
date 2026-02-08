@@ -68,6 +68,15 @@ public enum ErrorCode {
 	INVALID_ADMIN_DECISION("ISSUE_006", HttpStatus.BAD_REQUEST, "유효하지 않은 관리자 확정 결과입니다"),
 	INVALID_ISSUE_TYPE("ISSUE_007", HttpStatus.BAD_REQUEST, "유효하지 않은 이슈 타입입니다"),
 	ISSUE_TASK_ALREADY_DONE("ISSUE_008", HttpStatus.BAD_REQUEST, "이미 완료된 작업이므로 호출할 수 없습니다"),
+	ADMIN_CALL_REQUIRED("ISSUE_009", HttpStatus.BAD_REQUEST, "관리자 연결 시도가 필요합니다"),
+	ADMIN_CALL_IN_PROGRESS("ISSUE_010", HttpStatus.CONFLICT, "관리자 연결 대기 중입니다"),
+	ISSUE_IMAGE_REQUIRED("ISSUE_011", HttpStatus.BAD_REQUEST, "증빙 이미지가 필요합니다"),
+
+	// ===== TASK ITEM =====
+	ITEM_NOT_FOUND("ITEM_001", HttpStatus.NOT_FOUND, "작업 아이템을 찾을 수 없습니다"),
+	INVALID_ITEM_STATUS("ITEM_002", HttpStatus.BAD_REQUEST, "유효하지 않은 아이템 상태입니다"),
+	INVALID_TASK_STATUS("ITEM_003", HttpStatus.BAD_REQUEST, "유효하지 않은 작업 상태입니다"),
+	INVALID_ACTION_STATUS("ITEM_004", HttpStatus.BAD_REQUEST, "유효하지 않은 액션 상태입니다"),
 
 	// ==== PRODUCT ====
 	PRODUCT_NOT_FOUND("PROD_001", HttpStatus.NOT_FOUND, "상품 정보를 찾을 수 없습니다"),

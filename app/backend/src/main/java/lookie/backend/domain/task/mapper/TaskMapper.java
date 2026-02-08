@@ -39,4 +39,10 @@ public interface TaskMapper {
 
         // [조회] 배치 내 진행 중인 Task 개수 조회
         int countInProgressTasksByBatch(@Param("batchId") Long batchId);
+
+        // [조회] 작업 ID로 조회 (FOR UPDATE - 새 FSM용)
+        TaskVO findByIdForUpdate(@Param("taskId") Long taskId);
+
+        // [수정] Task 전체 업데이트 (새 FSM용)
+        int updateTask(TaskVO task);
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
-import { X, Keyboard } from "lucide-react";
+import { X } from "lucide-react";
 
 interface ScannerModalProps {
     isOpen: boolean;
@@ -36,8 +36,16 @@ export default function ScannerModal({ isOpen, onClose, onScan, title, expectedV
                     setError("카메라 장치를 찾을 수 없습니다. 브라우저 권한을 확인해 주세요.");
                     return;
                 }
-                const deviceId = devices[0].deviceId;
+                // 후면 카메라 우선 선택
+                const rearCamera = devices.find((device) =>
+                    device.label.toLowerCase().includes("back") ||
+                    device.label.toLowerCase().includes("rear") ||
+                    device.label.toLowerCase().includes("environment")
+                );
+
+                const deviceId = rearCamera ? rearCamera.deviceId : devices[0].deviceId;
                 console.log("Scanner devices:", devices);
+                console.log("Selected device:", deviceId, rearCamera ? "(Rear)" : "(Default)");
 
                 // 권한 확인 및 스트림 시작
                 controlsRef.current = await reader.decodeFromVideoDevice(
@@ -144,16 +152,7 @@ export default function ScannerModal({ isOpen, onClose, onScan, title, expectedV
                     <p className="text-xs text-gray-500">어두운 곳에서는 플래시를 켜주세요</p>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3">
-                    {/* Dev/Emergency Manual Scan Button */}
-                    <button
-                        onClick={() => expectedValue && onScan(expectedValue)}
-                        className="flex items-center justify-center gap-2 h-14 w-full rounded-2xl bg-white/5 border border-white/10 text-white/60 text-sm font-bold active:bg-white/10 transition-colors"
-                    >
-                        <Keyboard className="w-5 h-5" />
-                        테스트용 강제 스캔 (클릭 시 일치 처리)
-                    </button>
-                </div>
+
 
                 {error && (
                     <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-2xl text-red-200 text-[13px] font-medium animate-shake">

@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useCallStore } from "@/stores/callStore";
+import { useAuthStore } from "@/stores/authStore";
 import { useLiveKitRoom } from "@/hooks/useLiveKitRoom";
 
 import {
@@ -16,10 +18,38 @@ import UserVideoComponent from "./UserVideoComponent";
 
 
 export default function VideoCallModal() {
+    const navigate = useNavigate();
+    const { user } = useAuthStore();
     const status = useCallStore((state) => state.status);
+    const issueId = useCallStore((state) => state.issueId);
 
     const cancelCall = useCallStore((state) => state.cancelCall);
     const endCall = useCallStore((state) => state.endCall);
+
+    // 이전 상태와 issueId를 추적하기 위한 ref
+    const prevStatusRef = useRef(status);
+    const lastIssueIdRef = useRef(issueId);
+
+    // issueId가 있을 때만 업데이트 (IDLE로 갈 때 null 방지)
+    useEffect(() => {
+        if (issueId) {
+            lastIssueIdRef.current = issueId;
+        }
+    }, [issueId]);
+
+    // 통화 종료 이벤트 감지 및 리다이렉트
+    useEffect(() => {
+        const isEnding = (prevStatusRef.current === "ACTIVE" || prevStatusRef.current === "WAITING" || prevStatusRef.current === "INCOMING") &&
+            (status === "IDLE" || status === "ENDED");
+
+        if (isEnding && user?.role === "ADMIN" && lastIssueIdRef.current) {
+            console.log(`🚀 [Redirect] Redirecting Admin to Issue Detail: ${lastIssueIdRef.current}`);
+            navigate(`/admin/issue?issueId=${lastIssueIdRef.current}`);
+            lastIssueIdRef.current = null; // 중복 리다이렉트 방지
+        }
+
+        prevStatusRef.current = status;
+    }, [status, user, navigate]);
 
     // 모달이 열려있지 않으면 렌더링하지 않음
     if (status === "IDLE" || status === "ENDED") {
@@ -62,7 +92,7 @@ function WaitingView({
         <div className="relative h-full p-10 flex flex-col items-center justify-center overflow-hidden">
             {/* Background Decor */}
             <div className="absolute inset-0 bg-white/50" />
-            
+
             {/* Ripple Animation */}
             <div className="relative mb-12">
                 <div className="absolute inset-0 bg-[#304FFF] rounded-full animate-ping opacity-20 duration-1000"></div>
@@ -73,7 +103,7 @@ function WaitingView({
                     </div>
                 </div>
             </div>
-            
+
             <div className="relative z-10 text-center w-full">
                 <h2 className="text-2xl font-bold text-slate-800 mb-2 tracking-tight">
                     전화 연결 중...

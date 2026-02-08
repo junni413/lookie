@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * 구역 상세 맵 데이터 응답 DTO
- * (그리드 맵 렌더링 및 실시간 위치 표시용)
+ * (그리드 맵 렌더링 및 실시간 위치 표시)
  */
 @Data
 @Builder

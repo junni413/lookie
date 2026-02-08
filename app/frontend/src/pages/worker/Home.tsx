@@ -33,7 +33,7 @@ function mapBackendStatusToUi(status: WorkLogStatus): WorkStatus {
 // ✅ 예전 디자인 ZoneCard 유지
 function ZoneCard({ zone }: { zone: string }) {
   return (
-    <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+    <section className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between">
         <p className="text-[17px] font-black text-slate-900">근무 구역</p>
         <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
@@ -41,7 +41,7 @@ function ZoneCard({ zone }: { zone: string }) {
         </span>
       </div>
 
-      <div className="mt-3 flex items-center justify-between pl-4">
+      <div className="mt-3 flex items-center justify-between">
         <div className="text-[24px] font-black text-[#304FFF] tracking-tight">{zone}</div>
         <p className="text-[12px] font-semibold text-slate-400">
           지정된 구역에서 작업을 진행하세요.
@@ -250,11 +250,11 @@ export default function Home() {
 
   return (
     <div className="space-y-4 pb-4 flex flex-col min-h-full relative">
-      <div className="px-1 pt-2">
-        <h1 className="text-[26px] font-black tracking-tight text-slate-900">
+      <div className="px-1">
+        <h1 className="text-[26px] font-black tracking-tight text-slate-900 pl-2">
           {user?.name ?? "작업자"}님
         </h1>
-        <p className="mt-1 text-[15px] font-semibold text-slate-400 pl-2">
+        <p className="text-[15px] font-semibold text-slate-400 pl-2">
           안녕하세요! 오늘의 작업을 시작하세요.
         </p>
       </div>
@@ -265,7 +265,7 @@ export default function Home() {
           rounded-[32px]
           bg-gradient-to-br from-[#304FFF] to-[#2539CC]
           p-7
-          shadow-[0_25px_50px_rgba(48,79,255,0.4)]
+          shadow-[0_10px_40px_-2px_rgba(48,79,255,0.5)]
           relative
           overflow-hidden
         "
@@ -397,8 +397,8 @@ export default function Home() {
         </button>
       </div>
 
-      <footer className="mt-auto py-3 text-center text-xs font-bold tracking-[0.2em] text-slate-200 uppercase">
-        LOOKIE
+      <footer className="mt-auto py-3 text-center text-xs font-bold tracking-[0.2em] text-slate-200">
+        LOOKie
       </footer>
     </div>
   );

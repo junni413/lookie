@@ -200,7 +200,7 @@ export default function WorkerDrawer() {
           </button>
 
           <p className="mt-3 text-center text-[11px] font-bold text-slate-400">
-            LOOKIE • Smart Logistics
+            LOOKie • Smart Logistics
           </p>
         </div>
       </aside>
