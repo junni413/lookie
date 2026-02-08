@@ -189,6 +189,23 @@
           AND bti.status NOT IN ('PENDING', 'IN_PROGRESS')
     </select>
 
+    <!-- [집계] 배치 기준 전체 아이템 수 -->
+    <select id="countItemsByBatch" resultType="int">
+        SELECT COUNT(*)
+        FROM batch_task_items bti
+        JOIN batch_tasks bt ON bti.batch_task_id = bt.batch_task_id
+        WHERE bt.batch_id = #{batchId}
+    </select>
+
+    <!-- [집계] 배치 기준 완료(DONE/ISSUE) 아이템 수 -->
+    <select id="countCompletedItemsByBatch" resultType="int">
+        SELECT COUNT(*)
+        FROM batch_task_items bti
+        JOIN batch_tasks bt ON bti.batch_task_id = bt.batch_task_id
+        WHERE bt.batch_id = #{batchId}
+          AND bti.status NOT IN ('PENDING', 'IN_PROGRESS')
+    </select>
+
     <!-- [수정] picked_qty 단독 업데이트 (새 FSM용) -->
     <update id="setPickedQty">
         UPDATE batch_task_items

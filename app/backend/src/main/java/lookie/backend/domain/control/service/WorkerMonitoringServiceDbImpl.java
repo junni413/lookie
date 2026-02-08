@@ -7,13 +7,17 @@ import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
-import lookie.backend.domain.control.repository.vo.AdminQueryVo;
 import lookie.backend.domain.control.dto.AdminResponseDto;
+import lookie.backend.domain.control.repository.vo.AdminQueryVo;
 import lookie.backend.domain.control.mapper.ControlMapper;
+import lookie.backend.domain.batch.mapper.BatchMapper;
+import lookie.backend.domain.batch.vo.BatchVO;
+import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.global.common.type.ZoneType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import lookie.backend.global.util.WorkerNameFormatter;
+import lookie.backend.domain.user.vo.UserVO;
 
 /**
  * WorkerMonitoringService의 DB 기반 구현체
@@ -26,6 +30,8 @@ import lookie.backend.global.util.WorkerNameFormatter;
 public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
 
     private final ControlMapper controlMapper;
+    private final BatchMapper batchMapper;
+    private final TaskItemMapper taskItemMapper;
     private final lookie.backend.domain.user.service.UserService userService; // 실시간 상태 주입용
 
     /**
@@ -84,11 +90,20 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
         }
 
         // 3. Build DTO (결과 취합)
+        double totalProgressRate = 0.0;
+        BatchVO currentBatch = batchMapper.findCurrentInProgress();
+        if (currentBatch != null) {
+            int totalItems = taskItemMapper.countItemsByBatch(currentBatch.getBatchId());
+            int completedItems = taskItemMapper.countCompletedItemsByBatch(currentBatch.getBatchId());
+            totalProgressRate = totalItems > 0 ? (double) completedItems * 100 / totalItems : 0.0;
+            totalProgressRate = Math.round(totalProgressRate * 10.0) / 10.0;
+        }
+
         return DashboardSummaryDto.builder()
                 .totalActiveWorkers(totalActiveWorkers != null ? totalActiveWorkers : 0)
                 .pendingIssues(pendingIssues != null ? pendingIssues : 0)
                 .completedIssues(completedIssues != null ? completedIssues : 0)
-                .totalProgressRate(0.0) // 현재는 0.0으로 하드코딩 (추후 구현 예정)
+                .totalProgressRate(totalProgressRate)
                 .zoneSummaries(zoneSummaries)
                 .build();
     }
@@ -168,9 +183,9 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
         List<AdminQueryVo> adminVos = controlMapper.selectAdmins(zoneId, name);
 
         // 2. Fetch UserVO for real-time status injection
-        List<lookie.backend.domain.user.vo.UserVO> userVOs = adminVos.stream()
+        List<UserVO> userVOs = adminVos.stream()
                 .map(vo -> {
-                    lookie.backend.domain.user.vo.UserVO userVO = new lookie.backend.domain.user.vo.UserVO();
+                    UserVO userVO = new UserVO();
                     userVO.setUserId(vo.getAdminId());
                     return userVO;
                 })
@@ -183,7 +198,7 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
         return java.util.stream.IntStream.range(0, adminVos.size())
                 .mapToObj(i -> {
                     AdminQueryVo vo = adminVos.get(i);
-                    lookie.backend.domain.user.vo.UserVO userVO = userVOs.get(i);
+                    UserVO userVO = userVOs.get(i);
 
                     return AdminResponseDto.builder()
                             .adminId(vo.getAdminId())

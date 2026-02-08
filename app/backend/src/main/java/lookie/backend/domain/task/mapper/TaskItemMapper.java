@@ -57,6 +57,12 @@ public interface TaskItemMapper {
         // [집계] 배치+구역 기준 완료(DONE/ISSUE)된 아이템 수
         int countCompletedItemsByBatchAndZone(@Param("batchId") Long batchId, @Param("zoneId") Long zoneId);
 
+        // [집계] 배치 기준 전체 아이템 수
+        int countItemsByBatch(@Param("batchId") Long batchId);
+
+        // [집계] 배치 기준 완료(DONE/ISSUE) 아이템 수
+        int countCompletedItemsByBatch(@Param("batchId") Long batchId);
+
         // [수정] picked_qty 단독 업데이트 (새 FSM용)
         int setPickedQty(@Param("batchTaskItemId") Long batchTaskItemId, @Param("pickedQty") Integer pickedQty);
 
