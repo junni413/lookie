@@ -3,11 +3,11 @@ import { useState, useEffect } from "react";
 import { cn } from "@/utils/cn";
 import { ADMIN_MENU } from "@/config/adminMenu";
 import { useAuthStore } from "@/stores/authStore";
-import { LogOut, Briefcase, Clock } from "lucide-react";
+import { LogOut, Briefcase, Play, Pause, Power } from "lucide-react";
 import { workLogService } from "@/services/workLogService";
 
 export default function AdminSidebar() {
-  const user = useAuthStore((state) => state.user);
+
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
 
@@ -93,8 +93,6 @@ export default function AdminSidebar() {
     </div>
   );
 }
-
-import { Play, Pause, Power } from "lucide-react";
 
 interface SidebarFooterProps {
     onLogout: () => void;
