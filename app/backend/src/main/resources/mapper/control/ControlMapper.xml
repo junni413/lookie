@@ -8,38 +8,88 @@
         - Users: 해당 구역에 배정된(assigned_zone_id) 작업자
         - WorkLogs: 현재 출근 중(ended_at IS NULL)인 작업자
     -->
-    <!-- 
-        1. 구역별 현황 조회 (Real Logic Implemented)
+    <!--
+        1. 구역별 현황 조회 (AI 재배치 로직 기반)
+        - 예상 소요 시간 = (남은 아이템 수 / 구역 내 작업자 합산 평균 속도)
+        - 안정: 현재 + 예상 소요 시간 < 마감 - 10분
+        - 양호: 현재 + 예상 소요 시간 < 마감
+        - 주의: 현재 + 예상 소요 시간 > 마감
     -->
     <select id="selectZoneOverviews" resultType="lookie.backend.domain.control.dto.ZoneOverviewDto">
+        <![CDATA[
+        WITH zone_rebalance_stats AS (
+            SELECT
+                zone_id,
+                AVG(speed_label) AS avg_speed_per_hour,
+                MAX(zone_backlog) AS total_remaining_qty,
+                MAX(batch_id) AS current_batch_id
+            FROM rebalance_snapshots
+            WHERE ts >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+            GROUP BY zone_id
+        ),
+        zone_worker_counts AS (
+            SELECT
+                z.zone_id AS zone_id,
+                COUNT(DISTINCT wl.worker_id) AS worker_count
+            FROM zones z
+            LEFT JOIN users u ON u.assigned_zone_id = z.zone_id AND u.role = 'WORKER'
+            LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+            GROUP BY z.zone_id
+        ),
+        zone_worker_ranks AS (
+            SELECT
+                zone_id,
+                worker_count,
+                DENSE_RANK() OVER (ORDER BY worker_count ASC) AS rank_low,
+                DENSE_RANK() OVER (ORDER BY worker_count DESC) AS rank_high,
+                MIN(worker_count) OVER () AS min_worker_count,
+                MAX(worker_count) OVER () AS max_worker_count
+            FROM zone_worker_counts
+        )
         SELECT
             z.zone_id AS zoneId,
-            COUNT(DISTINCT wl.worker_id) AS workerCount,
-            
+            COALESCE(zwr.worker_count, 0) AS workerCount,
+
             -- Progress Calculation
             COALESCE(
                 (SUM(CASE WHEN bti.status = 'DONE' THEN 1 ELSE 0 END) * 100.0) / NULLIF(COUNT(bti.batch_task_item_id), 0),
                 0.0
             ) AS progressRate,
 
-            -- Status Calculation (Based on worker count and progress)
-            CASE 
-                WHEN COUNT(DISTINCT wl.worker_id) = 0 THEN 'CRITICAL'
-                WHEN COALESCE((SUM(CASE WHEN bti.status = 'DONE' THEN 1 ELSE 0 END) * 100.0) / NULLIF(COUNT(bti.batch_task_item_id), 0), 0.0) &lt; 20.0 THEN 'CRITICAL'
-                WHEN COALESCE((SUM(CASE WHEN bti.status = 'DONE' THEN 1 ELSE 0 END) * 100.0) / NULLIF(COUNT(bti.batch_task_item_id), 0), 0.0) &lt; 70.0 THEN 'NORMAL'
-                ELSE 'STABLE'
+            -- Status Calculation (Based on AI rebalancing logic)
+            CASE
+                WHEN COALESCE(zwr.worker_count, 0) = 0 THEN 'CRITICAL'
+                WHEN zwr.max_worker_count > zwr.min_worker_count AND zwr.rank_high = 1 THEN 'STABLE'
+                WHEN zwr.max_worker_count > zwr.min_worker_count AND zwr.rank_low = 1 THEN 'CRITICAL'
+                WHEN zrs.avg_speed_per_hour IS NULL OR zrs.avg_speed_per_hour = 0 THEN 'CRITICAL'
+                WHEN zrs.total_remaining_qty IS NULL THEN 'STABLE'
+                -- 예상 완료 시간 계산: 현재 시각 + (남은 수량 / 시간당 속도) 시간
+                -- 안정: 예상 완료 <= 마감 - 60분 (1시간 이전)
+                WHEN DATE_ADD(NOW(), INTERVAL CEIL(zrs.total_remaining_qty / zrs.avg_speed_per_hour * 60) MINUTE) <= DATE_SUB(b.deadline_at, INTERVAL 60 MINUTE) THEN 'STABLE'
+                -- 양호: 마감 - 60분 < 예상 완료 <= 마감
+                WHEN DATE_ADD(NOW(), INTERVAL CEIL(zrs.total_remaining_qty / zrs.avg_speed_per_hour * 60) MINUTE) <= b.deadline_at THEN 'NORMAL'
+                -- 주의: 예상 완료 > 마감
+                ELSE 'CRITICAL'
             END AS status
 
         FROM zones z
         LEFT JOIN users u ON u.assigned_zone_id = z.zone_id AND u.role = 'WORKER'
         LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
-        
-        -- Join Tasks for Stats
-        LEFT JOIN batch_tasks bt ON bt.zone_id = z.zone_id AND bt.status = 'IN_PROGRESS'
+
+        -- Join Tasks for Progress Stats
+        LEFT JOIN batch_tasks bt ON bt.zone_id = z.zone_id AND bt.status IN ('IN_PROGRESS', 'UNASSIGNED', 'COMPLETED')
         LEFT JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
 
-        GROUP BY z.zone_id
+        -- Join Rebalance Stats (AI 재배치 데이터)
+        LEFT JOIN zone_rebalance_stats zrs ON zrs.zone_id = z.zone_id
+        LEFT JOIN zone_worker_ranks zwr ON zwr.zone_id = z.zone_id
+
+        -- Join Batch for Deadline
+        LEFT JOIN batches b ON b.batch_id = zrs.current_batch_id AND b.status = 'IN_PROGRESS'
+
+        GROUP BY z.zone_id, zrs.avg_speed_per_hour, zrs.total_remaining_qty, b.deadline_at, zwr.worker_count, zwr.rank_low, zwr.rank_high, zwr.min_worker_count, zwr.max_worker_count
         ORDER BY z.zone_id
+        ]]>
     </select>
 
     <!-- 

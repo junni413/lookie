@@ -29,6 +29,13 @@ export default function Dashboard() {
     progress: 0,
   });
 
+  const computeStatusByWorkers = (workerCount: number, avgWorkers: number): ZoneItem["status"] => {
+    if (avgWorkers <= 0) return "NORMAL";
+    if (workerCount >= avgWorkers * 1.2) return "STABLE";
+    if (workerCount <= avgWorkers * 0.8) return "CRITICAL";
+    return "NORMAL";
+  };
+
   /* 
     Polling for Real-time Updates 
     We use a ref to track if it's the first load to strictly control loading states if needed, 
@@ -52,10 +59,13 @@ export default function Dashboard() {
       // 2. Zone Stats
       if (zonesResult.status === "fulfilled") {
           const mergedZones = mergeZoneData(zonesResult.value);
+          const avgWorkers = mergedZones.length > 0
+            ? mergedZones.reduce((sum, z) => sum + (z.workerCount || 0), 0) / mergedZones.length
+            : 0;
           setZoneData(mergedZones.map(z => ({
               id: z.zoneId,
               name: z.name,
-              status: z.status,
+              status: computeStatusByWorkers(z.workerCount || 0, avgWorkers),
               working: z.workerCount,
               workRate: z.workRate
           })));
@@ -65,10 +75,13 @@ export default function Dashboard() {
         // Or should we keep previous data if polling fails?
         // Retaining previous data is better for "silent" failures.
         if (zoneData.length === 0) {
+            const avgWorkers = DEFAULT_ZONES.length > 0
+              ? DEFAULT_ZONES.reduce((sum, z) => sum + (z.workerCount || 0), 0) / DEFAULT_ZONES.length
+              : 0;
             setZoneData(DEFAULT_ZONES.map(z => ({
                 id: z.zoneId,
                 name: z.name,
-                status: z.status,
+                status: computeStatusByWorkers(z.workerCount || 0, avgWorkers),
                 working: z.workerCount,
                 workRate: z.workRate
             })));
@@ -85,6 +98,30 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    const onZonesRefresh = () => {
+      fetchData();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "zones-refresh-ts") {
+        fetchData();
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchData();
+      }
+    };
+    window.addEventListener("zones-refresh", onZonesRefresh);
+    window.addEventListener("storage", onStorage);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("zones-refresh", onZonesRefresh);
+      window.removeEventListener("storage", onStorage);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   // Poll every 5 seconds

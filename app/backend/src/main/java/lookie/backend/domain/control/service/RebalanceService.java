@@ -7,6 +7,7 @@ import lookie.backend.domain.batch.vo.BatchVO;
 import lookie.backend.domain.control.dto.RebalanceApplyRequest;
 import lookie.backend.domain.control.mapper.ControlMapper;
 import lookie.backend.domain.control.mapper.RebalanceMapper;
+import lookie.backend.domain.control.repository.ControlRedisRepository;
 import lookie.backend.domain.control.vo.RebalanceSnapshotVO;
 import lookie.backend.infra.ai.AiRebalanceClient;
 import lookie.backend.infra.ai.dto.RebalanceRecommendResponse;
@@ -24,6 +25,7 @@ public class RebalanceService {
     private final RebalanceMapper rebalanceMapper;
     private final ControlMapper controlMapper;
     private final AiRebalanceClient aiRebalanceClient;
+    private final ControlRedisRepository redisRepository;
 
     /**
      * AI 재배치 추천 조회
@@ -80,6 +82,13 @@ public class RebalanceService {
             // 3. 새 배정 이력 추가 (TEMP / AI)
             // 기존 insertAssignmentHistory는 BASE/ADMIN 하드코딩이므로 사용 불가
             controlMapper.insertAiAssignmentHistory(workerId, toZone, "TEMP", "AI", reason);
+        }
+
+        // 4. Redis cache invalidation (zone/dashboard/worker)
+        try {
+            redisRepository.deleteAllControlCache();
+        } catch (Exception e) {
+            log.error("[RebalanceService] Cache invalidation failed after apply: {}", e.getMessage());
         }
 
         log.info("[RebalanceService] Applied {} moves. Reason={}", request.getMoves().size(), reason);
