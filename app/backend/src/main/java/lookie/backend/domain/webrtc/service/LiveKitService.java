@@ -122,7 +122,7 @@ public class LiveKitService {
 
         // [Refactored] Single Payload Generation
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REQUESTED, call.getId(), null,
-                request.getCallerId());
+                request.getCallerId(), request.getIssueId());
 
         runAfterCommit(() -> sendDualPathSignal(resolvedCalleeId, payload));
 
@@ -158,7 +158,7 @@ public class LiveKitService {
 
         // [Refactored] Single Payload Generation
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ACCEPTED, call.getId(),
-                call.getRoomName(), call.getCalleeId());
+                call.getRoomName(), call.getCalleeId(), call.getIssueId());
 
         runAfterCommit(() -> sendSignal(payload));
 
@@ -190,7 +190,7 @@ public class LiveKitService {
 
         // [Refactored] Single Payload Generation (Shared UUID)
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.REJECTED, call.getId(),
-                call.getRoomName(), call.getCalleeId());
+                call.getRoomName(), call.getCalleeId(), call.getIssueId());
 
         runAfterCommit(() -> {
             // 1. Waiting 중인 Caller가 보고 있는 Call Topic
@@ -228,7 +228,7 @@ public class LiveKitService {
         } finally {
             // [Refactored] Single Payload Generation (Shared UUID)
             WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.ENDED, call.getId(), null,
-                    senderId);
+                    senderId, call.getIssueId());
 
             runAfterCommit(() -> {
                 // To Call Topic
@@ -270,7 +270,7 @@ public class LiveKitService {
 
         // [Refactored] Single Payload Generation
         WebRtcSignalResponse payload = WebRtcSignalResponse.from(WebRtcSignalType.CANCELED, call.getId(), null,
-                call.getCallerId());
+                call.getCallerId(), call.getIssueId());
 
         runAfterCommit(() -> sendDualPathSignal(call.getCalleeId(), payload));
     }
@@ -437,7 +437,7 @@ public class LiveKitService {
      * WebSocket 시그널 전송 공통 메서드 (Legacy Wrapper)
      */
     private void sendSignal(Long callId, WebRtcSignalType type, String roomName, Long senderId) {
-        sendSignal(WebRtcSignalResponse.from(type, callId, roomName, senderId));
+        sendSignal(WebRtcSignalResponse.from(type, callId, roomName, senderId, null));
     }
 
     /**
@@ -453,7 +453,7 @@ public class LiveKitService {
      * [Refactored] 사용자에게 확실하게 알림 전송 (Dual-Path Strategy) (Legacy Wrapper)
      */
     private void sendDualPathSignal(Long userId, WebRtcSignalType type, Long callId, String roomName, Long senderId) {
-        sendDualPathSignal(userId, WebRtcSignalResponse.from(type, callId, roomName, senderId));
+        sendDualPathSignal(userId, WebRtcSignalResponse.from(type, callId, roomName, senderId, null));
     }
 
     /**

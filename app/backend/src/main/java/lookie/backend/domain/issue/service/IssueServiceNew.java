@@ -218,6 +218,10 @@ public class IssueServiceNew {
 
         if ("MOVE_LOCATION".equals(reasonCode)) {
             issue.setStatus("RESOLVED");
+            // [FSM] 지번 이동 시 태스크 화면도 지번 스캔으로 초기화
+            taskMapper.updateActionStatus(issue.getBatchTaskId(), TaskActionStatus.SCAN_LOCATION);
+            log.info("[IssueServiceNew] MOVE_LOCATION -> actionStatus reset to SCAN_LOCATION. taskId={}",
+                    issue.getBatchTaskId());
         }
 
         issueMapper.updateIssue(issue);
@@ -261,6 +265,9 @@ public class IssueServiceNew {
             if ("IN_PROGRESS".equals(task.getStatus()) && "ISSUE_PENDING".equals(item.getStatus())) {
                 taskItemMapper.updateStatus(item.getBatchTaskItemId(), "PENDING");
                 taskItemMapper.setPickedQty(item.getBatchTaskItemId(), 0);
+
+                // [FSM] 이슈 복구 시 다시 지번 스캔부터 시작하도록 상태 초기화
+                taskMapper.updateActionStatus(task.getBatchTaskId(), TaskActionStatus.SCAN_LOCATION);
 
                 // [Inventory] 파손 임시 차감분 복구
                 if ("DAMAGED".equals(issue.getIssueType())) {

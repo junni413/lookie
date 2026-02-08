@@ -226,6 +226,14 @@ function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiRe
     const startCall = useCallStore((s) => s.startCall);
     const callStatus = useCallStore((s) => s.status);
     const [connectionAttempted, setConnectionAttempted] = useState(false);
+    const [adminConnected, setAdminConnected] = useState(false);
+
+    // [FSM] 관리자 연결 성공 여부 추적 (통화가 한 번이라도 ACTIVE 됐으면 true)
+    useEffect(() => {
+        if (callStatus === "ACTIVE") {
+            setAdminConnected(true);
+        }
+    }, [callStatus]);
 
     const getContent = () => {
         // AI 결과의 summary가 있으면 우선 사용
@@ -284,8 +292,25 @@ function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiRe
         }
     };
 
-    // 관리자 연결이 필수인 경우 (ADMIN 결과)
-    const isNextDisabled = result === "ADMIN" && callStatus !== "ACTIVE";
+    // 관리자 확인이 필수인 경우 (ADMIN 결과), 통화가 연결된 적이 있거나 현재 통화 중이면 버튼 활송
+    // 단, 부재중(connectionAttempted) 상황에서도 넘어가야 하므로 adminConnected 또는 connectionAttempted 체크
+    const isNextDisabled = result === "ADMIN" && !adminConnected && !connectionAttempted && callStatus !== "ACTIVE";
+
+    const handleNextTask = async () => {
+        if (!aiData || !nav?.product) return;
+
+        try {
+            await issueService.workerChooseNextItem(aiData.issueId, nav.product.batchTaskId);
+            navigate(-1);
+        } catch (err: any) {
+            console.error("Failed to proceed to next item:", err);
+            toast({
+                title: "작업 진행 실패",
+                description: err.message || "서버 통신 중 오류가 발생했습니다.",
+                variant: "destructive"
+            });
+        }
+    };
 
     return (
         <div className="flex flex-col h-full space-y-6 px-2">
@@ -324,7 +349,7 @@ function RenderResult({ result, aiData }: { result: AnalysisResult; aiData: AiRe
                             connectionAttempted ? "관리자 다시 연결하기" : "관리자 연결하기"}
                 </button>
                 <button
-                    onClick={() => navigate(-1)}
+                    onClick={handleNextTask}
                     disabled={isNextDisabled}
                     className={`w-full h-16 rounded-[24px] font-black text-[17px] transition-all shadow-lg ${isNextDisabled
                         ? "bg-gray-200 text-gray-400 shadow-none"

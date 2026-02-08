@@ -269,7 +269,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
                     token: undefined,
                     remoteUserId: undefined,
                     remoteUserName: event.reason || "관리자",
-                    issueId: null,
+                    issueId: event.issueId || null,
                 });
             } else if (event.type === 'CANCELED' || event.type === 'ENDED') {
                 const { status, wsCleanup } = get();
