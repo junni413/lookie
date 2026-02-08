@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_required_env(key: str) -> str:
-    value = os.getenv(key)
+def get_required_env(key: str, default: str = None) -> str:
+    value = os.getenv(key, default)
     if value is None:
         raise EnvironmentError(f"Missing required environment variable: {key}")
     return value
