@@ -5,7 +5,6 @@ import { Lock, Phone, Eye, EyeOff } from "lucide-react";
 import LogoAnimation from "../../components/auth/LogoAnimation";
 
 type LoginRole = "WORKER" | "ADMIN";
-// ... (rest of imports and types)
 
 type ApiResponse<T> = {
   success: boolean;
@@ -43,7 +42,6 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
     }
   })();
 
-  // ✅ HTTP 에러면 throw (catch에서 alert)
   if (!res.ok) {
     const err: any = new Error("API Error");
     err.response = { status: res.status, data };
@@ -80,13 +78,11 @@ export default function Login() {
         password: pw,
       });
 
-      // ✅ 서버가 success=false로 내려주는 케이스
       if (!res?.success) {
         alert(res?.message ?? "로그인에 실패했습니다.");
         return;
       }
 
-      // ✅ 응답 방어
       if (!res?.data?.accessToken) {
         alert("로그인 응답이 올바르지 않습니다.");
         return;
@@ -115,13 +111,14 @@ export default function Login() {
         replace: true,
       });
     } catch (e: any) {
-      // ✅ throw 난 케이스(401/400/500 등) 여기서 alert
       const status = e?.response?.status;
       const serverMsg = e?.response?.data?.message;
 
-      if (status === 401) alert(serverMsg ?? "아이디 또는 비밀번호가 올바르지 않습니다.");
+      if (status === 401)
+        alert(serverMsg ?? "아이디 또는 비밀번호가 올바르지 않습니다.");
       else if (status === 400) alert(serverMsg ?? "요청 값이 올바르지 않습니다.");
-      else if (status === 403) alert(serverMsg ?? "세션이 만료되었습니다. 다시 로그인해주세요.");
+      else if (status === 403)
+        alert(serverMsg ?? "세션이 만료되었습니다. 다시 로그인해주세요.");
       else alert(serverMsg ?? "로그인 중 오류가 발생했습니다.");
 
       console.error("login error:", e);
@@ -136,7 +133,6 @@ export default function Login() {
         {/* Logo */}
         <LogoAnimation />
 
-        {/* ✅ ENTER 제출을 위해 form 사용 */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -179,7 +175,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => navigate("/auth/password/forgot")}
-              className="text-sm font-bold text-[#304FFF]"
+              className="text-sm font-bold text-primary hover:text-primary/90 transition-colors"
             >
               비밀번호 찾기
             </button>
@@ -190,8 +186,11 @@ export default function Login() {
             type="submit"
             disabled={!canSubmit}
             className="mt-8 flex h-14 w-full items-center justify-center rounded-[18px]
-              bg-[#304FFF] text-[16px] font-black text-white
-              disabled:bg-blue-200 transition active:scale-[0.99]"
+              bg-primary text-[16px] font-black text-primary-foreground
+              hover:bg-primary/90
+              focus:outline-none focus:ring-4 focus:ring-primary/20
+              disabled:bg-primary/30 disabled:cursor-not-allowed
+              transition active:scale-[0.99]"
           >
             {loading ? "로그인 중..." : "로그인"}
           </button>
@@ -201,11 +200,10 @@ export default function Login() {
         <button
           type="button"
           onClick={() => navigate("/signup")}
-          className="mt-6 text-sm font-bold text-slate-500"
+          className="mt-6 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
         >
           회원가입
         </button>
-
       </div>
     </div>
   );
