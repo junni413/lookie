@@ -8,6 +8,7 @@ import lookie.backend.domain.issue.vo.AiJudgmentVO;
 import lookie.backend.domain.issue.vo.IssueImageVO;
 import lookie.backend.domain.issue.vo.IssueVO;
 import lookie.backend.domain.task.event.TaskItemCompletedEvent;
+import lookie.backend.domain.task.event.TaskItemRevertedEvent;
 import lookie.backend.domain.task.vo.TaskActionStatus;
 import lookie.backend.domain.task.exception.InvalidItemStatusException;
 import lookie.backend.domain.task.exception.InvalidTaskStatusException;
@@ -173,10 +174,10 @@ public class IssueServiceNew {
                 if ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null) {
                     throw new AdminCallRequiredException();
                 }
-                if ("WAITING".equals(issue.getWebrtcStatus())) {
+                if ("WAITING".equals(issue.getWebrtcStatus()) || "CONNECTED".equals(issue.getWebrtcStatus())) {
                     throw new AdminCallInProgressException();
                 }
-                // MISSED, CONNECTED면 통과
+                // MISSED면 통과
             }
         }
 
@@ -378,6 +379,16 @@ public class IssueServiceNew {
 
             log.info("[IssueServiceNew] MOVE_LOCATION -> Issue RESOLVED & TaskItem Reverted to PENDING. taskId={}",
                     issue.getBatchTaskId());
+
+            // [Event] Redis 집계 차감 (Reverted)
+            TaskVO task = taskMapper.findById(issue.getBatchTaskId());
+            if (task != null) {
+                eventPublisher.publishEvent(new TaskItemRevertedEvent(
+                        issue.getBatchTaskItemId(),
+                        issue.getBatchTaskId(),
+                        task.getZoneId(),
+                        task.getBatchId()));
+            }
         }
 
         issueMapper.updateIssue(issue);
@@ -510,6 +521,13 @@ public class IssueServiceNew {
                 }
                 log.info("[IssueServiceNew] Item revived to PENDING and Inventory Reverted. itemId={}",
                         item.getBatchTaskItemId());
+
+                // [Event] Redis 집계 차감 (Reverted)
+                eventPublisher.publishEvent(new TaskItemRevertedEvent(
+                        item.getBatchTaskItemId(),
+                        item.getBatchTaskId(),
+                        task.getZoneId(),
+                        task.getBatchId()));
             } else {
                 taskItemMapper.updateStatus(item.getBatchTaskItemId(), "DONE");
                 log.info("[IssueServiceNew] Item marked as DONE (Task not in progress) - itemId={}",

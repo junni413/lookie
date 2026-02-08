@@ -6,6 +6,8 @@ import lookie.backend.domain.location.mapper.LocationMapper;
 import lookie.backend.domain.location.vo.LocationVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
 import lookie.backend.domain.product.vo.ProductVO;
+import lookie.backend.domain.task.event.TaskCompletedEvent;
+import lookie.backend.domain.task.event.TaskItemCompletedEvent;
 import lookie.backend.domain.task.vo.TaskActionStatus;
 import lookie.backend.domain.task.exception.*;
 import lookie.backend.domain.location.exception.LocationNotFoundException;
@@ -16,6 +18,7 @@ import lookie.backend.domain.task.vo.TaskVO;
 import lookie.backend.domain.tote.mapper.ToteMapper;
 import lookie.backend.domain.tote.vo.ToteVO;
 import lookie.backend.domain.inventory.service.InventoryService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +37,7 @@ public class TaskWorkflowService {
     private final ProductMapper productMapper;
     private final ToteMapper toteMapper;
     private final InventoryService inventoryService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ========== 2.1 assignTask / scanTote ==========
 
@@ -238,6 +242,13 @@ public class TaskWorkflowService {
                 taskItemId,
                 workerId);
 
+        // [Event] Redis 집계용 이벤트 발행
+        eventPublisher.publishEvent(new TaskItemCompletedEvent(
+                item.getBatchTaskItemId(),
+                item.getBatchTaskId(),
+                task.getZoneId(),
+                task.getBatchId()));
+
         TaskItemVO nextItem = findNextPickableItem(task);
         lookie.backend.domain.task.constant.NextAction nextAction;
 
@@ -285,6 +296,13 @@ public class TaskWorkflowService {
         task.setActionStatus(TaskActionStatus.COMPLETE_TASK);
         task.setCompletedAt(java.time.LocalDateTime.now());
         taskMapper.updateTask(task);
+
+        // [Event] Task 완료 이벤트 발행
+        eventPublisher.publishEvent(new TaskCompletedEvent(
+                task.getBatchTaskId(),
+                task.getWorkerId(),
+                task.getZoneId(),
+                task.getBatchId()));
 
         log.info("[TaskWorkflowService] Task completed - taskId={}", taskId);
     }
