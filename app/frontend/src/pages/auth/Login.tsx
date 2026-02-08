@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
-import { Lock, Phone } from "lucide-react";
+import { Lock, Phone, Eye, EyeOff } from "lucide-react";
 import LogoAnimation from "../../components/auth/LogoAnimation";
 
 type LoginRole = "WORKER" | "ADMIN";
@@ -61,6 +61,7 @@ export default function Login() {
 
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const canSubmit = useMemo(
@@ -159,8 +160,17 @@ export default function Login() {
               placeholder="비밀번호"
               value={pw}
               onChange={setPw}
-              type="password"
+              type={showPw ? "text" : "password"}
               autoComplete="current-password"
+              rightElement={
+                <button
+                  type="button"
+                  onClick={() => setShowPw(!showPw)}
+                  className="text-slate-300 hover:text-slate-500 transition-colors"
+                >
+                  {showPw ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              }
             />
           </div>
 
@@ -169,7 +179,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => navigate("/auth/password/forgot")}
-              className="text-sm font-bold text-blue-600"
+              className="text-sm font-bold text-[#304FFF]"
             >
               비밀번호 찾기
             </button>
@@ -180,7 +190,7 @@ export default function Login() {
             type="submit"
             disabled={!canSubmit}
             className="mt-8 flex h-14 w-full items-center justify-center rounded-[18px]
-              bg-blue-600 text-[16px] font-black text-white
+              bg-[#304FFF] text-[16px] font-black text-white
               disabled:bg-blue-200 transition active:scale-[0.99]"
           >
             {loading ? "로그인 중..." : "로그인"}
@@ -213,6 +223,7 @@ function FieldRow({
   type,
   autoComplete,
   inputMode,
+  rightElement,
 }: {
   icon: React.ReactNode;
   placeholder: string;
@@ -221,6 +232,7 @@ function FieldRow({
   type: string;
   autoComplete?: string;
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  rightElement?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-4">
@@ -235,6 +247,7 @@ function FieldRow({
         className="w-full bg-transparent text-[15px] font-bold
           text-slate-900 placeholder:text-slate-400 focus:outline-none"
       />
+      {rightElement && <div className="flex-shrink-0">{rightElement}</div>}
     </div>
   );
 }

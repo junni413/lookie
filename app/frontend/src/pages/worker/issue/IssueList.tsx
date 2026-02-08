@@ -107,12 +107,12 @@ export default function IssueListPage() {
                   </div>
 
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 p-2 bg-blue-50/50 rounded-xl">
-                      <MapPin className="w-4 h-4 text-blue-400" />
+                    <div className="mt-0.5 p-2 bg-[#304FFF]/5 rounded-xl">
+                      <MapPin className="w-4 h-4 text-[#304FFF]/60" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">지번 코드</p>
-                      <p className="text-[18px] font-bold text-blue-600 mt-0.5 tracking-tight">
+                      <p className="text-[18px] font-bold text-[#304FFF] mt-0.5 tracking-tight">
                         {it.locationCode || "-"}
                       </p>
                     </div>
@@ -127,7 +127,7 @@ export default function IssueListPage() {
                       {new Date(it.createdAt).toLocaleString()}
                     </span>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                  <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#304FFF] transition-colors" />
                 </div>
               </div>
             );
@@ -154,7 +154,7 @@ function TabButton({
       className={[
         "h-9 px-4 rounded-full text-sm font-semibold border transition",
         active
-          ? "bg-blue-600 text-white border-blue-600"
+          ? "bg-[#304FFF] text-white border-[#304FFF]"
           : "bg-white text-gray-700 hover:bg-gray-50",
       ].join(" ")}
     >
@@ -169,7 +169,7 @@ function StatusPill({ status }: { status: string }) {
     <span
       className={[
         "shrink-0 rounded-full px-3 py-1 text-xs font-semibold",
-        isDone ? "bg-blue-50 text-blue-600" : "bg-gray-100 text-gray-600",
+        isDone ? "bg-[#304FFF]/10 text-[#304FFF]" : "bg-gray-100 text-gray-600",
       ].join(" ")}
     >
       {isDone ? "처리완료" : "대기중"}

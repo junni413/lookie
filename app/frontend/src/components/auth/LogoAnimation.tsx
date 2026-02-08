@@ -28,11 +28,17 @@ export default function LogoAnimation() {
       const y = e.clientY - (rect.top + rect.height / 2);
       
       const dist = Math.sqrt(x * x + y * y);
-      const maxDist = 400;
+      const maxDist = 300; 
+
+      if (dist < 2) {
+        setMousePos({ x: 0, y: 0 });
+        return;
+      }
+
       const limitedDist = Math.min(dist, maxDist);
       const factor = limitedDist / maxDist;
-      
       const angle = Math.atan2(y, x);
+      
       setMousePos({
         x: Math.cos(angle) * factor,
         y: Math.sin(angle) * factor
@@ -71,7 +77,7 @@ export default function LogoAnimation() {
             ease: "circOut",
             y: { duration: 2, repeat: Infinity, ease: "easeInOut" } 
           }}
-          className="text-[72px] font-black tracking-tighter text-blue-600 leading-none drop-shadow-sm"
+          className="text-[72px] font-black tracking-tighter text-[#304FFF] leading-none drop-shadow-sm"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
           L
@@ -95,7 +101,7 @@ export default function LogoAnimation() {
             ease: "circOut",
             y: { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.2 } 
           }}
-          className="text-[72px] font-black tracking-tighter text-blue-600 leading-none ml-1 drop-shadow-sm"
+          className="text-[72px] font-black tracking-tighter text-[#304FFF] leading-none ml-1 drop-shadow-sm"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
           K
@@ -114,7 +120,7 @@ export default function LogoAnimation() {
               ease: "circOut",
               y: { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.4 } 
             }}
-            className="text-[72px] font-black tracking-tighter text-blue-600 leading-none drop-shadow-sm"
+            className="text-[72px] font-black tracking-tighter text-[#304FFF] leading-none drop-shadow-sm"
           >
             I
           </motion.span>
@@ -129,7 +135,7 @@ export default function LogoAnimation() {
               ease: "circOut",
               y: { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.6 } 
             }}
-            className="text-[72px] font-black tracking-tighter text-blue-600 leading-none ml-1 drop-shadow-sm"
+            className="text-[72px] font-black tracking-tighter text-[#304FFF] leading-none ml-1 drop-shadow-sm"
           >
             E
           </motion.span>
@@ -142,7 +148,7 @@ export default function LogoAnimation() {
             scale: [1, 1.1, 1]
           }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute -inset-10 -z-10 rounded-[40px] blur-3xl bg-blue-400/20"
+          className="absolute -inset-10 -z-10 rounded-[40px] blur-3xl bg-[#304FFF]/10"
         />
         <div className="absolute -inset-4 -z-10 rounded-[28px] bg-gradient-to-b from-blue-50/50 to-transparent opacity-50" />
       </div>
@@ -150,7 +156,7 @@ export default function LogoAnimation() {
       {/* Tagline */}
       <div className="overflow-hidden mt-4">
         <motion.p
-          animate={showIE ? { opacity: 0.6, y: 0 } : { opacity: 0, y: 20 }}
+          animate={showIE ? { opacity: 0.25, y: 0 } : { opacity: 0, y: 20 }}
           transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
           className="text-[12px] font-bold text-slate-500 tracking-[0.3em] uppercase"
         >
@@ -178,7 +184,7 @@ function Eye({ mousePos, isVisible, delay }: { mousePos: { x: number; y: number 
     blink();
   }, [isVisible]);
 
-  const maxMove = 14;
+  const maxMove = 8; // Reduced range for "focused" look
   const pupilX = mousePos.x * maxMove;
   const pupilY = mousePos.y * maxMove;
 
@@ -211,7 +217,7 @@ function Eye({ mousePos, isVisible, delay }: { mousePos: { x: number; y: number 
         <motion.div
           animate={{ x: pupilX, y: pupilY, scale: isBlinking ? 0.8 : 1 }}
           transition={{ type: "spring", stiffness: 200, damping: 20, mass: 0.4 }}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[28px] h-[28px] rounded-full bg-blue-600"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[28px] h-[28px] rounded-full bg-[#304FFF]"
           style={{ 
             boxShadow: "0 4px 12px rgba(37,99,235,0.4), inset 0 6px 8px rgba(255,255,255,0.2)" 
           }}

@@ -72,7 +72,7 @@ export default function IssueDetail() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center h-full space-y-4">
-                <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+                <Loader2 className="w-10 h-10 text-[#304FFF] animate-spin" />
                 <p className="text-sm font-medium text-gray-400">이슈 상세 정보를 불러오는 중...</p>
             </div>
         );
@@ -87,13 +87,13 @@ export default function IssueDetail() {
         <div className="flex flex-col min-h-full space-y-6 pb-10 px-1">
             {/* 1. Header: Status & Issue ID */}
             <div className="flex flex-col gap-3">
-                <div className={`rounded-[28px] border p-5 flex items-center justify-between transition-all ${isDone ? 'bg-blue-50/40 border-blue-100' : 'bg-slate-50 border-slate-100'}`}>
+                <div className={`rounded-[28px] border p-5 flex items-center justify-between transition-all ${isDone ? 'bg-[#304FFF]/5 border-[#304FFF]/10' : 'bg-slate-50 border-slate-100'}`}>
                     <div className="flex items-center gap-4">
-                        <div className={`p-3 rounded-2xl ${isDone ? 'bg-blue-600' : 'bg-orange-500'} text-white shadow-sm`}>
+                        <div className={`p-3 rounded-2xl ${isDone ? 'bg-[#304FFF]' : 'bg-orange-500'} text-white shadow-sm`}>
                             {isDone ? <CheckCircle2 className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
                         </div>
                         <div>
-                            <p className={`text-[15px] font-black ${isDone ? 'text-blue-600' : 'text-orange-600'}`}>
+                            <p className={`text-[15px] font-black ${isDone ? 'text-[#304FFF]' : 'text-orange-600'}`}>
                                 {isDone ? "조치 완료" : "조치 대기 중"}
                             </p>
                             <div className="flex items-center gap-1.5 mt-0.5 text-slate-400 font-bold text-xs uppercase tracking-wider">
@@ -128,17 +128,17 @@ export default function IssueDetail() {
                     <div className="h-px bg-slate-50 mx-2" />
 
                     <div className="flex items-start gap-4">
-                        <div className="p-3 rounded-2xl bg-blue-50 text-blue-400">
+                        <div className="p-3 rounded-2xl bg-[#304FFF]/5 text-[#304FFF]/60">
                             <MapPin className="w-6 h-6" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">지번 위치</p>
                             <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[18px] font-bold text-blue-600">
+                                <span className="text-[18px] font-bold text-[#304FFF]">
                                     {issue.locationCode || "-"}
                                 </span>
                                 {issue.zoneName && (
-                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-500 rounded-lg text-[11px] font-black">
+                                    <span className="px-2 py-0.5 bg-[#304FFF]/10 text-[#304FFF] rounded-lg text-[11px] font-black">
                                         {issue.zoneName}구역
                                     </span>
                                 )}
@@ -159,7 +159,7 @@ export default function IssueDetail() {
             {(issue.aiResult || issue.verdict) && (
                 <div className="space-y-3">
                     <h4 className="text-sm font-black text-slate-900 px-1 flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#304FFF]" />
                         AI 분석 결과
                     </h4>
                     <div className="bg-white rounded-[28px] border border-slate-100 p-6 shadow-sm">
@@ -172,7 +172,7 @@ export default function IssueDetail() {
                                         return <span className="text-rose-500">❌ 파손 감지</span>;
                                     }
                                     if (res === "PASS" || res === "OK") {
-                                        return <span className="text-blue-600">✅ 정상 상품</span>;
+                                        return <span className="text-[#304FFF]">✅ 정상 상품</span>;
                                     }
                                     if (res === "NEED_CHECK" || res === "NEED_REVIEW") {
                                         return <span className="text-amber-500">⚠️ 확인 필요</span>;
@@ -207,7 +207,7 @@ export default function IssueDetail() {
             <div className="mt-auto pt-6">
                 <button
                     onClick={() => navigate(-1)}
-                    className="w-full h-16 bg-[#304FFF] text-white font-black text-[17px] rounded-[24px] shadow-lg shadow-blue-100 transition-all active:scale-[0.98]"
+                    className="w-full h-16 bg-[#304FFF] text-white font-black text-[17px] rounded-[24px] shadow-lg shadow-[#304FFF]/10 transition-all active:scale-[0.98]"
                 >
                     목록으로 돌아가기
                 </button>

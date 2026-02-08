@@ -37,13 +37,13 @@ export default function TaskScanStart() {
             </div>
           </div>
 
-          <span className="rounded-full bg-blue-50/80 px-4 py-2 text-[11px] font-black text-blue-700">
+          <span className="rounded-full bg-[#304FFF]/5 px-4 py-2 text-[11px] font-black text-[#304FFF]">
             토트 스캔 필요
           </span>
         </div>
 
         <div className="mt-3 flex items-center justify-between pl-4">
-          <div className="text-[24px] font-black text-blue-600 tracking-tight">{zoneText(task)}</div>
+          <div className="text-[24px] font-black text-[#304FFF] tracking-tight">{zoneText(task)}</div>
           <p className="text-[12px] font-semibold text-slate-400">
             지정된 구역을 확인하세요.
           </p>
@@ -74,7 +74,7 @@ export default function TaskScanStart() {
             <button
               type="button"
               onClick={() => setOpenGuide(true)}
-              className="rounded-full bg-blue-50/80 px-4 py-2 text-[11px] font-black text-blue-700 active:scale-[0.98] transition whitespace-nowrap"
+              className="rounded-full bg-[#304FFF]/5 px-4 py-2 text-[11px] font-black text-[#304FFF] active:scale-[0.98] transition whitespace-nowrap"
             >
               상세보기
             </button>
@@ -107,7 +107,7 @@ export default function TaskScanStart() {
             {/* 단계 설명 */}
             <ol className="space-y-4">
               <li className="flex gap-4">
-                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-black text-blue-700">
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#304FFF]/5 text-[11px] font-black text-[#304FFF]">
                   1
                 </div>
                 <div>
@@ -119,7 +119,7 @@ export default function TaskScanStart() {
               </li>
 
               <li className="flex gap-4">
-                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-black text-blue-700">
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#304FFF]/5 text-[11px] font-black text-[#304FFF]">
                   2
                 </div>
                 <div>
@@ -148,7 +148,7 @@ export default function TaskScanStart() {
       <div className="flex flex-col items-center pt-10">
         <div className="relative">
           {/* Pulsating Ring (Attend.tsx 스타일) */}
-          <div className="absolute inset-0 bg-blue-600/20 rounded-[44px] animate-pulse scale-110 blur-xl" />
+          <div className="absolute inset-0 bg-[#304FFF]/10 rounded-[44px] animate-pulse scale-110 blur-xl" />
 
           <button
             type="button"
@@ -157,10 +157,10 @@ export default function TaskScanStart() {
               relative z-10
               w-[240px] h-[240px]
               rounded-[48px]
-              bg-gradient-to-br from-blue-600 to-indigo-700
+              bg-gradient-to-br from-[#304FFF] to-[#2539CC]
               text-white
               flex flex-col items-center justify-center gap-4
-              shadow-[0_25px_50px_rgba(37,99,235,0.4)]
+              shadow-[0_25px_50px_rgba(48,79,255,0.4)]
               active:scale-[0.96] transition-all duration-300
             "
           >

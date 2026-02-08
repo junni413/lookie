@@ -126,7 +126,7 @@ export default function WorkHistory() {
           className={cn(
             base,
             isSelected
-              ? "bg-blue-600 text-white font-semibold z-10"
+              ? "bg-[#304FFF] text-white font-semibold z-10"
               : hasLog
               ? "bg-green-100/80 text-gray-900"
               : isToday
@@ -219,7 +219,7 @@ export default function WorkHistory() {
             <span>오늘</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-blue-600" />
+            <div className="w-4 h-4 rounded bg-[#304FFF]" />
             <span>선택됨</span>
           </div>
         </div>

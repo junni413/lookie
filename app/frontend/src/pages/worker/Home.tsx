@@ -42,7 +42,7 @@ function ZoneCard({ zone }: { zone: string }) {
       </div>
 
       <div className="mt-3 flex items-center justify-between pl-4">
-        <div className="text-[24px] font-black text-blue-600 tracking-tight">{zone}</div>
+        <div className="text-[24px] font-black text-[#304FFF] tracking-tight">{zone}</div>
         <p className="text-[12px] font-semibold text-slate-400">
           지정된 구역에서 작업을 진행하세요.
         </p>
@@ -263,9 +263,9 @@ export default function Home() {
       <section
         className="
           rounded-[32px]
-          bg-gradient-to-br from-blue-600 to-indigo-700
+          bg-gradient-to-br from-[#304FFF] to-[#2539CC]
           p-7
-          shadow-[0_25px_50px_rgba(37,99,235,0.4)]
+          shadow-[0_25px_50px_rgba(48,79,255,0.4)]
           relative
           overflow-hidden
         "
@@ -275,7 +275,7 @@ export default function Home() {
         
         <div className="flex items-start justify-between relative z-10">
           <div className="flex flex-col">
-            <p className="text-[15px] font-bold text-blue-100/80 mb-1">출근 시간</p>
+            <p className="text-[15px] font-bold text-blue-50/80 mb-1">출근 시간</p>
             <p className="text-[38px] font-black leading-none tracking-tight text-white tabular-nums">
               {savedTime}
             </p>
