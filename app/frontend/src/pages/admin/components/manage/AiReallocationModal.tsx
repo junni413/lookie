@@ -77,7 +77,7 @@ export default function AiReallocationModal({
     if (!isOpen) return null;
 
     return (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
             <Card className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full mx-6 h-[85vh] max-h-[52rem] flex flex-col overflow-hidden border-0 animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 bg-white shrink-0 border-b border-slate-100">

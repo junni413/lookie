@@ -19,8 +19,7 @@ export default function ManageStatisticCard({
     const style = getZoneStyle(status);
 
     return (
-        <Card className="border-0 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 bg-white rounded-2xl h-full group ring-1 ring-slate-100 cursor-pointer overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/5 to-transparent rounded-full -mr-16 -mt-16 transition-opacity opacity-0 group-hover:opacity-100" />
+        <Card className="border-0 shadow-sm transition-all duration-300 bg-white rounded-2xl h-full ring-1 ring-slate-100 cursor-pointer overflow-hidden relative">
             
             <CardContent className="p-5 h-full flex items-center gap-4 relative z-10">
                 {/* 왼쪽: 원형 구역 배지 (Gradient & Shadow) */}

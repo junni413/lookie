@@ -50,7 +50,7 @@ export default function IssueTable({
 
         let badgeStyle = "bg-slate-50 text-slate-500 border-slate-100";
         
-        if (decision === "PASS") badgeStyle = "bg-blue-50 text-blue-600 border-blue-100";
+        if (decision === "PASS") badgeStyle = "bg-primary/5 text-primary border-primary/20";
         else if (decision === "FAIL") badgeStyle = "bg-orange-50 text-orange-600 border-orange-100";
         else if (decision === "NEED_CHECK") badgeStyle = "bg-violet-50 text-violet-600 border-violet-100";
 
@@ -66,7 +66,7 @@ export default function IssueTable({
 
     return (
         <div className="h-full overflow-hidden flex flex-col bg-white">
-            <div className="overflow-auto flex-1 scrollbar-hidden">
+            <div className="overflow-auto flex-1 scrollbar-hidden relative">
                 <Table className="w-full min-w-[1000px] border-collapse table-fixed">
                     {/* ... Table Content ... */}
                     <TableHeader className="sticky top-0 bg-white/95 z-10 backdrop-blur-md border-b border-slate-100">
@@ -105,28 +105,13 @@ export default function IssueTable({
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {issues.length === 0 ? (
-                            <TableRow className="hover:bg-transparent">
-                                <TableCell colSpan={8} className="h-[400px] text-center border-none">
-                                    <div className="flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-700">
-                                        <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                                            <CheckCircle2 className="w-10 h-10 text-[#304FFF]/60" strokeWidth={1.5} />
-                                        </div>
-                                        <h3 className="text-[15px] font-bold text-slate-800 mb-2">모든 이슈가 처리되었습니다</h3>
-                                        <p className="text-sm text-slate-400 max-w-[280px] leading-relaxed">
-                                            현재 관리자님이 담당하신 구역에는<br/>검토 대기 중인 이슈가 없습니다.
-                                        </p>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            issues.map((issue) => (
+                        {issues.length > 0 && issues.map((issue) => (
                                 <TableRow
                                     key={issue.issueId}
                                     className={cn(
                                         "group cursor-pointer transition-all duration-200 border-b border-slate-50",
                                         selectedId === issue.issueId 
-                                            ? "bg-blue-50/50 hover:bg-blue-50/70" 
+                                            ? "bg-primary/5 hover:bg-primary/10" 
                                             : "hover:bg-slate-50/80"
                                     )}
                                     onClick={() => onSelect(issue.issueId)}
@@ -208,7 +193,7 @@ export default function IssueTable({
                                             <WorkerHoverCard workerId={issue.workerId}>
                                                 <div className="flex items-center gap-2.5 cursor-help group/worker">
                                                     <div className="flex flex-col min-w-0">
-                                                        <span className="text-[11px] font-bold text-slate-700 truncate group-hover/worker:text-blue-600 leading-tight">
+                                                        <span className="text-[11px] font-bold text-slate-700 truncate group-hover/worker:text-primary leading-tight">
                                                             {issue.workerName || "알 수 없음"}
                                                         </span>
                                                     </div>
@@ -233,9 +218,21 @@ export default function IssueTable({
                                     </TableCell>
                                 </TableRow>
                             ))
-                        )}
+                        }
                     </TableBody>
                 </Table>
+
+                {issues.length === 0 && (
+                    <div className="absolute inset-0 top-[40px] flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-700 bg-white">
+                        <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                            <CheckCircle2 className="w-10 h-10 text-primary/60" strokeWidth={1.5} />
+                        </div>
+                        <h3 className="text-base font-bold text-slate-800 mb-2">모든 이슈가 처리되었습니다</h3>
+                        <p className="text-sm text-slate-400 max-w-[280px] leading-relaxed text-center">
+                            현재 관리자님이 담당하신 구역에는<br/>검토 대기 중인 이슈가 없습니다.
+                        </p>
+                    </div>
+                )}
             </div>
             
             {/* Custom Scrollbar Style - Completely Hidden */}
