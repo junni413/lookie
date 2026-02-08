@@ -1,0 +1,689 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    skipDefaultCheckout(true)
+  }
+
+  environment {
+    // ============================================================
+    // [DEPLOY]
+    // ============================================================
+    DEPLOY_HOST  = 'i14b105.p.ssafy.io'
+    DEPLOY_USER  = 'ubuntu'
+    DEPLOY_DIR   = '/home/ubuntu/lookie/S14P11B105'
+    SSH_CRED_ID  = 'ec2-ssh-key'
+    GIT_REPO_SSH = 'git@lab.ssafy.com:s14-webmobile1-sub1/S14P11B105.git'
+    COMPOSE_PROD_FILE = 'docker-compose.prod.yml'
+
+    // ============================================================
+    // [REGISTRY]
+    // ============================================================
+    DOCKERHUB_CRED_ID      = 'dockerhub-cred'
+    REGISTRY_IMAGE_BACKEND = 'sheonj/lookie-backend'
+    REGISTRY_IMAGE_NGINX   = 'sheonj/lookie-nginx'
+    REGISTRY_IMAGE_AI      = 'sheonj/lookie-ai'
+
+    // ============================================================
+    // [BUILD PATH]
+    // ============================================================
+    BACKEND_CONTEXT    = 'app/backend'
+    BACKEND_DOCKERFILE = 'app/backend/Dockerfile'
+    NGINX_CONTEXT      = '.'
+    NGINX_DOCKERFILE   = 'infra/nginx/Dockerfile'
+    AI_CONTEXT         = 'app/ai-server'
+    AI_DOCKERFILE      = 'app/ai-server/Dockerfile'
+
+    // ============================================================
+    // [NOTIFY]
+    // ============================================================
+    MM_WEBHOOK_CRED_ID = 'mattermost-webhook'
+    PUBLIC_JENKINS_URL = 'http://i14b105.p.ssafy.io:9000'
+
+    // ============================================================
+    // [LOG]
+    // ============================================================
+    BACKEND_LOG  = 'ci_backend.log'
+    FRONTEND_LOG = 'ci_frontend.log'
+    DEPLOY_LOG   = 'ci_deploy.log'
+
+    // ============================================================
+    // [CI - Redis/MySQL] MR 테스트용
+    // ============================================================
+    CI_REDIS_CONTAINER = 'ci-redis'
+    CI_REDIS_IMAGE     = 'redis:7-alpine'
+
+    CI_MYSQL_CONTAINER = 'ci-mysql'
+    CI_MYSQL_IMAGE     = 'mysql:8.0'
+    CI_MYSQL_DB        = 'lookie'
+    CI_MYSQL_USER      = 'lookie'
+    CI_MYSQL_PASSWORD  = 'lookiepass'
+    CI_MYSQL_ROOTPW    = 'rootpass'
+
+    // ============================================================
+    // [DOCKER]
+    // ============================================================
+    DOCKER_BUILDKIT = '1'
+    COMPOSE_DOCKER_CLI_BUILD = '1'
+
+    // ============================================================
+    // [중요]
+    // IMAGE_TAG/AI_TAG 같은 "빌드마다 변하는 값"은 environment에 고정 선언하지 않음.
+    // - Declarative environment는 내부 withEnv로 주입되어 stage 경계에서 값이 되돌아오는 경우가 있음.
+    // - 대신 Groovy env.* 로 세팅 + workspace 파일(.image_tag)로 고정해서 안정화.
+    // ============================================================
+  }
+
+  stages {
+
+    stage('Detect Context') {
+      steps {
+        script {
+          // ------------------------------------------------------------
+          // 다양한 GitLab 플러그인/웹훅 변수명 차이를 흡수하는 pick 헬퍼
+          // ------------------------------------------------------------
+          def pick = { List<String> keys ->
+            for (k in keys) {
+              def v = env."${k}"
+              if (v != null && v.toString().trim()) return v.toString().trim()
+            }
+            return ''
+          }
+
+          // ------------------------------------------------------------
+          // 이벤트 종류 판별 (push / merge_request)
+          // ------------------------------------------------------------
+          env.EVENT_KIND = pick(['OBJECT_KIND','object_kind','objectKind','X_GITLAB_EVENT','gitlabEventType','event_type']).trim()
+          if (env.EVENT_KIND.toLowerCase().contains('merge')) env.EVENT_KIND = 'merge_request'
+          if (env.EVENT_KIND.toLowerCase().contains('push'))  env.EVENT_KIND = 'push'
+
+          // ------------------------------------------------------------
+          // push 브랜치 계산
+          // ------------------------------------------------------------
+          def refRaw = pick(['REF','ref','GIT_REF','gitRef','refChanges_0_refId'])
+          env.PUSH_BRANCH = (refRaw ?: '').replace('refs/heads/', '').trim()
+
+          // ------------------------------------------------------------
+          // MR source/target 계산
+          // ------------------------------------------------------------
+          env.MR_SOURCE = pick(['MR_SOURCE','mr_source','SOURCE_BRANCH','source_branch','sourceBranch','gitlabSourceBranch']).trim()
+          env.MR_TARGET = pick(['MR_TARGET','mr_target','TARGET_BRANCH','target_branch','targetBranch','gitlabTargetBranch']).trim()
+
+          // ------------------------------------------------------------
+          // 실행자(유저) 정보
+          // ------------------------------------------------------------
+          env.ACTOR = pick([
+            'MR_USER_NAME','MR_USER_USERNAME',
+            'PUSH_USER_NAME','PUSH_USER_USERNAME',
+            'user_name','user_username',
+            'GITLAB_USER_NAME','GITLAB_USER_USERNAME',
+            'gitlabUserName','gitlabUserUsername'
+          ]).trim()
+          if (!env.ACTOR) env.ACTOR = 'unknown'
+
+          // ------------------------------------------------------------
+          // 실행 플래그 초기화
+          // ------------------------------------------------------------
+          env.RUN_BACKEND  = "false"
+          env.RUN_FRONTEND = "false"
+          env.RUN_BUILDIMG = "false"
+          env.RUN_DEPLOY   = "false"
+
+          // MR이면 테스트/빌드
+          if (env.EVENT_KIND == 'merge_request') {
+            env.RUN_BACKEND  = "true"
+            env.RUN_FRONTEND = "true"
+          }
+
+          // master push면 이미지 빌드/배포
+          if (env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'master') {
+            env.RUN_BUILDIMG = "true"
+            env.RUN_DEPLOY   = "true"
+          }
+
+          // ------------------------------------------------------------
+          // checkout 브랜치 결정
+          // ------------------------------------------------------------
+          env.CHECKOUT_BRANCH = ''
+          if (env.EVENT_KIND == 'merge_request' && env.MR_SOURCE) {
+            env.CHECKOUT_BRANCH = env.MR_SOURCE
+          } else if (env.EVENT_KIND == 'push' && env.PUSH_BRANCH) {
+            env.CHECKOUT_BRANCH = env.PUSH_BRANCH
+          }
+
+          // ------------------------------------------------------------
+          // 태그/플래그 초기화 (빌드마다 리셋)
+          // - stage 간 안전 공유는 .image_tag 파일과 ensureImageTag()로 해결
+          // ------------------------------------------------------------
+          env.AI_BUILT     = "false"
+          env.AI_IMAGE_TAG = "UNSET"
+          env.IMAGE_TAG    = "UNSET"
+
+          // 이전 빌드에서 남은 태그 파일이 있을 수 있으니 초기화
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            rm -f .image_tag .ai_image_tag || true
+          '''
+
+          echo """
+[kind=${env.EVENT_KIND}]
+actor=${env.ACTOR}
+pushBranch=${env.PUSH_BRANCH}
+mrSource=${env.MR_SOURCE}
+mrTarget=${env.MR_TARGET}
+checkoutBranch=${env.CHECKOUT_BRANCH}
+plan: BE=${env.RUN_BACKEND}, FE=${env.RUN_FRONTEND}, BUILDIMG=${env.RUN_BUILDIMG}, DEPLOY=${env.RUN_DEPLOY}
+""".trim()
+        }
+      }
+    }
+
+    stage('Checkout') {
+      when {
+        expression {
+          env.RUN_BACKEND == "true" ||
+          env.RUN_FRONTEND == "true" ||
+          env.RUN_BUILDIMG == "true" ||
+          env.RUN_DEPLOY == "true"
+        }
+      }
+      steps {
+        // Jenkinsfile 로딩에 사용된 scm을 동일하게 체크아웃
+        checkout scm
+
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+
+          # CHECKOUT_BRANCH 지정 시 origin 브랜치 존재 확인 후 checkout
+          if [[ -n "${CHECKOUT_BRANCH:-}" ]]; then
+            git rev-parse --verify "refs/remotes/origin/${CHECKOUT_BRANCH}" >/dev/null 2>&1 || {
+              echo "[ERROR] origin/${CHECKOUT_BRANCH} not found"
+              git branch -r || true
+              exit 1
+            }
+            git checkout -B "${CHECKOUT_BRANCH}" "refs/remotes/origin/${CHECKOUT_BRANCH}"
+          fi
+
+          git branch --show-current
+          git log -1 --oneline
+        '''
+      }
+    }
+
+    stage('Set IMAGE_TAG (master push only)') {
+      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'master' && env.RUN_BUILDIMG == "true" } }
+      steps {
+        script {
+          // ------------------------------------------------------------
+          // [핵심 FIX]
+          // - 태그는 반드시 Groovy env.IMAGE_TAG에 저장
+          // - 동시에 workspace 파일(.image_tag)에 저장해서 stage 경계/withEnv 영향에도 절대 안전
+          // ------------------------------------------------------------
+          def t = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+          if (!t) error("[ERROR] IMAGE_TAG 계산 실패: git rev-parse 결과가 비었습니다.")
+
+          env.IMAGE_TAG = t
+          writeFile file: '.image_tag', text: "${t}\n"
+
+          echo "IMAGE_TAG=${env.IMAGE_TAG}"
+        }
+      }
+    }
+
+    // ============================================================
+    // MR stages
+    // ============================================================
+    stage('Backend Test (MR only)') {
+      when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_BACKEND == "true" } }
+      steps {
+        dir('app/backend') {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            : > "../../${BACKEND_LOG}"
+
+            docker version >/dev/null 2>&1 || {
+              echo "[ERROR] docker not available" | tee -a "../../${BACKEND_LOG}"
+              exit 1
+            }
+
+            docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
+            docker rm -f "${CI_MYSQL_CONTAINER}" >/dev/null 2>&1 || true
+
+            docker pull "${CI_MYSQL_IMAGE}" >/dev/null 2>&1 || true
+            docker run -d --name "${CI_MYSQL_CONTAINER}" \
+              -e MYSQL_ROOT_PASSWORD="${CI_MYSQL_ROOTPW}" \
+              -e MYSQL_DATABASE="${CI_MYSQL_DB}" \
+              -e MYSQL_USER="${CI_MYSQL_USER}" \
+              -e MYSQL_PASSWORD="${CI_MYSQL_PASSWORD}" \
+              -p 0:3306 \
+              "${CI_MYSQL_IMAGE}" >/dev/null
+
+            MYSQL_HOST_PORT="$(docker port "${CI_MYSQL_CONTAINER}" 3306/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+            if [[ -z "${MYSQL_HOST_PORT}" ]]; then
+              echo "[ERROR] mysql port detect failed" | tee -a "../../${BACKEND_LOG}"
+              docker ps -a | tee -a "../../${BACKEND_LOG}" || true
+              docker logs "${CI_MYSQL_CONTAINER}" | tail -n 80 | tee -a "../../${BACKEND_LOG}" || true
+              exit 1
+            fi
+
+            for i in $(seq 1 90); do
+              if docker exec "${CI_MYSQL_CONTAINER}" mysqladmin ping -uroot -p"${CI_MYSQL_ROOTPW}" --silent >/dev/null 2>&1; then
+                if docker exec "${CI_MYSQL_CONTAINER}" mysql -uroot -p"${CI_MYSQL_ROOTPW}" -e "SELECT 1" >/dev/null 2>&1; then
+                  break
+                fi
+              fi
+              sleep 1
+              if [[ "$i" -eq 90 ]]; then
+                echo "[ERROR] mysql readiness timeout" | tee -a "../../${BACKEND_LOG}"
+                docker logs "${CI_MYSQL_CONTAINER}" | tail -n 80 | tee -a "../../${BACKEND_LOG}" || true
+                exit 1
+              fi
+            done
+
+            docker pull "${CI_REDIS_IMAGE}" >/dev/null 2>&1 || true
+            docker run -d --name "${CI_REDIS_CONTAINER}" -p 0:6379 "${CI_REDIS_IMAGE}" >/dev/null
+
+            REDIS_HOST_PORT="$(docker port "${CI_REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/\\1/' | tail -n 1)"
+            if [[ -z "${REDIS_HOST_PORT}" ]]; then
+              echo "[ERROR] redis port detect failed" | tee -a "../../${BACKEND_LOG}"
+              docker ps -a | tee -a "../../${BACKEND_LOG}" || true
+              docker logs "${CI_REDIS_CONTAINER}" | tail -n 80 | tee -a "../../${BACKEND_LOG}" || true
+              exit 1
+            fi
+
+            for i in $(seq 1 30); do
+              if docker exec "${CI_REDIS_CONTAINER}" redis-cli ping 2>/dev/null | grep -q PONG; then
+                break
+              fi
+              sleep 1
+              if [[ "$i" -eq 30 ]]; then
+                echo "[ERROR] redis readiness timeout" | tee -a "../../${BACKEND_LOG}"
+                docker logs "${CI_REDIS_CONTAINER}" | tail -n 80 | tee -a "../../${BACKEND_LOG}" || true
+                exit 1
+              fi
+            done
+
+            chmod +x mvnw || true
+            ./mvnw -q clean test \
+              -Dspring.profiles.active=ci \
+              -Dspring.datasource.url="jdbc:mysql://127.0.0.1:${MYSQL_HOST_PORT}/${CI_MYSQL_DB}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
+              -Dspring.datasource.username="${CI_MYSQL_USER}" \
+              -Dspring.datasource.password="${CI_MYSQL_PASSWORD}" \
+              -Dspring.data.redis.host=127.0.0.1 \
+              -Dspring.data.redis.port="${REDIS_HOST_PORT}" \
+              -Dspring.redis.host=127.0.0.1 \
+              -Dspring.redis.port="${REDIS_HOST_PORT}" \
+              2>&1 | tee -a "../../${BACKEND_LOG}"
+          '''
+        }
+      }
+      post {
+        always {
+          sh '''#!/usr/bin/env bash
+            set +e
+            docker rm -f "${CI_REDIS_CONTAINER}" >/dev/null 2>&1 || true
+            docker rm -f "${CI_MYSQL_CONTAINER}" >/dev/null 2>&1 || true
+          '''
+        }
+      }
+    }
+
+    stage('AI Test (MR only)') {
+      when { expression { env.EVENT_KIND == 'merge_request' } }
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          echo "[INFO] AI Server MR Test Start..."
+          TEST_TAG="test"
+
+          docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${TEST_TAG}" "${AI_CONTEXT}"
+
+          # import 단계에서 env 없어서 죽는 문제 방지: 최소 더미값
+          docker run --rm \
+            -e DB_PASSWORD=dummy \
+            -e DB_USERNAME=dummy \
+            -e DB_HOST=dummy \
+            -e DB_PORT=3306 \
+            -e DB_NAME=dummy \
+            -e GMS_API_KEY=dummy \
+            -e GMS_BASE_URL=https://example.com \
+            "${REGISTRY_IMAGE_AI}:${TEST_TAG}" pytest /app/test_main.py
+
+          echo "[INFO] MR Test Passed! (Ready to Merge)"
+        '''
+      }
+    }
+
+    stage('Frontend Build (MR only)') {
+      when { expression { env.EVENT_KIND == 'merge_request' && env.RUN_FRONTEND == "true" } }
+      steps {
+        dir('app/frontend') {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            : > "../../${FRONTEND_LOG}"
+
+            docker version >/dev/null 2>&1 || {
+              echo "[ERROR] docker not available" | tee -a "../../${FRONTEND_LOG}"
+              exit 1
+            }
+
+            docker pull node:20-alpine >/dev/null 2>&1 || true
+            mkdir -p "${HOME}/.npm"
+
+            docker run --rm \
+              -v "$PWD":/app -w /app \
+              -v "${HOME}/.npm":/root/.npm \
+              node:20-alpine sh -lc "set -euo pipefail; npm ci; npm run build" \
+              2>&1 | tee -a "../../${FRONTEND_LOG}"
+          '''
+        }
+      }
+    }
+
+    // ============================================================
+    // master push: Build & Push Backend & Nginx
+    // ============================================================
+    stage('Build & Push: Backend & Nginx') {
+      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'master' && env.RUN_BUILDIMG == "true" } }
+      steps {
+        script {
+          // ------------------------------------------------------------
+          // 태그는 "언제든" ensureImageTag()로 확정해서 사용
+          // (Set IMAGE_TAG stage가 어떤 이유로 스킵/실패해도 여기서 최종 방어)
+          // ------------------------------------------------------------
+          def tag = ensureImageTag()
+          echo "[INFO] Using IMAGE_TAG=${tag}"
+        }
+
+        withCredentials([usernamePassword(
+          credentialsId: env.DOCKERHUB_CRED_ID,
+          usernameVariable: 'DH_USER',
+          passwordVariable: 'DH_PASS'
+        )]) {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+
+            echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+
+            echo "[INFO] Backend Build... TAG=${IMAGE_TAG}"
+            docker build -f "${BACKEND_DOCKERFILE}" -t "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}" "${BACKEND_CONTEXT}"
+            docker push "${REGISTRY_IMAGE_BACKEND}:${IMAGE_TAG}"
+
+            echo "[INFO] Nginx Build... TAG=${IMAGE_TAG}"
+            docker build -f "${NGINX_DOCKERFILE}" -t "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}" "${NGINX_CONTEXT}"
+            docker push "${REGISTRY_IMAGE_NGINX}:${IMAGE_TAG}"
+          '''
+        }
+      }
+    }
+
+    // ============================================================
+    // master push: Build & Push AI Server (ai-server 변경 감지 시에만)
+    // ============================================================
+    stage('Build & Push: AI Server (only when changed)') {
+      when {
+        allOf {
+          expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'master' && env.RUN_BUILDIMG == "true" }
+          anyOf {
+            // changeset은 checkout 이후 changelog를 기반으로 평가됨
+            changeset "app/ai-server/**"
+            changeset "app/ai-server/model/**"
+            changeset "infra/jenkins/Jenkinsfile"
+            changeset "Jenkinsfile"
+          }
+        }
+      }
+      steps {
+        script {
+          def tag = ensureImageTag()
+
+          // ------------------------------------------------------------
+          // AI 이미지 태그는 backend/nginx와 동일하게 고정 (롤백/추적 용이)
+          // ------------------------------------------------------------
+          env.AI_IMAGE_TAG = tag
+          env.AI_BUILT = "true"
+          writeFile file: '.ai_image_tag', text: "${env.AI_IMAGE_TAG}\n"
+
+          echo "AI_BUILT=${env.AI_BUILT}, AI_IMAGE_TAG=${env.AI_IMAGE_TAG}"
+        }
+
+        withCredentials([usernamePassword(
+          credentialsId: env.DOCKERHUB_CRED_ID,
+          usernameVariable: 'DH_USER',
+          passwordVariable: 'DH_PASS'
+        )]) {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+
+            echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+
+            echo "[INFO] AI Server Changed. Starting Build... TAG=${AI_IMAGE_TAG}"
+            docker build -f "${AI_DOCKERFILE}" -t "${REGISTRY_IMAGE_AI}:${AI_IMAGE_TAG}" "${AI_CONTEXT}"
+
+            echo "[INFO] AI Server Test Running..."
+            docker run --rm \
+              -e DB_PASSWORD=dummy \
+              -e DB_USERNAME=dummy \
+              -e DB_HOST=dummy \
+              -e DB_PORT=3306 \
+              -e DB_NAME=dummy \
+              -e GMS_API_KEY=dummy \
+              -e GMS_BASE_URL=https://example.com \
+              "${REGISTRY_IMAGE_AI}:${AI_IMAGE_TAG}" pytest /app/test_main.py
+
+            echo "[INFO] Test Passed! Pushing image..."
+            docker push "${REGISTRY_IMAGE_AI}:${AI_IMAGE_TAG}"
+          '''
+        }
+      }
+    }
+
+    // ============================================================
+    // master push: Deploy
+    // ============================================================
+    stage('Deploy (master push only, pull based)') {
+      when { expression { env.EVENT_KIND == 'push' && env.PUSH_BRANCH == 'master' && env.RUN_DEPLOY == "true" } }
+      steps {
+        script {
+          def tag = ensureImageTag()
+          echo "Deploy IMAGE_TAG=${tag}, AI_BUILT=${env.AI_BUILT}, AI_IMAGE_TAG=${env.AI_IMAGE_TAG}"
+        }
+
+        withCredentials([usernamePassword(
+          credentialsId: env.DOCKERHUB_CRED_ID,
+          usernameVariable: 'DH_USER',
+          passwordVariable: 'DH_PASS'
+        )]) {
+          sshagent(credentials: [env.SSH_CRED_ID]) {
+            sh '''#!/usr/bin/env bash
+              set -euo pipefail
+              : > "${DEPLOY_LOG}"
+
+              mkdir -p ~/.ssh
+              ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+              ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+                "REGISTRY_IMAGE_BACKEND='${REGISTRY_IMAGE_BACKEND}' \
+                 REGISTRY_IMAGE_NGINX='${REGISTRY_IMAGE_NGINX}' \
+                 REGISTRY_IMAGE_AI='${REGISTRY_IMAGE_AI}' \
+                 IMAGE_TAG='${IMAGE_TAG}' \
+                 AI_BUILT='${AI_BUILT}' \
+                 AI_IMAGE_TAG='${AI_IMAGE_TAG}' \
+                 DH_USER='${DH_USER}' \
+                 DH_PASS='${DH_PASS}' \
+                 DEPLOY_DIR='${DEPLOY_DIR}' \
+                 GIT_REPO_SSH='${GIT_REPO_SSH}' \
+                 COMPOSE_PROD_FILE='${COMPOSE_PROD_FILE}' \
+                 bash -s" <<'EOSSH' 2>&1 | tee -a "${DEPLOY_LOG}"
+set -euo pipefail
+
+mkdir -p "${DEPLOY_DIR}"
+cd "${DEPLOY_DIR}"
+
+if [[ ! -d .git ]]; then
+  git clone "${GIT_REPO_SSH}" .
+fi
+
+git fetch origin
+git checkout -B master origin/master
+
+echo "${DH_PASS}" | docker login -u "${DH_USER}" --password-stdin >/dev/null
+
+# 운영 AI 태그 유지 파일 (AI가 변경되지 않으면 기존 운영 태그로 계속 실행)
+AI_TAG_FILE=".deploy_ai_tag"
+
+# (1) 현재 운영 중인 AI 태그 읽기(없으면 latest)
+if [[ -f "${AI_TAG_FILE}" ]]; then
+  CURRENT_AI_TAG="$(cat "${AI_TAG_FILE}" | tr -d '[:space:]')"
+else
+  CURRENT_AI_TAG="latest"
+fi
+
+# (2) 이번에 AI를 빌드했으면 운영 태그 갱신
+if [[ "${AI_BUILT}" == "true" ]]; then
+  if [[ -z "${AI_IMAGE_TAG}" || "${AI_IMAGE_TAG}" == "UNSET" || "${AI_IMAGE_TAG}" == "null" ]]; then
+    echo "[ERROR] AI_BUILT=true but AI_IMAGE_TAG is invalid"
+    exit 1
+  fi
+  CURRENT_AI_TAG="${AI_IMAGE_TAG}"
+  echo "${CURRENT_AI_TAG}" > "${AI_TAG_FILE}"
+fi
+
+export REGISTRY_IMAGE_BACKEND REGISTRY_IMAGE_NGINX REGISTRY_IMAGE_AI
+export IMAGE_TAG
+export AI_IMAGE_TAG="${CURRENT_AI_TAG}"
+
+echo "[INFO] Using tags: IMAGE_TAG=${IMAGE_TAG}, AI_IMAGE_TAG=${AI_IMAGE_TAG} (AI_BUILT=${AI_BUILT})"
+
+echo "[INFO] Pull backend/nginx"
+docker compose -f "${COMPOSE_PROD_FILE}" pull backend nginx
+
+if [[ "${AI_BUILT}" == "true" ]]; then
+  echo "[INFO] Pull ai-server (changed)"
+  docker compose -f "${COMPOSE_PROD_FILE}" pull ai-server
+else
+  echo "[INFO] Skip ai-server pull (no change)"
+fi
+
+echo "[INFO] Recreate backend/nginx"
+docker compose -f "${COMPOSE_PROD_FILE}" up -d --no-deps --force-recreate backend nginx
+
+if [[ "${AI_BUILT}" == "true" ]]; then
+  echo "[INFO] Recreate ai-server (changed)"
+  docker compose -f "${COMPOSE_PROD_FILE}" up -d --no-deps --force-recreate ai-server
+else
+  echo "[INFO] Keep ai-server container (no change)"
+fi
+
+# 나머지 서비스도 compose 상태 보장
+docker compose -f "${COMPOSE_PROD_FILE}" up -d
+
+docker image prune -f >/dev/null 2>&1 || true
+EOSSH
+            '''
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      script {
+        def ok = (currentBuild.currentResult == 'SUCCESS')
+        def kind = env.EVENT_KIND ?: ''
+        def branch = (kind == 'merge_request') ? (env.MR_SOURCE ?: '') : (env.PUSH_BRANCH ?: env.BRANCH_NAME ?: '')
+        def title = ok ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패"
+
+        // 멀티브랜치/폴더형 Job 대응 URL 생성
+        def jobName = (env.JOB_NAME ?: '').trim()
+        def buildNo = (env.BUILD_NUMBER ?: '').trim()
+        def jobPath = jobName ? jobName.split('/').collect { "job/${it}" }.join('/') : ''
+        def buildUrl = jobPath ? "${env.PUBLIC_JENKINS_URL}/${jobPath}/${buildNo}/" : env.PUBLIC_JENKINS_URL
+
+        mmNotify(ok, [
+          title   : title,
+          mention : '@channel',
+          kind    : kind,
+          actor   : env.ACTOR ?: 'unknown',
+          branch  : branch,
+          target  : (env.MR_TARGET ?: ''),
+          buildUrl: buildUrl,
+          credId  : env.MM_WEBHOOK_CRED_ID
+        ])
+      }
+    }
+  }
+}
+
+// =====================================================================
+// Helper Functions (pipeline 블록 밖에 둬야 안전)
+// =====================================================================
+
+/**
+ * "비정상/센티널" 태그 판별
+ */
+def isInvalidTag(String v) {
+  def t = (v ?: '').trim()
+  return (!t || t == 'UNSET' || t == 'null')
+}
+
+/**
+ * IMAGE_TAG를 확정하는 단일 진입점
+ * 우선순위: env -> workspace 파일(.image_tag) -> git
+ *
+ * - Set IMAGE_TAG stage가 실행되었으면 env/파일에서 바로 가져옴
+ * - 혹시 스킵되거나 withEnv 영향으로 env가 흔들려도 파일/깃으로 복구
+ * - 최종적으로 env.IMAGE_TAG에 다시 저장해 이후 sh에서 ${IMAGE_TAG}로 사용 가능하게 함
+ */
+def ensureImageTag() {
+  if (!isInvalidTag(env.IMAGE_TAG)) return env.IMAGE_TAG.trim()
+
+  if (fileExists('.image_tag')) {
+    def fromFile = readFile('.image_tag').trim()
+    if (!isInvalidTag(fromFile)) {
+      env.IMAGE_TAG = fromFile
+      return env.IMAGE_TAG
+    }
+  }
+
+  def t = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+  if (isInvalidTag(t)) {
+    error("[ERROR] IMAGE_TAG 계산 실패: git rev-parse 결과가 비었습니다.")
+  }
+
+  env.IMAGE_TAG = t
+  writeFile file: '.image_tag', text: "${t}\n"
+  return env.IMAGE_TAG
+}
+
+def mmNotify(boolean success, Map info) {
+  def icon  = success ? ":jenkins:" : ":warning:"
+  def title = info.title ?: (success ? ":white_check_mark: Jenkins 성공" : ":x: Jenkins 실패")
+
+  def lines = []
+  if (info.mention)  lines << "${info.mention}"
+  if (info.kind)     lines << "**이벤트:** `${info.kind}`"
+  if (info.actor)    lines << "**실행자:** `${info.actor}`"
+  if (info.branch)   lines << "**브랜치:** `${info.branch}`"
+  if (info.target)   lines << "**타겟:** `${info.target}`"
+  if (info.buildUrl) lines << "**Jenkins:** ${info.buildUrl}"
+
+  def payload = groovy.json.JsonOutput.toJson([
+    username  : "Jenkins",
+    icon_emoji: icon,
+    text      : title + "\n" + lines.join("\n")
+  ])
+
+  writeFile file: 'mm_payload.json', text: payload
+
+  withCredentials([string(credentialsId: info.credId, variable: 'MM_WEBHOOK')]) {
+    sh '''#!/usr/bin/env bash
+      curl -sS -X POST -H 'Content-Type: application/json' \
+        --data-binary @mm_payload.json \
+        "$MM_WEBHOOK" >/dev/null
+    '''
+  }
+}
