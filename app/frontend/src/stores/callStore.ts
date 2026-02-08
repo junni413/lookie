@@ -114,6 +114,14 @@ export const useCallStore = create<CallStore>((set, get) => ({
             const token = useAuthStore.getState().token;
             if (!token) throw new Error("인증 토큰이 없습니다.");
 
+            // [Fix] 통화 요청 전에 상태를 WAITING으로 먼저 변경하여 모달이 즉시 뜨게 함
+            set({
+                status: "WAITING",
+                remoteUserId: calleeId,
+                remoteUserName: calleeName || "관리자",
+                issueId,
+            });
+
             const response = await webrtcService.makeCall({ callerId, calleeId, issueId });
 
             const timerId = window.setTimeout(() => {
@@ -154,14 +162,11 @@ export const useCallStore = create<CallStore>((set, get) => ({
                 }
             });
 
+            // 나머지 정보 업데이트 (status는 이미 WAITING)
             set({
-                status: "WAITING",
                 callId: response.callId,
                 sessionId: response.sessionId,
                 token: response.token,
-                remoteUserId: calleeId,
-                remoteUserName: calleeName || "작업자",
-                issueId,
                 timeoutId: timerId,
             });
         } catch (error) {

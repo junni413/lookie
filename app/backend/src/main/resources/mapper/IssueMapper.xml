@@ -78,6 +78,7 @@
         UPDATE issues
         SET
             status = #{status},
+            webrtc_status = #{webrtcStatus},
             reason_code = #{reasonCode},
             issue_handling = #{issueHandling},
             admin_required = #{adminRequired},

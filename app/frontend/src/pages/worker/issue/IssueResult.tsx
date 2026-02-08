@@ -251,18 +251,13 @@ export default function IssueResult() {
 
       // Start auto-assignment call
       await startCall(user.userId, null, nav.issueId, "관리자");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to start call:", err);
-    } finally {
-      // [Fix] API 완료 후(성공/실패 무관) 잠시 후 상태 갱신 (백엔드 처리 대기)
-      // callStatus가 IDLE 유지되는 경우(즉시 실패) 대비
-      setTimeout(() => {
-        if (nav) {
-          issueService.getIssueDetail(nav.issueId).then((res) => {
-            if (res) setDetail(res);
-          });
-        }
-      }, 500);
+      toast({
+        title: "통화 연결 실패",
+        description: err.message || "관리자가 부재중입니다.",
+        variant: "destructive"
+      });
     }
   };
 

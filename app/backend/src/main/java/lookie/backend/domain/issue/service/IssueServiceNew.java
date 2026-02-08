@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 
 import java.util.Map;
 
@@ -160,7 +162,9 @@ public class IssueServiceNew {
         issue.setWebrtcStatus("WAITING");
         issueMapper.updateIssue(issue);
 
-        log.info("[IssueServiceNew] Admin connection initiated - issueId={}", issueId);
+        // [WebSocket] 상태 변경 알림 전송
+        messagingTemplate.convertAndSend("/topic/issues/" + issueId, issue);
+        log.info("[IssueServiceNew] Admin connection initiated & Synced - issueId={}", issueId);
     }
 
     @Transactional
@@ -175,7 +179,9 @@ public class IssueServiceNew {
         issue.setWebrtcStatus("CONNECTED");
         issueMapper.updateIssue(issue);
 
-        log.info("[IssueServiceNew] WebRTC connected - issueId={}", issueId);
+        // [WebSocket] 상태 변경 알림 전송
+        messagingTemplate.convertAndSend("/topic/issues/" + issueId, issue);
+        log.info("[IssueServiceNew] WebRTC connected & Synced - issueId={}", issueId);
     }
 
     @Transactional
@@ -190,7 +196,9 @@ public class IssueServiceNew {
         issue.setWebrtcStatus("MISSED");
         issueMapper.updateIssue(issue);
 
-        log.info("[IssueServiceNew] WebRTC missed - issueId={}", issueId);
+        // [WebSocket] 상태 변경 알림 전송
+        messagingTemplate.convertAndSend("/topic/issues/" + issueId, issue);
+        log.info("[IssueServiceNew] WebRTC missed & Synced - issueId={}", issueId);
     }
 
     // ========== 5) AI 결과 반영 ==========
@@ -294,6 +302,26 @@ public class IssueServiceNew {
     }
 
     // ========== 유틸리티 메서드 ==========
+
+    /**
+     * [WebRTC] 화상 연결 전 이슈 상태 검증
+     * - Task가 이미 완료(Next Task 진행 중)되었다면 연결 차단
+     */
+    @Transactional(readOnly = true)
+    public void validateIssueForCall(Long issueId) {
+        if (issueId == null)
+            return;
+
+        IssueVO issue = issueMapper.findById(issueId);
+        if (issue == null) {
+            throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+
+        TaskVO task = taskMapper.findById(issue.getBatchTaskId());
+        if (task != null && "DONE".equals(task.getStatus())) {
+            throw new ApiException(ErrorCode.ISSUE_TASK_ALREADY_DONE);
+        }
+    }
 
     private TaskItemVO findNextPickableItem(Long taskId) {
         return taskItemMapper.findNextItem(taskId);

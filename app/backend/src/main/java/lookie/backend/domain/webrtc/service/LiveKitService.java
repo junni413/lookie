@@ -47,7 +47,7 @@ public class LiveKitService {
     private final io.livekit.server.RoomServiceClient roomServiceClient;
     private final SimpMessagingTemplate messagingTemplate;
     private final UserMapper userMapper;
-    private final lookie.backend.domain.issue.service.IssueService issueService;
+    private final lookie.backend.domain.issue.service.IssueServiceNew issueService;
 
     private static final String STATUS_BUSY = "BUSY";
 
@@ -90,7 +90,7 @@ public class LiveKitService {
                 // 관리자 부재 시에도 이슈 상태 변경 (NON_BLOCKING) -> 작업자 진행 가능
                 if (request.getIssueId() != null) {
                     try {
-                        issueService.handleWebRtcMissed(request.getIssueId());
+                        issueService.onWebrtcMissed(request.getIssueId());
                         log.info("🚫 [makeCall] 관리자 부재 -> 이슈 상태 NON_BLOCKING 전환. issueId={}", request.getIssueId());
                     } catch (Exception ex) {
                         log.error("❌ [makeCall] 이슈 상태 변경 실패", ex);
@@ -337,6 +337,11 @@ public class LiveKitService {
         // 3. Redis에서 가용 상태 필터링
         List<UserVO> availableManagers = managers.stream()
                 .filter(manager -> {
+                    // 1) 자기 자신 제외 (루프 방지)
+                    if (manager.getUserId().equals(workerId))
+                        return false;
+
+                    // 2) Redis 상태 확인 (가용성)
                     String key = RedisKeyConstants.USER_STATUS_KEY + manager.getUserId();
                     String status = redisTemplate.opsForValue().get(key);
                     return status == null; // BUSY/AWAY/PAUSED가 아닌 경우만
