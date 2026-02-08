@@ -7,7 +7,7 @@ import { manageService } from "@/services/manageService";
 import { rebalanceService } from "@/services/rebalance.api"; // Import Rebalance Service
 import type { ZoneStat } from "@/types/db"; // Import from shared types
 import type { DB_Worker } from "@/types/db";
-import { DEFAULT_ZONES } from "@/utils/zoneUtils"; // Import shared constant
+import { DEFAULT_ZONES, mergeZoneData } from "@/utils/zoneUtils"; // Import shared constant
 import ManageStatisticCard from "./components/manage/ManageStatisticCard";
 import ManageZoneColumn from "./components/manage/ManageZoneColumn";
 import AiReallocationModal from "./components/manage/AiReallocationModal";
@@ -32,21 +32,6 @@ export default function Manage() {
     // Check if user has unsaved changes
     const isDirty = JSON.stringify(workers) !== JSON.stringify(lastAppliedWorkers);
 
-    const computeStatusByWorkers = (workerCount: number, avgWorkers: number): ZoneStat["status"] => {
-        if (avgWorkers <= 0) return "NORMAL";
-        if (workerCount >= avgWorkers * 1.2) return "STABLE";
-        if (workerCount <= avgWorkers * 0.8) return "CRITICAL";
-        return "NORMAL";
-    };
-
-    const zoneIds = stats.map(s => s.zoneId);
-    const workerCountByZone = zoneIds.map(
-        zoneId => workers.filter(w => w.currentZoneId === zoneId).length
-    );
-    const avgWorkers = workerCountByZone.length > 0
-        ? workerCountByZone.reduce((sum, c) => sum + c, 0) / workerCountByZone.length
-        : 0;
-
     const displayStats: ZoneStat[] = stats.map(stat => {
         const workerCount = workers.filter(w => w.currentZoneId === stat.zoneId).length;
         return {
@@ -54,8 +39,8 @@ export default function Manage() {
             workerCount,
             // Zone progress stays as server-provided workload progress
             workRate: stat.workRate,
-            // Status reflects reallocation impact using current worker distribution
-            status: computeStatusByWorkers(workerCount, avgWorkers),
+            // Status comes from server (rebalance snapshot / DB logic)
+            status: stat.status,
         };
     });
 
@@ -151,23 +136,40 @@ export default function Manage() {
         setLoading(true);
         try {
             if (pendingAiMoves && pendingAiMoves.length > 0) {
-                const success = await rebalanceService.apply(
+                const zoneOverviews = await rebalanceService.apply(
                     pendingAiMoves,
                     "AI Recommendation Applied via Admin Manage"
                 );
 
-                if (success) {
+                if (zoneOverviews) {
                     alert("AI 추천 배치가 적용되었습니다.");
                     setLastMovedWorkerIds(pendingAiMoves.map((m: any) => m.worker_id));
                     setPendingAiMoves(null);
-                    await loadData();
+
+                    // Update stats immediately from response
+                    const merged = mergeZoneData(
+                        zoneOverviews.map(z => ({
+                            zoneId: z.zoneId,
+                            name: z.zoneName,
+                            status: z.status,
+                            workerCount: z.workerCount,
+                            workRate: z.progressRate
+                        }))
+                    );
+                    setStats(merged);
+
+                    // Broadcast so Dashboard/Map can refresh without waiting
                     try {
                         const ts = String(Date.now());
                         localStorage.setItem("zones-refresh-ts", ts);
+                        localStorage.setItem("zones-override", JSON.stringify({ ts, zones: merged }));
                         window.dispatchEvent(new Event("zones-refresh"));
                     } catch {
                         window.dispatchEvent(new Event("zones-refresh"));
                     }
+
+                    // Refresh this screen in background (workers + stats)
+                    loadData(true);
                 } else {
                     alert("재배치 적용에 실패했습니다.");
                 }

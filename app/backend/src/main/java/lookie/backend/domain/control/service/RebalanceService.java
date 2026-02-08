@@ -4,11 +4,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.batch.mapper.BatchMapper;
 import lookie.backend.domain.batch.vo.BatchVO;
+import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.RebalanceApplyRequest;
+import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.mapper.ControlMapper;
 import lookie.backend.domain.control.mapper.RebalanceMapper;
 import lookie.backend.domain.control.repository.ControlRedisRepository;
 import lookie.backend.domain.control.vo.RebalanceSnapshotVO;
+import lookie.backend.global.common.type.ZoneType;
 import lookie.backend.infra.ai.AiRebalanceClient;
 import lookie.backend.infra.ai.dto.RebalanceRecommendResponse;
 import org.springframework.stereotype.Service;
@@ -60,9 +63,9 @@ public class RebalanceService {
      * - 트랜잭션 필수 (전체 성공 or 전체 실패)
      */
     @Transactional
-    public void apply(RebalanceApplyRequest request) {
+    public List<ZoneOverviewDto> apply(RebalanceApplyRequest request) {
         if (request.getMoves() == null || request.getMoves().isEmpty()) {
-            return;
+            return controlMapper.selectZoneOverviews();
         }
 
         String reason = (request.getReason() == null || request.getReason().isEmpty())
@@ -84,13 +87,40 @@ public class RebalanceService {
             controlMapper.insertAiAssignmentHistory(workerId, toZone, "TEMP", "AI", reason);
         }
 
+        // 3.5) 최신 스냅샷을 기준으로, 현재 배정 zone 반영한 스냅샷 생성
+        try {
+            BatchVO currentBatch = batchMapper.findCurrentInProgress();
+            if (currentBatch != null) {
+                rebalanceMapper.insertSnapshotFromLatestWithUserZone(currentBatch.getBatchId());
+            }
+        } catch (Exception e) {
+            log.warn("[RebalanceService] Snapshot refresh failed after apply: {}", e.getMessage());
+        }
+
         // 4. Redis cache invalidation (zone/dashboard/worker)
         try {
             redisRepository.deleteAllControlCache();
+
+            // Warm cache immediately so UI reflects changes without delay
+            List<ZoneOverviewDto> overviews = controlMapper.selectZoneOverviews();
+            for (ZoneOverviewDto dto : overviews) {
+                dto.setZoneName(ZoneType.getNameById(dto.getZoneId()));
+                redisRepository.saveZoneOverview(dto.getZoneId(), dto);
+            }
+
+            DashboardSummaryDto summary = DashboardSummaryDto.builder()
+                    .totalActiveWorkers(controlMapper.countTotalActiveWorkers())
+                    .pendingIssues(controlMapper.countPendingIssues())
+                    .completedIssues(controlMapper.countTodayCompletedIssues())
+                    .totalProgressRate(0.0)
+                    .zoneSummaries(overviews)
+                    .build();
+            redisRepository.saveDashboardSummary(summary);
         } catch (Exception e) {
             log.error("[RebalanceService] Cache invalidation failed after apply: {}", e.getMessage());
         }
 
         log.info("[RebalanceService] Applied {} moves. Reason={}", request.getMoves().size(), reason);
+        return controlMapper.selectZoneOverviews();
     }
 }

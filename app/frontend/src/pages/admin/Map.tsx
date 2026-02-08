@@ -28,11 +28,23 @@ export default function Map() {
     const [isWorkerPanelOpen, setIsWorkerPanelOpen] = useState(false);
     const [selectedLayout, setSelectedLayout] = useState<ZoneLayout | null>(null);
 
-    const computeStatusByWorkers = (workerCount: number, avgWorkers: number): ZoneStat["status"] => {
-        if (avgWorkers <= 0) return "NORMAL";
-        if (workerCount >= avgWorkers * 1.2) return "STABLE";
-        if (workerCount <= avgWorkers * 0.8) return "CRITICAL";
-        return "NORMAL";
+    const applyZonesOverride = () => {
+        try {
+            const raw = localStorage.getItem("zones-override");
+            if (!raw) return false;
+            const parsed = JSON.parse(raw);
+            if (!parsed?.zones || !Array.isArray(parsed.zones)) return false;
+            setStats(parsed.zones.map((z: any) => ({
+                zoneId: z.zoneId,
+                name: z.name,
+                status: z.status,
+                workerCount: z.workerCount,
+                workRate: z.workRate
+            })));
+            return true;
+        } catch {
+            return false;
+        }
     };
 
     useEffect(() => {
@@ -41,6 +53,7 @@ export default function Map() {
 
     useEffect(() => {
         const onZonesRefresh = () => {
+            applyZonesOverride();
             loadData(true);
             if (isMapModalOpen && selectedZoneId !== null) {
                 updateMapWorkers(selectedZoneId);
@@ -220,13 +233,10 @@ export default function Map() {
     }
 
     const workerCountByZone = stats.map(s => workers.filter(w => w.currentZoneId === s.zoneId).length);
-    const avgWorkers = workerCountByZone.length > 0
-        ? workerCountByZone.reduce((sum, c) => sum + c, 0) / workerCountByZone.length
-        : 0;
     const displayStats = stats.map((s, idx) => ({
         ...s,
         workerCount: workerCountByZone[idx] ?? 0,
-        status: computeStatusByWorkers(workerCountByZone[idx] ?? 0, avgWorkers),
+        status: s.status,
     }));
 
     const selectedZoneName = displayStats.find(s => s.zoneId === selectedZoneId)?.name || "";

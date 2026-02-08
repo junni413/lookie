@@ -23,6 +23,14 @@ export type ApplyRequest = {
     reason?: string;
 };
 
+export type ZoneOverviewDto = {
+    zoneId: number;
+    zoneName: string;
+    workerCount: number;
+    progressRate: number;
+    status: "STABLE" | "NORMAL" | "CRITICAL";
+};
+
 export const rebalanceService = {
     recommend: async (): Promise<RebalanceRecommendation | null> => {
         try {
@@ -41,7 +49,7 @@ export const rebalanceService = {
         }
     },
 
-    apply: async (moves: RebalanceMove[], reason: string = "AI Recommendation Applied"): Promise<boolean> => {
+    apply: async (moves: RebalanceMove[], reason: string = "AI Recommendation Applied"): Promise<ZoneOverviewDto[] | null> => {
         try {
             // Transform to backend expected format (camelCase for apply request)
             const payload: ApplyRequest = {
@@ -52,13 +60,13 @@ export const rebalanceService = {
                 reason
             };
 
-            const response = await request<ApiResponse<void>>("/api/rebalance/apply", {
+            const response = await request<ApiResponse<ZoneOverviewDto[]>>("/api/rebalance/apply", {
                 method: "POST",
                 body: payload
             });
 
             console.log("[RebalanceAPI] Apply Response:", response);
-            return response.success;
+            return response.success ? (response.data || []) : null;
         } catch (error) {
             console.error("Failed to apply rebalance", error);
             throw error;

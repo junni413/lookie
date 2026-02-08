@@ -29,11 +29,23 @@ export default function Dashboard() {
     progress: 0,
   });
 
-  const computeStatusByWorkers = (workerCount: number, avgWorkers: number): ZoneItem["status"] => {
-    if (avgWorkers <= 0) return "NORMAL";
-    if (workerCount >= avgWorkers * 1.2) return "STABLE";
-    if (workerCount <= avgWorkers * 0.8) return "CRITICAL";
-    return "NORMAL";
+  const applyZonesOverride = () => {
+    try {
+      const raw = localStorage.getItem("zones-override");
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.zones || !Array.isArray(parsed.zones)) return false;
+      setZoneData(parsed.zones.map((z: any) => ({
+        id: z.zoneId,
+        name: z.name,
+        status: z.status,
+        working: z.workerCount,
+        workRate: z.workRate
+      })));
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   /* 
@@ -59,13 +71,10 @@ export default function Dashboard() {
       // 2. Zone Stats
       if (zonesResult.status === "fulfilled") {
           const mergedZones = mergeZoneData(zonesResult.value);
-          const avgWorkers = mergedZones.length > 0
-            ? mergedZones.reduce((sum, z) => sum + (z.workerCount || 0), 0) / mergedZones.length
-            : 0;
           setZoneData(mergedZones.map(z => ({
               id: z.zoneId,
               name: z.name,
-              status: computeStatusByWorkers(z.workerCount || 0, avgWorkers),
+              status: z.status,
               working: z.workerCount,
               workRate: z.workRate
           })));
@@ -75,13 +84,10 @@ export default function Dashboard() {
         // Or should we keep previous data if polling fails?
         // Retaining previous data is better for "silent" failures.
         if (zoneData.length === 0) {
-            const avgWorkers = DEFAULT_ZONES.length > 0
-              ? DEFAULT_ZONES.reduce((sum, z) => sum + (z.workerCount || 0), 0) / DEFAULT_ZONES.length
-              : 0;
             setZoneData(DEFAULT_ZONES.map(z => ({
                 id: z.zoneId,
                 name: z.name,
-                status: computeStatusByWorkers(z.workerCount || 0, avgWorkers),
+                status: z.status,
                 working: z.workerCount,
                 workRate: z.workRate
             })));
@@ -102,6 +108,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const onZonesRefresh = () => {
+      applyZonesOverride();
       fetchData();
     };
     const onStorage = (e: StorageEvent) => {

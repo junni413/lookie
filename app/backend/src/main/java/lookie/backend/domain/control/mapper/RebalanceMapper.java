@@ -16,4 +16,6 @@ public interface RebalanceMapper {
      * @return 스냅샷 리스트
      */
     List<RebalanceSnapshotVO> selectLatestSnapshots(@Param("batchId") Long batchId);
+
+    int insertSnapshotFromLatestWithUserZone(@Param("batchId") Long batchId);
 }
