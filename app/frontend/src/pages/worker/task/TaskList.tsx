@@ -97,11 +97,11 @@ export default function TaskList() {
                                 <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px] font-black">
                                     <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
                                         <Package className="w-3 h-3 text-slate-400" />
-                                        <span><span className="text-blue-600 font-black">{item.requiredQty}</span>개</span>
+                                        <span><span className="text-[#304FFF] font-black">{item.requiredQty}</span>개</span>
                                     </div>
                                     <div className="flex items-center gap-1 px-2 py-1 bg-slate-100/60 text-slate-500 rounded-lg">
                                         <MapPin className="w-3 h-3 text-slate-400" />
-                                        <span><span className="text-blue-600 font-black">{item.locationCode}</span></span>
+                                        <span><span className="text-[#304FFF] font-black">{item.locationCode}</span></span>
                                     </div>
                                 </div>
                             </div>
@@ -145,7 +145,7 @@ export default function TaskList() {
                     onClick={() => navigate("/worker/task/work-detail", {
                         state: { task, toteBarcode }
                     })}
-                    className="w-full h-16 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-black text-[17px] rounded-[22px] shadow-[0_12px_24px_-8px_rgba(37,99,235,0.4)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    className="w-full h-16 bg-[#304FFF] text-white font-black text-[17px] rounded-[22px] shadow-[0_12px_24px_-8px_rgba(48,79,255,0.4)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                     <span>작업 계속하기</span>
                 </button>

@@ -56,12 +56,12 @@ function ResultCard({ verdict }: { verdict: AiVerdict }) {
 
   if (verdict === "RETAKE") {
     return (
-      <div className="rounded-2xl border bg-blue-50 p-4">
+      <div className="rounded-2xl border bg-[#304FFF]/5 p-4">
         <div className="flex items-start gap-3">
           <div className="mt-0.5">📸</div>
           <div>
             <p className="text-sm font-extrabold">재촬영 필요</p>
-            <p className="mt-1 text-xs text-blue-900/70">
+            <p className="mt-1 text-xs text-[#304FFF]/80">
               이미지가 선명하지 않아 판정이 어렵습니다.
               <br />
               사진을 다시 촬영해주세요.
@@ -91,11 +91,11 @@ function ResultCard({ verdict }: { verdict: AiVerdict }) {
 
 function AnalyzingCard() {
   return (
-    <div className="rounded-2xl border bg-blue-50 p-6 flex flex-col items-center justify-center text-center space-y-3">
-      <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+    <div className="rounded-2xl border bg-[#304FFF]/5 p-6 flex flex-col items-center justify-center text-center space-y-3">
+      <div className="w-10 h-10 border-4 border-[#304FFF]/20 border-t-[#304FFF] rounded-full animate-spin"></div>
       <div>
-        <p className="text-sm font-extrabold text-blue-900">AI 분석 중...</p>
-        <p className="text-xs text-blue-600 mt-1">잠시만 기다려주세요.</p>
+        <p className="text-sm font-extrabold text-[#304FFF]">AI 분석 중...</p>
+        <p className="text-xs text-[#304FFF]/60 mt-1">잠시만 기다려주세요.</p>
       </div>
     </div>
   );
@@ -404,7 +404,7 @@ export default function IssueResult() {
           <button
             type="button"
             onClick={connectAdmin}
-            className="h-12 rounded-2xl font-extrabold transition-all bg-blue-600 text-white active:scale-95 shadow-md"
+            className="h-12 rounded-2xl font-extrabold transition-all bg-[#304FFF] text-white active:scale-95 shadow-md"
           >
             {connectionAttempted ? "관리자 다시 연결하기" : "관리자 연결하기"}
           </button>
@@ -414,7 +414,7 @@ export default function IssueResult() {
         {!analyzing && (detail?.availableActions?.includes("RETAKE") || verdict === "RETAKE" || verdict === "NEED_REVIEW") && (
           <button
             onClick={handleRetake}
-            className="h-12 rounded-2xl border-2 border-blue-600 bg-white font-extrabold text-blue-600 active:scale-95 shadow-sm"
+            className="h-12 rounded-2xl border-2 border-[#304FFF] bg-white font-extrabold text-[#304FFF] active:scale-95 shadow-sm"
           >
             다시 촬영하기
           </button>

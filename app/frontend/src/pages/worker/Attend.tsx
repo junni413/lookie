@@ -145,7 +145,7 @@ export default function AttendPage() {
         <motion.div
           animate={{ scale: [1, 1.15, 1], opacity: [0.15, 0.05, 0.15] }}
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute inset-0 bg-blue-600 rounded-[44px]"
+          className="absolute inset-0 bg-[#304FFF] rounded-[44px]"
         />
 
         <motion.button
@@ -157,10 +157,10 @@ export default function AttendPage() {
             relative z-10
             w-[240px] h-[240px]
             rounded-[48px]
-            bg-gradient-to-br from-blue-600 to-indigo-700
+            bg-gradient-to-br from-[#304FFF] to-[#2539CC]
             text-white
             flex flex-col items-center justify-center gap-4
-            shadow-[0_25px_50px_rgba(37,99,235,0.4)]
+            shadow-[0_25px_50px_rgba(48,79,255,0.4)]
             transition-all duration-300
             disabled:opacity-60 disabled:pointer-events-nonegroup
           `}
