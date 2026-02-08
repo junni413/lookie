@@ -14,6 +14,7 @@ import lookie.backend.domain.control.vo.RebalanceSnapshotVO;
 import lookie.backend.global.common.type.ZoneType;
 import lookie.backend.infra.ai.AiRebalanceClient;
 import lookie.backend.infra.ai.dto.RebalanceRecommendResponse;
+import lookie.backend.domain.task.mapper.TaskItemMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,7 @@ public class RebalanceService {
     private final ControlMapper controlMapper;
     private final AiRebalanceClient aiRebalanceClient;
     private final ControlRedisRepository redisRepository;
+    private final TaskItemMapper taskItemMapper;
 
     /**
      * AI 재배치 추천 조회
@@ -108,11 +110,20 @@ public class RebalanceService {
                 redisRepository.saveZoneOverview(dto.getZoneId(), dto);
             }
 
+            double totalProgressRate = 0.0;
+            BatchVO currentBatch = batchMapper.findCurrentInProgress();
+            if (currentBatch != null) {
+                int totalItems = taskItemMapper.countItemsByBatch(currentBatch.getBatchId());
+                int completedItems = taskItemMapper.countCompletedItemsByBatch(currentBatch.getBatchId());
+                totalProgressRate = totalItems > 0 ? (double) completedItems * 100 / totalItems : 0.0;
+                totalProgressRate = Math.round(totalProgressRate * 10.0) / 10.0;
+            }
+
             DashboardSummaryDto summary = DashboardSummaryDto.builder()
                     .totalActiveWorkers(controlMapper.countTotalActiveWorkers())
                     .pendingIssues(controlMapper.countPendingIssues())
                     .completedIssues(controlMapper.countTodayCompletedIssues())
-                    .totalProgressRate(0.0)
+                    .totalProgressRate(totalProgressRate)
                     .zoneSummaries(overviews)
                     .build();
             redisRepository.saveDashboardSummary(summary);

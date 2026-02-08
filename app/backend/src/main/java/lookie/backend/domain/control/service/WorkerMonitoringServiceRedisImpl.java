@@ -155,11 +155,20 @@ public class WorkerMonitoringServiceRedisImpl implements WorkerMonitoringService
         List<ZoneOverviewDto> zoneSummaries = getZoneOverviews();
 
         // 3. DTO 구성
+        double totalProgressRate = 0.0;
+        BatchVO currentBatch = batchMapper.findCurrentInProgress();
+        if (currentBatch != null) {
+            int totalItems = taskItemMapper.countItemsByBatch(currentBatch.getBatchId());
+            int completedItems = taskItemMapper.countCompletedItemsByBatch(currentBatch.getBatchId());
+            totalProgressRate = totalItems > 0 ? (double) completedItems * 100 / totalItems : 0.0;
+            totalProgressRate = Math.round(totalProgressRate * 10.0) / 10.0;
+        }
+
         DashboardSummaryDto dto = DashboardSummaryDto.builder()
                 .totalActiveWorkers(totalActiveWorkers != null ? totalActiveWorkers : 0)
                 .pendingIssues(pendingIssues != null ? pendingIssues : 0)
                 .completedIssues(completedIssues != null ? completedIssues : 0)
-                .totalProgressRate(0.0) // 현재는 0.0으로 하드코딩
+                .totalProgressRate(totalProgressRate)
                 .zoneSummaries(zoneSummaries)
                 .build();
 
