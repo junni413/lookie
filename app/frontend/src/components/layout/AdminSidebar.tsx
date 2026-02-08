@@ -7,7 +7,6 @@ import { LogOut, Briefcase, Play, Pause, Power } from "lucide-react";
 import { workLogService } from "@/services/workLogService";
 
 export default function AdminSidebar() {
-
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
 

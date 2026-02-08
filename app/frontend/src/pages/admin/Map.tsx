@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useInterval } from "@/hooks/useInterval";
 import { useSearchParams } from "react-router-dom";
 import { manageService } from "@/services/manageService";
+import { adminService } from "@/services/adminService";
 
 import type { DB_Worker, ZoneLayout, ZoneStat } from "@/types/db";
 import ZoneSummaryCard from "./components/map/ZoneSummaryCard";
@@ -93,15 +94,14 @@ export default function Map() {
     const updateMapWorkers = async (zoneId: number) => {
         try {
             // Fetch real map data
-            const adminServiceWrapper = await import("@/services/adminService");
-            const mapData = await adminServiceWrapper.getZoneMap(zoneId);
+            const mapData = await adminService.getZoneMap(zoneId);
             
             // Convert DTO to DB_Worker format for UI
             // API Response: { zoneId, zoneName, lines, workers: [...] }
             const workersList = mapData.workers || [];
 
             const parsedWorkers = workersList.map((dto: any) => {
-                const { lineNumber, binNumber } = adminServiceWrapper.parseLocationCode(dto.currentLocationCode);
+                const { lineNumber, binNumber } = adminService.parseLocationCode(dto.currentLocationCode);
                 
                 return {
                     userId: dto.workerId,

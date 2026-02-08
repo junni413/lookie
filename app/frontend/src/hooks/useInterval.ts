@@ -19,6 +19,10 @@ export function useInterval(callback: () => void, delay: number | null) {
   // Set up the interval.
   useEffect(() => {
     function tick() {
+      // Don't execute if the tab is not visible
+      if (document.hidden) {
+        return;
+      }
       savedCallback.current();
     }
     if (delay !== null) {
