@@ -133,6 +133,17 @@ export const issueService = {
     });
   },
 
+  /** ✅ 이슈 보고용 이미지 등록 (관리자 부재 시 증빙용) */
+  reportImage: async (
+    issueId: number,
+    imageUrl: string
+  ): Promise<ApiResponse<void>> => {
+    return requestJSON(`/api/issues/${issueId}/image`, {
+      method: "POST",
+      body: JSON.stringify({ imageUrl }),
+    });
+  },
+
   /** ✅ Admin: 이슈 목록 조회 */
   getIssues: async (
     params?: AdminIssueListRequest

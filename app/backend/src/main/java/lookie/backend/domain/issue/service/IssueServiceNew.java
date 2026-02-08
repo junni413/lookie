@@ -169,15 +169,35 @@ public class IssueServiceNew {
                 throw new InvalidItemStatusException();
             }
 
-            // 🔥 NEED_CHECK 정책 (아직 진행 중인 아이템일 때만 체크)
-            if ("NEED_CHECK".equals(issue.getAiDecision())) {
+            // 🔥 관리자 확인이 필수적인 상황인지 판단 (NEED_CHECK 또는 OUT_OF_STOCK)
+            boolean isCallMandatory = "NEED_CHECK".equals(issue.getAiDecision())
+                    || "OUT_OF_STOCK".equals(issue.getIssueType());
+
+            if (isCallMandatory) {
+                // 1. 관리자 연결 시도 여부 체크
                 if ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null) {
-                    throw new AdminCallRequiredException();
+                    throw new AdminCallRequiredException(); // 연결 시도 필요
                 }
-                if ("WAITING".equals(issue.getWebrtcStatus()) || "CONNECTED".equals(issue.getWebrtcStatus())) {
-                    throw new AdminCallInProgressException();
+                if ("WAITING".equals(issue.getWebrtcStatus())) {
+                    throw new AdminCallInProgressException(); // 연결 시도 중 (통과 불가)
                 }
-                // MISSED면 통과
+
+                // AI 판독 결과 조회
+                AiJudgmentVO judgmentAtGuard = issueMapper.findAiJudgmentByIssueId(issueId);
+                boolean hasImage = judgmentAtGuard != null && judgmentAtGuard.getImageUrl() != null
+                        && !judgmentAtGuard.getImageUrl().isEmpty();
+
+                // 2. 관리자 연결 실패(MISSED) 또는 거절/정상확인(NORMAL)인 경우
+                // Ghost Stock 상황(재고 없음 신고)이라면 무조건 이미지 증빙이 있어야 통과 가능
+                if ("OUT_OF_STOCK".equals(issue.getIssueType())) {
+                    boolean isAdminRejected = "NORMAL".equals(issue.getAdminDecision());
+                    boolean isCallMissed = "MISSED".equals(issue.getWebrtcStatus());
+
+                    if ((isCallMissed || isAdminRejected) && !hasImage) {
+                        throw new ApiException(ErrorCode.ISSUE_IMAGE_REQUIRED);
+                    }
+                }
+                // CONNECTED면 관리자와 확인 완료된 것이므로 통과 허용
             }
         }
 
@@ -264,6 +284,11 @@ public class IssueServiceNew {
             judgment.setImageUrl(imageUrl);
             issueMapper.updateAiJudgment(judgment);
         }
+
+        // [WebSocket] 이미지 등록 알림 (상태 계산 결과가 바뀔 수 있으므로 상세 정보 전송)
+        IssueDetailResponse detail = getIssueDetail(issueId);
+        messagingTemplate.convertAndSend("/topic/issues/" + issueId, detail);
+        log.info("[IssueServiceNew] reportImage - WebSocket notification sent. issueId={}", issueId);
     }
 
     // ========== 4) 관리자 연결 (시도/결과) ==========
@@ -592,38 +617,44 @@ public class IssueServiceNew {
     // ========== 유틸리티 메서드 ==========
 
     private IssueNextAction calculateWorkerNextAction(IssueVO issue, AiJudgmentVO judgment) {
-        TaskItemVO item = taskItemMapper.findById(issue.getBatchTaskItemId());
-        // 이미 해결되었거나(DONE) 다음 아이템으로 넘어갈 준비가 된 경우
-        if (item != null && ("PENDING".equals(item.getStatus()) || "DONE".equals(item.getStatus()))) {
-            return IssueNextAction.NEXT_ITEM;
-        }
-
         String aiDecision = judgment != null ? judgment.getAiDecision() : "UNKNOWN";
 
         if ("RETAKE".equals(aiDecision)) {
             return IssueNextAction.WAIT_RETAKE;
         }
 
-        if ("NEED_CHECK".equals(aiDecision)) {
-            // 1. 파손(DAMAGED)의 경우: 관리자 호출이 기본
-            if ("DAMAGED".equals(issue.getIssueType())) {
-                if ("MISSED".equals(issue.getWebrtcStatus())) {
-                    return IssueNextAction.NEXT_ITEM;
-                }
-                return IssueNextAction.WAIT_ADMIN; // NONE, WAITING, CONNECTED인 동안 차단
-            }
+        // 🔥 관리자 확인 필수 여부 판단 (NEED_CHECK 또는 OUT_OF_STOCK)
+        boolean isCallMandatory = "NEED_CHECK".equals(aiDecision) || "OUT_OF_STOCK".equals(issue.getIssueType());
 
-            // 2. 재고 부족(OUT_OF_STOCK)의 경우: Ghost Stock(STOCK_EXISTS)만 필수 확인
-            if ("OUT_OF_STOCK".equals(issue.getIssueType())) {
-                if ("STOCK_EXISTS".equals(issue.getReasonCode())) {
-                    if ("MISSED".equals(issue.getWebrtcStatus())) {
-                        return IssueNextAction.WAIT_REPORT_IMAGE;
-                    }
-                    return IssueNextAction.WAIT_ADMIN; // NONE, WAITING, CONNECTED인 동안 차단
-                }
-                // Ghost Stock이 아닌 OOS 건은 차단 해제 (NEXT_ITEM)
+        if (isCallMandatory) {
+            // 1. 관리자와 연결 성공(CONNECTED)했으면 즉시 다음 단계 허용
+            if ("CONNECTED".equals(issue.getWebrtcStatus())) {
                 return IssueNextAction.NEXT_ITEM;
             }
+
+            // 2. 관리자 연결 실패(MISSED) 또는 거절/정상확인(NORMAL)인 경우
+            // Ghost Stock 상황(재고 없음 신고)이라면 무조건 이미지 증빙이 있어야 통과 가능
+            if ("OUT_OF_STOCK".equals(issue.getIssueType())) {
+                boolean isAdminRejected = "NORMAL".equals(issue.getAdminDecision());
+                boolean isCallMissed = "MISSED".equals(issue.getWebrtcStatus());
+                boolean hasImage = judgment != null && judgment.getImageUrl() != null
+                        && !judgment.getImageUrl().isEmpty();
+
+                if ((isCallMissed || isAdminRejected) && !hasImage) {
+                    return IssueNextAction.WAIT_REPORT_IMAGE;
+                }
+            }
+
+            // 3. 아직 연결 시도 전(NONE)이거나 시도 중(WAITING)이면 연결 대기
+            if (!"MISSED".equals(issue.getWebrtcStatus())) {
+                return IssueNextAction.WAIT_ADMIN;
+            }
+        }
+
+        // 이미 해결되었거나(DONE) 다음 아이템으로 넘어갈 준비가 된 경우 (단, 위 가드들에 걸리지 않았을 때만)
+        TaskItemVO item = taskItemMapper.findById(issue.getBatchTaskItemId());
+        if (item != null && ("PENDING".equals(item.getStatus()) || "DONE".equals(item.getStatus()))) {
+            return IssueNextAction.NEXT_ITEM;
         }
 
         if ("RESOLVED".equals(issue.getStatus()) && "MOVE_LOCATION".equals(issue.getReasonCode())) {
@@ -635,17 +666,27 @@ public class IssueServiceNew {
 
     private List<String> generateAvailableActions(IssueVO issue) {
         List<String> actions = new ArrayList<>();
+        AiJudgmentVO judgment = issueMapper.findAiJudgmentByIssueId(issue.getIssueId());
+        IssueNextAction nextAction = calculateWorkerNextAction(issue, judgment);
 
-        // 관리자 연결 버튼 노출 조건:
-        // 1. 파손(DAMAGED)이면서 NEED_CHECK인 경우
-        // 2. 재고 부족(OUT_OF_STOCK)이면서 Ghost Stock(STOCK_EXISTS)으로 판정된 NEED_CHECK인 경우
-        boolean isAdminCallMandatory = "NEED_CHECK".equals(issue.getAiDecision())
-                && ("DAMAGED".equals(issue.getIssueType()) ||
-                        ("OUT_OF_STOCK".equals(issue.getIssueType()) && "STOCK_EXISTS".equals(issue.getReasonCode())));
-
-        if (isAdminCallMandatory && ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null)) {
-            actions.add("CONNECT_ADMIN");
+        // 1. 다음 아이템 진행 (NEXT_ITEM)
+        if (nextAction == IssueNextAction.NEXT_ITEM) {
+            actions.add("NEXT_ITEM");
         }
+
+        // 2. 관리자 연결 (CONNECT_ADMIN)
+        if (nextAction == IssueNextAction.WAIT_ADMIN) {
+            // 아직 시도 중이 아닐 때만 버튼 노출 (프론트에서 처리할 수도 있지만 백엔드에서도 가이드)
+            if ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null) {
+                actions.add("CONNECT_ADMIN");
+            }
+        }
+
+        // 3. 재촬영 (RETAKE)
+        if (nextAction == IssueNextAction.WAIT_RETAKE || "RETAKE".equals(issue.getAiDecision())) {
+            actions.add("RETAKE");
+        }
+
         return actions;
     }
 

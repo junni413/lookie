@@ -90,6 +90,24 @@ function ResultCard({ verdict }: { verdict: AiVerdict }) {
   );
 }
 
+function WaitingImageCard() {
+  return (
+    <div className="rounded-2xl border bg-amber-50 p-4">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5">📸</div>
+        <div>
+          <p className="text-sm font-extrabold text-amber-900">증빙 사진 업로드 필요</p>
+          <p className="mt-1 text-xs text-amber-700">
+            관리자 부재로 다음 단계로 가기 위해 현장 사진 등록이 필요합니다.
+            <br />
+            아래 버튼을 눌러 피킹 위치를 촬영해주세요.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AnalyzingCard() {
   return (
     <div className="rounded-2xl border bg-blue-50 p-6 flex flex-col items-center justify-center text-center space-y-3">
@@ -282,8 +300,17 @@ export default function IssueResult() {
 
       if (errorMsg.includes("ADMIN_CALL_REQUIRED") || errorMsg.includes("관리자 연결")) {
         toast({
-          title: "관리자 연결이 필요합니다",
-          description: "NEED_CHECK 이슈는 관리자 연결 시도가 필수입니다.",
+          title: "관리자 연결 시도 필수",
+          description: "NEED_CHECK 이슈는 최소 1회의 관리자 연결 시도가 필요합니다.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (errorMsg.includes("IMAGE_REQUIRED") || errorMsg.includes("이미지")) {
+        toast({
+          title: "현장 증빙 사진 필요",
+          description: "관리자 부재 시 이동 전 현장 사진 업로드가 필수입니다.",
           variant: "destructive"
         });
         return;
@@ -319,8 +346,12 @@ export default function IssueResult() {
       const uploadRes = await issueService.uploadImage(file);
       if (!uploadRes.success) throw new Error(uploadRes.message);
 
-      // 2. Call Retake API
-      await issueService.retakeIssue(nav.issueId, uploadRes.data);
+      // 2. Call Repoart or Retake API
+      if (detail?.issueNextAction === "WAIT_REPORT_IMAGE") {
+        await issueService.reportImage(nav.issueId, uploadRes.data);
+      } else {
+        await issueService.retakeIssue(nav.issueId, uploadRes.data);
+      }
       // WebSocket이 있으므로 추가 조치 없이 분석 중 상태로 기다림
 
     } catch (err) {
@@ -335,7 +366,8 @@ export default function IssueResult() {
   // [Modified] NON_BLOCKING이면 활성화
   const isNextDisabled = analyzing ||
     (verdict === "RETAKE") ||
-    (verdict === "NEED_REVIEW" && detail?.issueHandling !== "NON_BLOCKING");
+    (detail?.issueNextAction === "WAIT_REPORT_IMAGE") ||
+    (verdict === "NEED_REVIEW" && detail?.issueHandling !== "NON_BLOCKING" && !detail?.availableActions?.includes("NEXT_ITEM"));
 
   return (
     <div className="space-y-4">
@@ -424,9 +456,11 @@ export default function IssueResult() {
         )}
       </section>
 
-      {/* 결과 카드 Or 분석중 */}
+      {/* 결과 카드 Or 분석중 Or 이미지 업로드 대기 */}
       {analyzing ? (
         <AnalyzingCard />
+      ) : detail?.issueNextAction === "WAIT_REPORT_IMAGE" ? (
+        <WaitingImageCard />
       ) : (
         <ResultCard verdict={verdict} />
       )}
@@ -443,13 +477,13 @@ export default function IssueResult() {
           </button>
         )}
 
-        {/* Retake Button */}
-        {!analyzing && (detail?.availableActions?.includes("RETAKE") || verdict === "RETAKE" || verdict === "NEED_REVIEW") && (
+        {/* Retake or Report Button */}
+        {!analyzing && (detail?.availableActions?.includes("RETAKE") || verdict === "RETAKE" || verdict === "NEED_REVIEW" || detail?.issueNextAction === "WAIT_REPORT_IMAGE") && (
           <button
             onClick={handleRetake}
             className="h-12 rounded-2xl border-2 border-blue-600 bg-white font-extrabold text-blue-600 active:scale-95 shadow-sm"
           >
-            다시 촬영하기
+            {detail?.issueNextAction === "WAIT_REPORT_IMAGE" ? "현장 사진 업로드하기" : "다시 촬영하기"}
           </button>
         )}
 
