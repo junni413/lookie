@@ -1,0 +1,28 @@
+fastapi
+uvicorn
+python-multipart
+Pillow
+# 1. OpenCV는 서버용(Headless)으로 설치 (GUI 라이브러리 제거, 용량 절약)
+opencv-python-headless
+
+# 2. ONNX 런타임
+onnx
+onnxruntime
+
+# http
+httpx
+python-dotenv
+
+# 테스트 도구 추가 (이미지에 포함시켜서 테스트 속도 향상)
+pytest
+
+# 3. Ultralytics (맨 마지막에)
+ultralytics
+
+pydantic
+pandas
+numpy
+catboost
+
+# openai
+openai

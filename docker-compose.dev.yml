@@ -1,0 +1,318 @@
+services:
+  # ============================
+  # Redis
+  # ============================
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/dev/redis:/data
+    networks:
+      - lookie
+
+  # ============================
+  # MySQL
+  # ============================
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: always
+    env_file:
+      - .env
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Seoul
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./data/dev/mysql:/var/lib/mysql
+    networks:
+      - lookie
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -p$${MYSQL_ROOT_PASSWORD} --silent",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  # ============================
+  # Flyway migrate
+  # ============================
+  migrate:
+    image: flyway/flyway:10-alpine
+    container_name: migrate
+    environment:
+      - FLYWAY_OUT_OF_ORDER=true
+    networks:
+      - lookie
+    depends_on:
+      mysql:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - ./app/backend/src/main/resources/db/migration:/flyway/sql:ro
+    command:
+      - -url=jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
+      - -user=${MYSQL_USER}
+      - -password=${MYSQL_PASSWORD}
+      - -connectRetries=60
+      - migrate
+    restart: "no"
+
+  # ============================
+  # Backend
+  # ============================
+  backend:
+    build: ./app/backend
+    container_name: backend
+    restart: unless-stopped
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_FLYWAY_ENABLED=false
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
+      - AI_SERVER_URL=http://ai-server:8000
+      - FILE_BASE_URL=http://localhost/images  # 로컬 개발용 이미지 URL
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - TZ=Asia/Seoul
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/dev/images:/data/images  # 이미지 업로드용 볼륨 (nginx와 공유)
+    networks:
+      - lookie
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # ============================
+  # AI Server (dev)
+  # ============================
+  ai-server:
+    build:
+      context: ./app/ai-server
+      dockerfile: Dockerfile
+    container_name: ai-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - TZ=Asia/Seoul
+    env_file:
+      - .env
+    volumes:
+      - ./app/ai-server:/app
+      - ./app/ai-server/model:/app/model
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - lookie
+    depends_on:
+      - backend
+
+  # ============================
+  # Nginx (dev)
+  # ============================
+  nginx:
+    build:
+      context: .
+      dockerfile: infra/nginx/Dockerfile.dev
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./data/dev/images:/data/images
+    networks:
+      - lookie
+    depends_on:
+      - backend
+
+  # ============================
+  # Airflow MetaDB (Postgres)
+  # ============================
+  airflow-postgres:
+    image: postgres:15
+    container_name: airflow-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+      TZ: Asia/Seoul
+    volumes:
+      - ./data/dev/airflow/postgres:/var/lib/postgresql/data
+    networks:
+      - lookie
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  # ============================
+  # Airflow Init (DB migrate + admin user 생성)
+  # ============================
+  airflow-init:
+    image: apache/airflow:2.9.3-python3.10
+    container_name: airflow-init
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    networks:
+      - lookie
+    env_file:
+      - .env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY}
+      TZ: Asia/Seoul
+
+      # ✅ FIX: conn_type을 mysql 로 만들기 (mysql+pymysql 금지)
+      AIRFLOW_CONN_LOOKIE_MYSQL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+
+    volumes:
+      - ./datapipeline/airflow/dags:/opt/airflow/dags
+      - ./datapipeline/airflow/logs:/opt/airflow/logs
+      - ./datapipeline/airflow/plugins:/opt/airflow/plugins
+      - ./datapipeline/airflow/requirements.txt:/requirements.txt:ro
+
+    # ✅ FIX: 줄바꿈/옵션 분리 문제 방지 (배열형 command 유지)
+    command: [
+        "bash",
+        "-lc",
+        "set -euo pipefail; \
+        pip install --no-cache-dir -r /requirements.txt; \
+        airflow db migrate; \
+        airflow users create \
+        --username \"$AIRFLOW_ADMIN_USER\" \
+        --password \"$AIRFLOW_ADMIN_PASSWORD\" \
+        --firstname \"$AIRFLOW_ADMIN_FIRSTNAME\" \
+        --lastname \"$AIRFLOW_ADMIN_LASTNAME\" \
+        --role Admin \
+        --email \"$AIRFLOW_ADMIN_EMAIL\" \
+        || true",
+      ]
+    restart: "no"
+
+  # ============================
+  # Airflow Webserver (UI)
+  # ============================
+  airflow-webserver:
+    image: apache/airflow:2.9.3-python3.10
+    container_name: airflow-webserver
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    networks:
+      - lookie
+    ports:
+      - "8081:8080"
+    env_file:
+      - .env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY}
+      TZ: Asia/Seoul
+
+      # ✅ FIX: 여기서도 mysql:// 로
+      AIRFLOW_CONN_LOOKIE_MYSQL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+
+    volumes:
+      - ./datapipeline/airflow/dags:/opt/airflow/dags
+      - ./datapipeline/airflow/logs:/opt/airflow/logs
+      - ./datapipeline/airflow/plugins:/opt/airflow/plugins
+      - ./datapipeline/airflow/requirements.txt:/requirements.txt:ro
+
+    # ✅ FIX: command도 배열형으로 통일(개행 이슈 방지)
+    command:
+      [
+        "bash",
+        "-lc",
+        "pip install --no-cache-dir -r /requirements.txt && airflow webserver",
+      ]
+    restart: unless-stopped
+
+  # ============================
+  # Airflow Scheduler (DAG 실행)
+  # ============================
+  airflow-scheduler:
+    image: apache/airflow:2.9.3-python3.10
+    container_name: airflow-scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    networks:
+      - lookie
+    env_file:
+      - .env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      TZ: Asia/Seoul
+
+      # ✅ FIX: 여기서도 mysql:// 로
+      AIRFLOW_CONN_LOOKIE_MYSQL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+
+    volumes:
+      - ./datapipeline/airflow/dags:/opt/airflow/dags
+      - ./datapipeline/airflow/logs:/opt/airflow/logs
+      - ./datapipeline/airflow/plugins:/opt/airflow/plugins
+      - ./datapipeline/airflow/requirements.txt:/requirements.txt:ro
+
+    # ✅ FIX: command도 배열형
+    command:
+      [
+        "bash",
+        "-lc",
+        "pip install --no-cache-dir -r /requirements.txt && airflow scheduler",
+      ]
+    restart: unless-stopped
+
+# Global volumes section removed as we are using bind mounts now
+
+networks:
+  lookie:
+    driver: bridge

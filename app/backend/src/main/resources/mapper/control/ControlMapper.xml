@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="lookie.backend.domain.control.mapper.ControlMapper">
+
+    <!-- 
+        1. 구역별 현황 조회 
+        - Zones 테이블을 기준으로 Left Join하여 작업자 수를 카운트
+        - Users: 해당 구역에 배정된(assigned_zone_id) 작업자
+        - WorkLogs: 현재 출근 중(ended_at IS NULL)인 작업자
+    -->
+    <!--
+        1. 구역별 현황 조회 (AI 재배치 로직 기반)
+        - 예상 소요 시간 = (남은 아이템 수 / 구역 내 작업자 합산 평균 속도)
+        - 안정: 현재 + 예상 소요 시간 < 마감 - 10분
+        - 양호: 현재 + 예상 소요 시간 < 마감
+        - 주의: 현재 + 예상 소요 시간 > 마감
+    -->
+    <select id="selectZoneOverviews" resultType="lookie.backend.domain.control.dto.ZoneOverviewDto">
+        <![CDATA[
+        WITH zone_rebalance_stats AS (
+            SELECT
+                zone_id,
+                AVG(speed_label) AS avg_speed_per_hour,
+                MAX(zone_backlog) AS total_remaining_qty,
+                MAX(batch_id) AS current_batch_id
+            FROM rebalance_snapshots
+            WHERE ts >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+            GROUP BY zone_id
+        ),
+        zone_worker_counts AS (
+            SELECT
+                z.zone_id AS zone_id,
+                COUNT(DISTINCT wl.worker_id) AS worker_count
+            FROM zones z
+            LEFT JOIN users u ON u.assigned_zone_id = z.zone_id AND u.role = 'WORKER'
+            LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+            GROUP BY z.zone_id
+        ),
+        zone_worker_ranks AS (
+            SELECT
+                zone_id,
+                worker_count,
+                DENSE_RANK() OVER (ORDER BY worker_count ASC) AS rank_low,
+                DENSE_RANK() OVER (ORDER BY worker_count DESC) AS rank_high,
+                MIN(worker_count) OVER () AS min_worker_count,
+                MAX(worker_count) OVER () AS max_worker_count
+            FROM zone_worker_counts
+        )
+        SELECT
+            z.zone_id AS zoneId,
+            COALESCE(zwr.worker_count, 0) AS workerCount,
+
+            -- Progress Calculation
+            COALESCE(
+                (SUM(CASE WHEN bti.status = 'DONE' THEN 1 ELSE 0 END) * 100.0) / NULLIF(COUNT(bti.batch_task_item_id), 0),
+                0.0
+            ) AS progressRate,
+
+            -- Status Calculation (Based on AI rebalancing logic)
+            CASE
+                WHEN COALESCE(zwr.worker_count, 0) = 0 THEN 'CRITICAL'
+                -- 인원수 랭크 기반 STABLE/CRITICAL 판단은 사용하지 않음
+                WHEN zrs.avg_speed_per_hour IS NULL OR zrs.avg_speed_per_hour = 0 THEN 'CRITICAL'
+                WHEN zrs.total_remaining_qty IS NULL THEN 'STABLE'
+                -- 예상 완료 시간 계산: 현재 시각 + (남은 수량 / 시간당 속도) 시간
+                -- 안정: 예상 완료 <= 마감 - 60분 (1시간 이전)
+                WHEN DATE_ADD(NOW(), INTERVAL CEIL(zrs.total_remaining_qty / zrs.avg_speed_per_hour * 60) MINUTE) <= DATE_SUB(b.deadline_at, INTERVAL 60 MINUTE) THEN 'STABLE'
+                -- 양호: 마감 - 60분 < 예상 완료 <= 마감
+                WHEN DATE_ADD(NOW(), INTERVAL CEIL(zrs.total_remaining_qty / zrs.avg_speed_per_hour * 60) MINUTE) <= b.deadline_at THEN 'NORMAL'
+                -- 주의: 예상 완료 > 마감
+                ELSE 'CRITICAL'
+            END AS status
+
+        FROM zones z
+        LEFT JOIN users u ON u.assigned_zone_id = z.zone_id AND u.role = 'WORKER'
+        LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+
+        -- Join Tasks for Progress Stats
+        LEFT JOIN batch_tasks bt ON bt.zone_id = z.zone_id AND bt.status IN ('IN_PROGRESS', 'UNASSIGNED', 'COMPLETED')
+        LEFT JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
+
+        -- Join Rebalance Stats (AI 재배치 데이터)
+        LEFT JOIN zone_rebalance_stats zrs ON zrs.zone_id = z.zone_id
+        LEFT JOIN zone_worker_ranks zwr ON zwr.zone_id = z.zone_id
+
+        -- Join Batch for Deadline
+        LEFT JOIN batches b ON b.batch_id = zrs.current_batch_id AND b.status = 'IN_PROGRESS'
+
+        GROUP BY z.zone_id, zrs.avg_speed_per_hour, zrs.total_remaining_qty, b.deadline_at, zwr.worker_count, zwr.rank_low, zwr.rank_high, zwr.min_worker_count, zwr.max_worker_count
+        ORDER BY z.zone_id
+        ]]>
+    </select>
+
+    <!-- 
+        구역별 작업자 상세 조회 (Real Logic Implemented)
+    -->
+    <select id="selectWorkersByZoneId" resultType="lookie.backend.domain.control.dto.ZoneWorkerDto">
+        SELECT DISTINCT u.user_id AS workerId,
+            u.name AS name,
+            u.phone_number AS phoneNumber,
+            COALESCE(wc.daily_count, 0) AS workCount,
+            COALESCE(wc.processing_speed, 0.0) AS processingSpeed,
+            COALESCE(wc.progress, 0.0) AS currentTaskProgress,
+            'WORKING' AS status,
+            'AVAILABLE' AS webrtcStatus
+        FROM users u
+        INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        LEFT JOIN (
+            SELECT bt.worker_id, 
+                   -- Daily Count: Tasks completed today
+                   COUNT(CASE WHEN bt.status = 'COMPLETED' AND DATE(bt.completed_at) = CURDATE() THEN 1 END) AS daily_count,
+                   -- Progress: Total done / Total items for current task
+                   (SUM(CASE WHEN bti.status = 'DONE' THEN 1 ELSE 0 END) * 100.0) / NULLIF(COUNT(bti.batch_task_item_id), 0) AS progress,
+                   -- Speed (Dummy logic for now: 10 items/hour?)
+                   10.0 AS processing_speed
+            FROM batch_tasks bt
+            LEFT JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
+            GROUP BY bt.worker_id
+        ) wc ON wc.worker_id = u.user_id
+        WHERE u.assigned_zone_id = #{zoneId}
+          AND u.role = 'WORKER'
+    </select>
+
+    <!-- 3. 전체 활성 작업자 수 (중복 제거) -->
+    <select id="countTotalActiveWorkers" resultType="int">
+        SELECT COUNT(DISTINCT wl.worker_id)
+        FROM work_logs wl
+        INNER JOIN users u ON u.user_id = wl.worker_id
+        WHERE wl.ended_at IS NULL
+          AND u.role = 'WORKER' -- WORKER 역할만 필터링 (ADMIN 제외)
+    </select>
+
+    <!-- 4. 현재 미처리 이슈 수 (Status=OPEN) -->
+    <select id="countPendingIssues" resultType="int">
+        SELECT COUNT(*)
+        FROM issues
+        WHERE status = 'OPEN'
+    </select>
+
+    <!-- 5. 금일 해결된 이슈 수 (Status=RESOLVED AND ResolveDate=Today) -->
+    <select id="countTodayCompletedIssues" resultType="int">
+        SELECT COUNT(*)
+        FROM issues
+        WHERE status = 'RESOLVED'
+          AND DATE(resolved_at) = CURDATE()
+    </select>
+
+    <!-- 6. 작업자 마우스 오버 상세 정보 조회 -->
+    <select id="selectWorkerHoverInfo" resultType="lookie.backend.domain.control.dto.WorkerHoverDto">
+        SELECT
+            u.user_id AS workerId,
+            u.name AS name,
+            u.assigned_zone_id AS zoneId,
+            u.phone_number AS phoneNumber,
+            zl.location_code AS currentLocationCode,
+            -- 금일 작업 처리량 (서브쿼리)
+            (
+                SELECT COUNT(bti.batch_task_item_id)
+                FROM batch_tasks bt_sub
+                JOIN batch_task_items bti ON bti.batch_task_id = bt_sub.batch_task_id
+                WHERE bt_sub.worker_id = u.user_id
+                  AND bti.status NOT IN ('PENDING', 'IN_PROGRESS')
+                  AND DATE(bti.last_scanned_at) = CURDATE()
+            ) AS todayWorkCount,
+            -- 최근 발생한 이슈 (서브쿼리)
+            (
+                SELECT issue_type
+                FROM issues
+                WHERE worker_id = u.user_id
+                  AND status = 'OPEN'
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) AS recentIssueType
+        FROM users u
+        -- 활성 작업자 확인 (출근 중)
+        INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        -- 현재 위치 (진행 중인 작업의 위치)
+        LEFT JOIN batch_tasks bt ON bt.worker_id = u.user_id AND bt.status = 'IN_PROGRESS'
+        LEFT JOIN zone_locations zl ON zl.location_id = bt.current_location_id
+        WHERE u.user_id = #{workerId}
+    </select>
+
+    <!-- 작업자 존재 여부 확인 -->
+    <select id="existsWorker" resultType="boolean">
+        SELECT COUNT(*) > 0
+        FROM users
+        WHERE user_id = #{workerId}
+    </select>
+
+    <!-- 구역 존재 여부 확인 -->
+    <select id="existsZone" resultType="boolean">
+        SELECT COUNT(*) > 0
+        FROM zones
+        WHERE zone_id = #{zoneId}
+    </select>
+
+    <!-- 기존 배정 종료 (현재 활성 배정 건에 대해 ended_at 업데이트) -->
+    <update id="closeActiveAssignment">
+        UPDATE zone_assignments
+        SET ended_at = NOW()
+        WHERE worker_id = #{workerId}
+          AND ended_at IS NULL
+    </update>
+
+    <!-- 새로운 배정 이력 생성 -->
+    <insert id="insertAssignmentHistory">
+        INSERT INTO zone_assignments (worker_id, zone_id, assignment_type, source, started_at, reason)
+        VALUES (#{workerId}, #{zoneId}, 'BASE', 'ADMIN', NOW(), #{reason})
+    </insert>
+
+    <!-- AI/TEMP 배정 이력 생성 -->
+    <insert id="insertAiAssignmentHistory">
+        INSERT INTO zone_assignments (worker_id, zone_id, assignment_type, source, started_at, reason)
+        VALUES (#{workerId}, #{zoneId}, #{type}, #{source}, NOW(), #{reason})
+    </insert>
+
+    <!-- 사용자 테이블 배정 구역 업데이트 -->
+    <update id="updateUserAssignedZone">
+        UPDATE users
+        SET assigned_zone_id = #{zoneId}
+        WHERE user_id = #{workerId}
+    </update>
+
+    <!-- 구역 내 라인 조회 -->
+    <select id="selectLinesByZoneId" resultType="lookie.backend.domain.control.dto.map.ZoneLineDto">
+        SELECT
+            line_id AS lineId,
+            line_name AS lineName
+        FROM zone_lines
+        WHERE zone_id = #{zoneId}
+    </select>
+
+    <!-- 구역 내 작업자 위치 및 병목 여부 조회 -->
+    <!--
+        병목 판단 로직:
+        현재 작업(IN_PROGRESS)의 시작 시간과 현재 시간의 차이가 임계값(thresholdSeconds) 이상이면 True(1), 아니면 False(0)
+    -->
+    <select id="selectWorkerLocationsByZoneId" resultType="lookie.backend.domain.control.dto.map.ZoneWorkerLocationDto">
+        SELECT
+            u.user_id AS workerId,
+            u.name AS name,
+            u.phone_number AS phoneNumber,
+            zl.location_code AS currentLocationCode,
+            CASE
+                WHEN TIMESTAMPDIFF(SECOND, bt.started_at, NOW()) >= #{thresholdSeconds} THEN 1
+                ELSE 0
+            END AS isBottleneck
+        FROM users u
+        -- 활성 작업자 (출근 중)
+        INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        -- 현재 진행 중인 작업 (위치 파악용)
+        INNER JOIN batch_tasks bt ON bt.worker_id = u.user_id AND bt.status = 'IN_PROGRESS'
+        INNER JOIN zone_locations zl ON zl.location_id = bt.current_location_id
+        WHERE u.assigned_zone_id = #{zoneId}
+          AND u.role = 'WORKER' -- WORKER 역할만 필터링 (ADMIN 제외)
+    </select>
+
+    <!-- 관리자 목록 조회 (Optimized: Returns VO) -->
+    <select id="selectAdmins" resultType="lookie.backend.domain.control.repository.vo.AdminQueryVo">
+        SELECT
+            u.user_id AS adminId,
+            u.name AS rawName,
+            u.phone_number AS phoneNumber,
+            u.assigned_zone_id AS assignedZoneId,
+            
+            -- 최신 근무 상태 (Window Function 결과 이용)
+            IFNULL(le.event_type, 'END') AS currentStatus
+        FROM users u
+        
+        -- 현재 진행 중인 근무 로그 확인 (없으면 퇴근 상태)
+        LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        
+        -- 최신 이벤트 조인 (ROW_NUMBER 사용, idx_work_log_events_log_time 인덱스 활용)
+        LEFT JOIN (
+            SELECT work_log_id, event_type,
+                   ROW_NUMBER() OVER(PARTITION BY work_log_id ORDER BY occurred_at DESC) as rn
+            FROM work_log_events
+        ) le ON wl.work_log_id = le.work_log_id AND le.rn = 1
+        
+        WHERE u.role = 'ADMIN'
+        
+        <!-- 동적 쿼리: 구역 필터링 -->
+        <if test="zoneId != null">
+            AND u.assigned_zone_id = #{zoneId}
+        </if>
+        
+        <!-- 동적 쿼리: 이름 검색 -->
+        <if test="name != null and name != ''">
+            AND u.name LIKE CONCAT('%', #{name}, '%')
+        </if>
+        
+        ORDER BY u.name ASC
+    </select>
+
+
+    <!-- 
+        가장 적은 수의 활성 작업자가 있는 구역 ID 조회 (자동 배정용)
+        - 모든 구역(Zones)을 기준으로 Left Join
+        - 현재 출근 중(ended_at IS NULL)인 작업자 수 카운트
+        - 작업자 수가 가장 적은 순, 같다면 ID가 작은 순으로 정렬하여 1개 선택
+    -->
+    <select id="selectZoneIdWithFewestWorkers" resultType="long">
+        SELECT z.zone_id
+        FROM zones z
+        LEFT JOIN users u ON u.assigned_zone_id = z.zone_id AND u.role = 'WORKER'
+        LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+        GROUP BY z.zone_id
+        ORDER BY COUNT(wl.work_log_id) ASC, z.zone_id ASC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+</mapper>

@@ -1,0 +1,36 @@
+# =====================
+# Dataset
+# =====================
+datasets/
+My-First-Project-2/
+My-First-Project-3/
+
+# =====================
+# YOLO outputs
+# =====================
+runs/
+
+# =====================
+# Model weights
+# =====================
+# *.pt
+yolo26n.pt
+yolov8n.pt
+!models/best.pt
+
+# =====================
+# Python
+# =====================
+__pycache__/
+*.pyc
+
+# =====================
+# Jupyter
+# =====================
+.ipynb_checkpoints/
+
+# =====================
+# OS
+# =====================
+.DS_Store
+Thumbs.db

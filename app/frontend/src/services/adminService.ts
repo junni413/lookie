@@ -1,0 +1,273 @@
+import { request } from "@/api/http";
+import type { ApiResponse } from "@/api/type";
+import type { AdminContact } from "@/types/AdminContact";
+
+// import type { ZoneStat } from "./manageService"; // Reusing ZoneStat or defining new one
+// ZoneStat is not used, removing import
+
+
+// ========================================
+// 📡 API Response Types
+// ========================================
+
+// Dashboard Summary Code
+export interface DashboardSummary {
+    working: number;
+    waiting: number;
+    done: number;
+    progress: number;
+}
+
+// Server DTO
+interface DashboardSummaryDto {
+    totalActiveWorkers: number;
+    pendingIssues: number;
+    completedIssues: number;
+    totalProgressRate: number;
+    zoneSummaries: any[];
+}
+
+// Zone List Response (Extension of ZoneStat maybe?)
+export interface AdminZoneResponse {
+    zoneId: number;
+    name: string;
+    status: "STABLE" | "NORMAL" | "CRITICAL";
+    workerCount: number;
+    workRate: number;
+}
+
+// Admin List Response
+interface AdminListResponseItem {
+    adminId: number;
+    name: string;
+    assignedZoneId: number | null;
+    zoneName: string;
+    currentStatus: string;
+    status: string; // [NEW] UserVO status (ONLINE, BUSY, etc.)
+}
+
+// API Params
+// API Params
+interface AdminListParams {
+    zoneId?: string;
+    name?: string;
+}
+
+interface AdminZoneAssignmentRequest {
+    workerId: number;
+    zoneId: number;
+    reason?: string;
+}
+
+// Zone Worker DTO (Rich Data)
+export interface ZoneWorkerDto {
+    workerId: number;
+    name: string; // Formatted Name
+    workCount: number;
+    processingSpeed: number;
+    currentTaskProgress: number;
+    status: string; // "WORKING", etc.
+    webrtcStatus?: string; // "ONLINE", "OFFLINE", "BUSY"
+}
+
+// Zone Map Worker DTO
+export interface ZoneMapWorkerDto {
+    workerId: number;
+    name: string;
+    lineId: number;
+    currentLocationCode: string; // "A-01-001"
+    isBottleneck: boolean;
+    workRate?: number;
+}
+
+// ========================================
+// 📡 API 함수
+// ========================================
+
+/**
+ * 대시보드 상단 요약 정보
+ * GET /api/control/summary
+ */
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+    const response = await request<ApiResponse<DashboardSummaryDto>>("/api/control/summary", {
+        method: "GET",
+    });
+
+    const dto = response.data;
+    if (!dto) return { working: 0, waiting: 0, done: 0, progress: 0 };
+
+    return {
+        working: dto.totalActiveWorkers || 0,
+        waiting: dto.pendingIssues || 0,
+        done: dto.completedIssues || 0,
+        progress: dto.totalProgressRate ? Math.floor(dto.totalProgressRate) : 0,
+    };
+}
+
+/**
+ * 대시보드 구역 현황
+ * GET /api/control/zones
+ */
+export async function getZones(): Promise<AdminZoneResponse[]> {
+    const response = await request<ApiResponse<any[]>>("/api/control/zones", {
+        method: "GET",
+    });
+    const rawData = response.data || [];
+    return rawData.map(item => ({
+        zoneId: item.zoneId,
+        name: item.zoneName, // Backend sends 'zoneName'
+        status: item.status,
+        workerCount: item.workerCount,
+        workRate: item.progressRate || 0 // Map backend 'progressRate' to frontend 'workRate'
+    }));
+}
+
+/**
+ * 관리자 목록 조회
+ * GET /api/control/admins
+ */
+export async function getAdmins(token: string, params?: AdminListParams): Promise<AdminContact[]> {
+    const query = new URLSearchParams();
+
+    // params handling
+    if (params?.name) {
+        query.append("name", params.name);
+    }
+
+    if (params?.zoneId && params.zoneId !== 'all') {
+        query.append("zoneId", params.zoneId);
+    }
+
+    const queryString = query.toString();
+    const url = `/api/control/admins${queryString ? `?${queryString}` : ""}`;
+
+    const response = await request<ApiResponse<AdminListResponseItem[]>>(url, {
+        method: "GET",
+        token: token,
+    });
+
+    const rawData = response.data || [];
+
+    // API 응답(adminId)을 프론트엔드 모델(userId)로 맵핑
+    return rawData.map(item => ({
+        // User Base Fields
+        userId: item.adminId,
+        name: item.name,
+        email: undefined, // Optional in User
+        phoneNumber: "000-0000-0000", // Required in User, using placeholder
+        role: "ADMIN" as const,
+        isActive: true,
+        passwordHash: "", // Required string
+        createdAt: new Date().toISOString(), // Required string
+        updatedAt: new Date().toISOString(), // Required string
+        birthDate: undefined, // Optional in User
+
+        // AdminContact Specific
+        assignedZoneId: item.assignedZoneId, // DB_User field
+        assignedZone: item.zoneName === 'UNKNOWN' ? undefined : item.zoneName, // UI Display
+        isOnline: item.currentStatus === 'ONLINE', // Map from new status field
+        status: item.currentStatus, // Real-time status
+    })) as AdminContact[];
+}
+
+/**
+ * 관리자 강제 구역 배정
+ * POST /api/control/assignments
+ */
+export async function assignWorkerToZone(workerId: number, zoneId: number, reason?: string): Promise<void> {
+    await request<ApiResponse<void>>("/api/control/assignments", {
+        method: "POST",
+        body: { workerId, zoneId, reason } as AdminZoneAssignmentRequest,
+    });
+}
+
+/**
+ * 구역별 작업자 상세 조회
+ * GET /api/control/zones/{zoneId}/workers
+ */
+export async function getWorkersByZone(zoneId: number): Promise<ZoneWorkerDto[]> {
+    const response = await request<ApiResponse<ZoneWorkerDto[]>>(`/api/control/zones/${zoneId}/workers`, {
+        method: "GET",
+    });
+    return response.data || [];
+}
+
+// Zone Map Response
+export interface ZoneMapResponse {
+    zoneId: number;
+    zoneName: string;
+    lines: any[]; // We only use workers for now
+    workers: ZoneMapWorkerDto[];
+}
+
+/**
+ * 구역 맵 조회 (실시간 위치 & 병목)
+ * GET /api/control/zones/{zoneId}/map
+ */
+export async function getZoneMap(zoneId: number): Promise<ZoneMapResponse> {
+    const response = await request<ApiResponse<ZoneMapResponse>>(`/api/control/zones/${zoneId}/map`, {
+        method: "GET",
+    });
+    return response.data || { zoneId, zoneName: "", lines: [], workers: [] };
+}
+
+/**
+ * 위치 코드 파싱 유틸리티 (중앙 집중화)
+ * 예: "A-01-001" -> { lineNumber: 1, binNumber: 1 }
+ */
+export function parseLocationCode(code: string | null): { lineNumber: number; binNumber: number } {
+    if (!code) return { lineNumber: 0, binNumber: 0 };
+    
+    const parts = code.split('-');
+    // 마지막 파트가 binNumber ("001" -> 1)
+    const binNum = parts.length > 0 ? parseInt(parts[parts.length - 1], 10) : 0;
+    // 두 번째 파트가 lineNumber ("01" -> 1)
+    const lineNum = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+    
+    return {
+        lineNumber: isNaN(lineNum) ? 0 : lineNum,
+        binNumber: isNaN(binNum) ? 0 : binNum,
+    };
+}
+
+export const adminService = {
+    getDashboardSummary,
+    getZones,
+    getAdmins,
+    assignWorkerToZone,
+    getWorkersByZone,
+    getWorkerHoverInfo,
+    getZoneMap,
+    parseLocationCode,
+};
+
+// ... (Existing interfaces)
+
+// Worker Hover Info
+export interface WorkerHoverInfo {
+    workerId: number;
+    name: string;
+    currentZoneName: string | null;
+    currentLocationCode: string | null;
+    todayWorkCount: number;
+    recentIssueType: string | null;
+}
+
+/**
+ * 작업자 호버 정보 조회
+ * GET /api/control/workers/{workerId}/hover
+ */
+export async function getWorkerHoverInfo(workerId: number): Promise<WorkerHoverInfo> {
+    const response = await request<ApiResponse<WorkerHoverInfo>>(`/api/control/workers/${workerId}/hover`, {
+        method: "GET",
+    });
+    // Ensure all fields are present (safety fallback)
+    return response.data || {
+        workerId,
+        name: "Unknown",
+        currentZoneName: "-",
+        currentLocationCode: "-",
+        todayWorkCount: 0,
+        recentIssueType: null
+    };
+}

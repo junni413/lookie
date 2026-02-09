@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="lookie.backend.domain.task.mapper.TaskMapper">
+
+    <!--[조회] 작업 ID로 해당 작업 찾기-->
+    <select id="findById" parameterType="long" resultType="TaskVO">
+        SELECT
+            bt.batch_task_id AS batchTaskId,
+            bt.batch_id AS batchId,
+            bt.zone_id AS zoneId,
+            bt.worker_id AS workerId,
+            bt.status,
+            bt.action_status AS actionStatus,
+            bt.started_at AS startedAt,
+            bt.completed_at AS completedAt,
+            bt.tote_id AS toteId,
+            t.barcode AS toteBarcode,
+            bt.current_location_id AS currentLocationId,
+            bt.tote_scanned_at AS toteScannedAt,
+            bt.location_scanned_at AS locationScannedAt,
+            bt.tote_released_at AS toteReleasedAt
+        FROM batch_tasks bt
+        LEFT JOIN totes t ON bt.tote_id = t.tote_id
+        WHERE bt.batch_task_id = #{batchTaskId}
+    </select>
+
+    <!--[조회] 다음 할당할 작업 찾기-->
+    <select id = "findNextUnassignedForZoneForUpdate" resultType="TaskVO">
+        SELECT
+            batch_task_id AS batchTaskId,
+            batch_id AS batchId,
+            zone_id AS zoneId,
+            worker_id AS workerId,
+            status,
+            started_at AS startedAt,
+            completed_at AS completedAt,
+            tote_id AS toteId
+        FROM batch_tasks
+        WHERE status = 'UNASSIGNED'
+            AND zone_id = #{zoneId}
+        ORDER BY batch_task_id
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <!--[조회] 작업자가 현재 진행 중인 작업이 있는지 확인-->
+    <select id="findInProgressByWorkerId" resultType="TaskVO">
+        SELECT
+            batch_task_id AS batchTaskId,
+            worker_id AS workerId,
+            status,
+            action_status AS actionStatus
+        FROM batch_tasks
+        WHERE worker_id = #{workerId}
+          AND status = 'IN_PROGRESS'
+        LIMIT 1
+    </select>
+
+    <!--[수정] 할당된 작업 상태 변경 -->
+    <update id="updateAssignToInProgress">
+        UPDATE batch_tasks
+        SET
+            worker_id = #{workerId},
+            status = 'IN_PROGRESS',
+            action_status = 'SCAN_TOTE',
+            started_at = NOW()
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'UNASSIGNED'
+    </update>
+
+    <!--[수정] 작업 완료 상태 변경 -->
+    <update id="updateComplete">
+        UPDATE batch_tasks
+        SET
+            status = 'COMPLETED',
+            completed_at = NOW(),
+            action_status = 'COMPLETE_TASK'
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
+
+    <!--[수정] 토트 스캔 결과 업데이트 -->
+    <update id="updateToteScanResult">
+        UPDATE batch_tasks
+        SET
+            tote_id = #{toteId},
+            action_status = 'SCAN_LOCATION',
+            tote_scanned_at = NOW()
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
+
+    <!--[수정] 지번 스캔 결과 업데이트 -->
+    <update id="updateLocationScanResult">
+        UPDATE batch_tasks
+        SET
+            current_location_id = #{locationId},
+            action_status = 'SCAN_ITEM',
+            location_scanned_at = NOW()
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
+
+    <!--[수정] 작업 액션 상태 강제 업데이트 -->
+    <update id="updateActionStatus">
+        UPDATE batch_tasks
+        SET
+            action_status = #{actionStatus}
+        WHERE
+            batch_task_id = #{batchTaskId}
+            AND status = 'IN_PROGRESS'
+    </update>
+
+    <!-- [조회] 배치 내 진행 중인 Task 개수 조회 -->
+    <select id="countInProgressTasksByBatch" resultType="int">
+        SELECT COUNT(*)
+        FROM batch_tasks
+        WHERE batch_id = #{batchId}
+          AND status != 'COMPLETED'
+    </select>
+
+    <!-- [조회] 작업 ID로 조회 (FOR UPDATE - 새 FSM용) -->
+    <select id="findByIdForUpdate" parameterType="long" resultType="TaskVO">
+        SELECT
+            bt.batch_task_id AS batchTaskId,
+            bt.batch_id AS batchId,
+            bt.zone_id AS zoneId,
+            bt.worker_id AS workerId,
+            bt.status,
+            bt.action_status AS actionStatus,
+            bt.started_at AS startedAt,
+            bt.completed_at AS completedAt,
+            bt.tote_id AS toteId,
+            t.barcode AS toteBarcode,
+            bt.current_location_id AS currentLocationId,
+            bt.tote_scanned_at AS toteScannedAt,
+            bt.location_scanned_at AS locationScannedAt,
+            bt.tote_released_at AS toteReleasedAt
+        FROM batch_tasks bt
+        LEFT JOIN totes t ON bt.tote_id = t.tote_id
+        WHERE bt.batch_task_id = #{taskId}
+        FOR UPDATE
+    </select>
+
+    <!-- [수정] Task 전체 업데이트 (새 FSM용) -->
+    <update id="updateTask" parameterType="TaskVO">
+        UPDATE batch_tasks
+        SET
+            action_status = #{actionStatus},
+            current_location_id = #{currentLocationId},
+            tote_id = #{toteId},
+            status = #{status}
+            <if test="completedAt != null">
+                , completed_at = #{completedAt}
+            </if>
+            <if test="toteScannedAt != null">
+                , tote_scanned_at = #{toteScannedAt}
+            </if>
+            <if test="locationScannedAt != null">
+                , location_scanned_at = #{locationScannedAt}
+            </if>
+        WHERE
+            batch_task_id = #{batchTaskId}
+    </update>
+</mapper>

@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="lookie.backend.domain.worklog.mapper.WorkLogMapper">
+
+    <resultMap id="WorkLogResultMap" type="lookie.backend.domain.worklog.vo.WorkLog">
+        <id property="workLogId" column="work_log_id"/>
+        <result property="workerId" column="worker_id"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="plannedEndAt" column="planned_end_at"/>
+        <result property="endedAt" column="ended_at"/>
+    </resultMap>
+
+    <resultMap id="WorkLogEventResultMap" type="lookie.backend.domain.worklog.vo.WorkLogEvent">
+        <id property="eventId" column="event_id"/>
+        <result property="workLogId" column="work_log_id"/>
+        <result property="eventType" column="event_type"/>
+        <result property="reason" column="reason"/>
+        <result property="occurredAt" column="occurred_at"/>
+    </resultMap>
+
+    <!-- 1. 출근 생성 -->
+    <insert id="insertWorkLog" useGeneratedKeys="true" keyProperty="workLogId">
+        INSERT INTO work_logs (worker_id, started_at, planned_end_at)
+        VALUES (#{workerId}, #{startedAt}, #{plannedEndAt})
+    </insert>
+
+    <!-- 2. 퇴근 업데이트 -->
+    <update id="updateWorkLogEnd">
+        UPDATE work_logs
+        SET ended_at = #{endedAt}
+        WHERE work_log_id = #{workLogId}
+    </update>
+
+    <!-- 3. 현재 진행중인 세션 조회 -->
+    <select id="findActiveWorkLogByWorkerId" resultMap="WorkLogResultMap">
+        SELECT
+        work_log_id,
+        worker_id,
+        started_at AS startedAt,
+        planned_end_at AS plannedEndAt,
+        ended_at AS endedAt
+        FROM work_logs
+        WHERE worker_id = #{workerId} AND ended_at IS NULL
+        ORDER BY started_at DESC
+        LIMIT 1
+    </select>
+
+    <!-- 4. 상태 변경 이벤트 기록 -->
+    <insert id="insertWorkLogEvent">
+        INSERT INTO work_log_events (work_log_id, event_type, reason, occurred_at)
+        VALUES (#{workLogId}, #{eventType}, #{reason}, #{occurredAt})
+    </insert>
+
+    <!-- 5. 가장 최근 이벤트 조회 -->
+    <select id="findLastEventByWorkLogId" resultMap="WorkLogEventResultMap">
+        SELECT * FROM work_log_events
+        WHERE work_log_id = #{workLogId}
+        ORDER BY occurred_at DESC
+        LIMIT 1
+    </select>
+
+    <!-- 6. 작업자의 전체 근무 이력 조회 -->
+    <select id="findAllByWorkerId" resultMap="WorkLogResultMap">
+        SELECT * FROM work_logs
+        WHERE worker_id = #{workerId}
+        ORDER BY started_at DESC
+    </select>
+
+    <!-- 7. 현재 출근 작업자 전체 목록 조회 -->
+    <select id="findActiveWorkLogs" resultType="lookie.backend.domain.worklog.dto.WorkLogResponseDto">
+        SELECT
+            w.work_log_id AS workLogId,
+            w.worker_id AS workerId,
+            w.started_at AS startedAt,
+
+            -- [String 매핑] DTO의 plannedEndAt이 String이므로 DB에서 포맷팅하여 반환
+            DATE_FORMAT(w.planned_end_at, '%Y-%m-%d %T') AS plannedEndAt,
+
+            -- [식별] 이름 + 번호 뒷4자리
+            -- [식별] 이름 + 번호 뒷4자리 -> Java에서 포맷팅
+            IFNULL(u.name, 'Unknown') AS name,
+            u.phone_number AS phoneNumber,
+
+            -- [Schema 반영] zone_assignments가 아닌 users 테이블에서 구역 ID 조회 (DTO 필드명: assignedZoneId)
+            u.assigned_zone_id AS assignedZoneId,
+
+            -- [위치] 현재 수행 중인 작업(IN_PROGRESS)의 지번 및 라인
+            loc.line_id AS lineId,
+            loc.location_code AS locationCode,
+
+            -- [성능 개선] 서브쿼리 제거 -> JOIN된 테이블(le)에서 바로 가져옴
+            IFNULL(le.event_type, 'START') AS currentStatus,
+
+            -- [상태변경시간] le.occurred_at이 곧 서브쿼리의 결과값임
+            IFNULL(le.occurred_at, w.started_at) AS lastStatusChangedAt
+
+        FROM work_logs w
+
+            -- [변경 1] INNER JOIN -> LEFT JOIN (작업자 정보가 꼬여도 로그는 나오게 함)
+            LEFT JOIN users u ON w.worker_id = u.user_id
+
+            -- [삭제] zone_assignments 조인은 더 이상 필요하지 않아 제거함
+
+            -- [변경 3] 최신 이벤트 가져오기 (Window Function 사용)
+            -- MySQL 8.0+ : ROW_NUMBER()로 각 로그별 최신 이벤트 1개만 추출하여 조인
+            LEFT JOIN (
+                SELECT work_log_id, event_type, occurred_at,
+                ROW_NUMBER() OVER(PARTITION BY work_log_id ORDER BY occurred_at DESC) as rn
+                FROM work_log_events
+            ) le ON w.work_log_id = le.work_log_id AND le.rn = 1
+
+            -- 현재 진행 중인 작업 조인 (위치 파악용)
+            LEFT JOIN batch_tasks bt ON bt.worker_id = w.worker_id
+            AND bt.status = 'IN_PROGRESS'
+            LEFT JOIN zone_locations loc ON bt.current_location_id = loc.location_id
+
+        WHERE w.ended_at IS NULL -- 퇴근하지 않은 사람만 조회
+          AND u.role = 'WORKER' -- WORKER 역할만 필터링 (ADMIN 제외)
+
+        <if test="workerId != null">
+            AND w.worker_id = #{workerId}
+        </if>
+
+        ORDER BY w.started_at DESC
+    </select>
+
+    <select id="findWorkHistories" resultType="lookie.backend.domain.worklog.dto.WorkLogResponseDto">
+        SELECT
+            w.work_log_id AS workLogId,
+            w.worker_id AS workerId,
+            w.started_at AS startedAt,
+            w.ended_at AS endedAt,
+            DATE_FORMAT(w.planned_end_at, '%Y-%m-%d %T') AS plannedEndAt,
+
+            IFNULL(u.name, 'Unknown') AS name,
+            u.phone_number AS phoneNumber,
+
+            -- [수정] users 테이블의 assigned_zone_id 사용 (DTO 필드명: assignedZoneId)
+            u.assigned_zone_id AS assignedZoneId,
+
+            -- 이력 조회 시 상태는 완료(END)가 대부분
+            CASE
+                WHEN w.ended_at IS NOT NULL THEN 'END'
+                ELSE 'START'
+            END AS currentStatus
+
+        FROM work_logs w
+            -- [수정] Null Safety를 위해 LEFT JOIN 사용
+            LEFT JOIN users u ON w.worker_id = u.user_id
+            -- [삭제] zone_assignments 조인은 더 이상 필요하지 않아 제거함
+
+        WHERE 1=1
+        <if test="workerId != null">
+            AND w.worker_id = #{workerId}
+        </if>
+
+        ORDER BY w.started_at DESC
+    </select>
+</mapper>
