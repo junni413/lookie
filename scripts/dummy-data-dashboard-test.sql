@@ -1395,3 +1395,9 @@ WHERE bt.status = 'IN_PROGRESS'
 -- ORDER BY bt.zone_id, task_count DESC;
 
 -- SELECT '=== 데이터 생성 완료 ===' AS result;
+
+
+오후 5:35
+
+INSERT INTO users (role, password_hash, name, phone_number, email, birth_date, is_active, created_at, updated_at) 
+VALUES ('ADMIN', '$2a$10$Tja7viRaiXFwwdeRHEEEQOC5UsKzqeXfHMLci71dihBMuFqIwRHQK', '총괄관리자', '01012341234', 'admin@lookie.com', '1990-01-01', TRUE, NOW(), NOW());
