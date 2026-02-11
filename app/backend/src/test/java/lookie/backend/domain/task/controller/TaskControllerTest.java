@@ -58,10 +58,13 @@ class TaskControllerTest {
                 task.setStatus("IN_PROGRESS");
                 task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.SCAN_TOTE);
 
+                TaskResponse<TaskVO> serviceResponse = TaskResponse.<TaskVO>builder()
+                                .payload(task)
+                                .nextAction(lookie.backend.domain.task.constant.NextAction.SCAN_TOTE)
+                                .build();
+
                 when(userMapper.findById(workerId)).thenReturn(java.util.Optional.empty());
-                when(taskMapper.findInProgressByWorkerId(workerId)).thenReturn(task);
-                when(taskMapper.findById(1L)).thenReturn(task);
-                when(taskItemMapper.findNextItem(eq(1L), any())).thenReturn(null);
+                when(taskWorkflowService.assignTask(workerId, 1L)).thenReturn(serviceResponse);
 
                 // when & then
                 mockMvc.perform(post("/api/tasks")
@@ -84,8 +87,12 @@ class TaskControllerTest {
                 task.setToteId(100L);
                 task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.SCAN_LOCATION);
 
-                when(taskMapper.findById(taskId)).thenReturn(task);
-                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(null);
+                TaskResponse<TaskVO> serviceResponse = TaskResponse.<TaskVO>builder()
+                                .payload(task)
+                                .nextAction(lookie.backend.domain.task.constant.NextAction.SCAN_LOCATION)
+                                .build();
+
+                when(taskWorkflowService.scanTote(any(), eq(taskId), eq(barcode))).thenReturn(serviceResponse);
 
                 ToteScanRequest request = new ToteScanRequest();
                 request.setBarcode(barcode);
@@ -112,8 +119,13 @@ class TaskControllerTest {
                 task.setBatchTaskId(taskId);
                 task.setActionStatus(lookie.backend.domain.task.vo.TaskActionStatus.SCAN_ITEM);
 
-                when(taskMapper.findById(taskId)).thenReturn(task);
-                when(taskItemMapper.findNextItem(eq(taskId), any())).thenReturn(null);
+                TaskResponse<TaskVO> serviceResponse = TaskResponse.<TaskVO>builder()
+                                .payload(task)
+                                .nextAction(lookie.backend.domain.task.constant.NextAction.SCAN_ITEM)
+                                .build();
+
+                when(taskWorkflowService.scanLocation(any(), eq(taskId), eq(locationCode)))
+                                .thenReturn(serviceResponse);
 
                 LocationScanRequest request = new LocationScanRequest();
                 request.setLocationCode(locationCode);
@@ -144,6 +156,7 @@ class TaskControllerTest {
 
                 TaskResponse<TaskItemVO> serviceResponse = TaskResponse.<TaskItemVO>builder()
                                 .payload(item)
+                                .nextAction(lookie.backend.domain.task.constant.NextAction.ADJUST_QUANTITY)
                                 .build();
 
                 when(taskWorkflowService.scanItem(any(), eq(taskId), eq(barcode)))
@@ -183,6 +196,7 @@ class TaskControllerTest {
 
                 TaskResponse<TaskItemVO> serviceResponse = TaskResponse.<TaskItemVO>builder()
                                 .payload(item)
+                                .nextAction(lookie.backend.domain.task.constant.NextAction.SCAN_ITEM)
                                 .build();
 
                 when(taskItemMapper.findById(itemId)).thenReturn(item);
