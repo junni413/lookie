@@ -2,10 +2,8 @@ package lookie.backend.domain.task.service;
 
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.inventory.service.InventoryService;
-import lookie.backend.domain.task.exception.ItemQuantityExceededException;
-import lookie.backend.domain.task.exception.ItemQuantityNotSufficientException;
-import lookie.backend.domain.product.exception.ProductNotFoundException;
-import lookie.backend.domain.task.exception.TaskItemNotAssignedException;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
@@ -34,13 +32,13 @@ public class TaskItemService {
         ProductVO product = productMapper.findByBarcode(barcode);
         if (product == null) {
             // 시스템에 없는 상품이거나 바코드가 틀린 경우
-            throw new ProductNotFoundException();
+            throw new ApiException(ErrorCode.PRODUCT_NOT_FOUND);
         }
 
         TaskItemVO item = taskItemMapper.findPendingOne(taskId, locationId, product.getProductId());
         if (item == null) {
             // 해당 지번에 이 상품이 할당되어 있지 않거나 이미 완료된 경우
-            throw new TaskItemNotAssignedException();
+            throw new ApiException(ErrorCode.TASK_ITEM_NOT_ASSIGNED);
         }
         return item;
     }
@@ -53,7 +51,7 @@ public class TaskItemService {
         int affected = taskItemMapper.updatePickedQuantityAtomic(itemId, increment);
         if (affected == 0) {
             // WHERE 절 조건(status='PENDING' 및 picked_qty + increment <= required_qty)에 걸림
-            throw new ItemQuantityExceededException();
+            throw new ApiException(ErrorCode.TASK_ITEM_QUANTITY_EXCEEDED);
         }
         return taskItemMapper.findById(itemId);
     }
@@ -77,7 +75,7 @@ public class TaskItemService {
 
         // 2. 수량 충족 여부 체크
         if (!item.getPickedQty().equals(item.getRequiredQty())) {
-            throw new ItemQuantityNotSufficientException();
+            throw new ApiException(ErrorCode.TASK_ITEM_QUANTITY_NOT_SUFFICIENT);
         }
 
         // 3. 상태 업데이트 (IN_PROGRESS -> DONE)

@@ -11,7 +11,8 @@ import lookie.backend.domain.location.vo.LocationVO;
 import lookie.backend.domain.task.event.TaskCompletedEvent;
 import lookie.backend.domain.task.event.TaskItemCompletedEvent;
 import lookie.backend.domain.task.vo.TaskActionStatus;
-import lookie.backend.domain.task.exception.*;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.mapper.TaskMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
@@ -50,12 +51,12 @@ public class TaskWorkflowService {
         // 작업자가 이미 진행 중인 작업이 있는지 확인
         TaskVO activeTask = taskMapper.findInProgressByWorkerId(workerId);
         if (activeTask != null) {
-            throw new WorkerAlreadyHasTaskException();
+            throw new ApiException(ErrorCode.WORKER_ALREADY_HAS_TASK);
         }
 
         TaskVO task = taskMapper.findNextUnassignedForZoneForUpdate(zoneId);
         if (task == null) {
-            throw new NoPickableItemException();
+            throw new ApiException(ErrorCode.TASK_NO_AVAILABLE);
         }
 
         taskMapper.updateAssignToInProgress(task.getBatchTaskId(), workerId);
@@ -113,11 +114,11 @@ public class TaskWorkflowService {
         TaskItemVO nextItem = taskItemService.getNextItem(taskId);
         if (nextItem == null) {
             log.warn("[TaskWorkflowService] scanLocation failed - No pickable item found for taskId={}", taskId);
-            throw new NoPickableItemException();
+            throw new ApiException(ErrorCode.TASK_NO_AVAILABLE);
         }
 
         if (!location.getLocationId().equals(nextItem.getLocationId())) {
-            throw new LocationMismatchException();
+            throw new ApiException(ErrorCode.TASK_LOCATION_MISMATCH);
         }
 
         // UI/관제용 위치 기록
@@ -178,14 +179,14 @@ public class TaskWorkflowService {
 
         TaskItemVO item = taskItemMapper.findById(taskItemId);
         if (item == null || !"IN_PROGRESS".equals(item.getStatus())) {
-            throw new InvalidItemStatusException();
+            throw new ApiException(ErrorCode.INVALID_ITEM_STATUS);
         }
 
         // 증감 로직 적용 (기존 pickedQty + increment)
         int newQty = item.getPickedQty() + increment;
 
         if (newQty < 0 || newQty > item.getRequiredQty()) {
-            throw new InvalidQuantityException();
+            throw new ApiException(ErrorCode.TASK_ITEM_QUANTITY_EXCEEDED);
         }
 
         taskItemMapper.setPickedQty(taskItemId, newQty);
@@ -216,7 +217,7 @@ public class TaskWorkflowService {
 
         TaskItemVO item = taskItemMapper.findById(taskItemId);
         if (item == null) {
-            throw new InvalidItemStatusException("Item not found");
+            throw new ApiException(ErrorCode.INVALID_ITEM_STATUS, "Item not found");
         }
 
         // [FSM 보강] 이미 DONE이거나 ISSUE_PENDING(패스)인 경우 로직 스킵하고 다음 액션 계산
@@ -237,11 +238,11 @@ public class TaskWorkflowService {
         assertActionStatus(task, TaskActionStatus.ADJUST_QUANTITY);
 
         if (!"IN_PROGRESS".equals(item.getStatus())) {
-            throw new InvalidItemStatusException();
+            throw new ApiException(ErrorCode.INVALID_ITEM_STATUS);
         }
 
         if (!item.getPickedQty().equals(item.getRequiredQty())) {
-            throw new QuantityMismatchException();
+            throw new ApiException(ErrorCode.TASK_ITEM_QUANTITY_NOT_SUFFICIENT);
         }
 
         taskItemMapper.updateStatus(taskItemId, "DONE");
@@ -300,7 +301,7 @@ public class TaskWorkflowService {
 
         int pendingCount = taskItemMapper.countPendingItemsByTaskId(taskId);
         if (pendingCount > 0) {
-            throw new PendingItemsExistException();
+            throw new ApiException(ErrorCode.TASK_NOT_RELEASABLE);
         }
 
         task.setStatus("COMPLETED");
@@ -410,28 +411,28 @@ public class TaskWorkflowService {
     private void assertSingleInProgress(Long taskId) {
         int count = taskItemMapper.countInProgressItems(taskId);
         if (count > 1) {
-            throw new InvalidItemStatusException();
+            throw new ApiException(ErrorCode.INVALID_ITEM_STATUS);
         }
     }
 
     private void assertTaskOwnership(TaskVO task, Long workerId) {
         if (task == null) {
-            throw new InvalidTaskStatusException();
+            throw new ApiException(ErrorCode.INVALID_TASK_STATUS);
         }
         if (!workerId.equals(task.getWorkerId())) {
-            throw new InvalidTaskStatusException();
+            throw new ApiException(ErrorCode.INVALID_TASK_STATUS);
         }
     }
 
     private void assertTaskStatus(TaskVO task, String expectedStatus) {
         if (!expectedStatus.equals(task.getStatus())) {
-            throw new InvalidTaskStatusException();
+            throw new ApiException(ErrorCode.INVALID_TASK_STATUS);
         }
     }
 
     private void assertActionStatus(TaskVO task, TaskActionStatus expectedActionStatus) {
         if (task.getActionStatus() != expectedActionStatus) {
-            throw new InvalidActionStatusException();
+            throw new ApiException(ErrorCode.INVALID_ACTION_STATUS);
         }
     }
 }
