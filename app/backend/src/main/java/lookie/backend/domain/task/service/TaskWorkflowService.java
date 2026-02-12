@@ -82,7 +82,9 @@ public class TaskWorkflowService {
         toteService.validateToteAvailability(tote, taskId);
         toteService.mappingToTask(tote.getToteId(), taskId);
 
+        task.setToteId(tote.getToteId()); // 데이터 유실 방지를 위해 toteId 세팅
         task.setActionStatus(TaskActionStatus.SCAN_LOCATION);
+        task.setToteScannedAt(LocalDateTime.now()); // 스캔 시각 기록 보완
         taskMapper.updateTask(task);
 
         log.info("[TaskWorkflowService] Tote scanned - taskId={}, toteId={}", taskId, tote.getToteId());
@@ -121,6 +123,7 @@ public class TaskWorkflowService {
         // UI/관제용 위치 기록
         task.setCurrentLocationId(location.getLocationId());
         task.setActionStatus(TaskActionStatus.SCAN_ITEM);
+        task.setLocationScannedAt(LocalDateTime.now()); // 스캔 시각 기록 보완
         taskMapper.updateTask(task);
 
         log.info("[TaskWorkflowService] Location scanned - taskId={}, locationId={}", taskId, location.getLocationId());
