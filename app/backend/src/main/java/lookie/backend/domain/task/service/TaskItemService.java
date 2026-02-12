@@ -95,11 +95,11 @@ public class TaskItemService {
                 -item.getRequiredQty(), // 음수 = 재고 감소
                 "TASK_ITEM",
                 itemId,
-                null // workerId는 TaskWorkflowFacade에서 얻을 수 있지만, 여기서는 null
+                null // 현재 메서드 시그니처에 workerId가 없으므로 null (필요 시 시그니처 확장 필요)
         );
 
         // 5. [Event] 아이템 완료 이벤트 발행 (Redis 집계용)
-        // 5. [Event] Redis update logic moved to Facade
+        // 5. [Event] Redis update logic moved to TaskWorkflowService
 
         return taskItemMapper.findById(itemId);
     }
