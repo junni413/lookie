@@ -2,15 +2,8 @@ package lookie.backend.domain.user.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
-import lookie.backend.domain.user.exception.AlreadyExistsPhoneException;
-import lookie.backend.domain.user.exception.EmailVerifyRequiredException;
-import lookie.backend.domain.user.exception.InvalidEmailFormatException;
-import lookie.backend.domain.user.exception.InvalidPasswordException;
-import lookie.backend.domain.user.exception.InvalidPasswordFormatException;
-import lookie.backend.domain.user.exception.InvalidPhoneFormatException;
-import lookie.backend.domain.user.exception.InvalidTokenException;
-import lookie.backend.domain.user.exception.LoginFailedException;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.user.mapper.UserMapper;
 import lookie.backend.domain.user.vo.UserRole;
 import lookie.backend.domain.user.vo.UserVO;
@@ -67,32 +60,32 @@ public class UserService {
     public void signup(UserVO userVO, String plainPassword) {
         // 0-1. 이메일 형식 검증
         if (!isValidEmail(userVO.getEmail())) {
-            throw new InvalidEmailFormatException(userVO.getEmail());
+            throw new ApiException(ErrorCode.INVALID_EMAIL_FORMAT, "유효하지 않은 이메일 형식: " + userVO.getEmail());
         }
 
         // 0-2. 전화번호 형식 검증 (하이픈 없이 숫자만 11자리)
         if (!isValidPhoneNumber(userVO.getPhoneNumber())) {
-            throw new InvalidPhoneFormatException(userVO.getPhoneNumber());
+            throw new ApiException(ErrorCode.INVALID_PHONE_FORMAT, "유효하지 않은 전화번호 형식: " + userVO.getPhoneNumber());
         }
 
         // 0-3. 이메일 인증 완료 여부 확인 (Redis 플래그 체크)
         if (!mailService.isEmailVerified(userVO.getEmail())) {
-            throw new EmailVerifyRequiredException(userVO.getEmail());
+            throw new ApiException(ErrorCode.AUTH_EMAIL_VERIFY_REQUIRED, "이메일 인증이 필요합니다: " + userVO.getEmail());
         }
 
         // 1. 중복 확인 (전화번호)
         if (userMapper.existByPhoneNumber(userVO.getPhoneNumber())) {
-            throw new AlreadyExistsPhoneException(userVO.getPhoneNumber());
+            throw new ApiException(ErrorCode.USER_ALREADY_EXISTS_PHONE, "중복 가입 시도(전화번호): " + userVO.getPhoneNumber());
         }
 
         // 2. 중복 확인 (이메일)
         if (userMapper.existByEmail(userVO.getEmail())) {
-            throw new AlreadyExistsEmailException(userVO.getEmail());
+            throw new ApiException(ErrorCode.USER_ALREADY_EXISTS_EMAIL, "중복 가입 시도(이메일): " + userVO.getEmail());
         }
 
         // 3. 비밀번호 형식 검증 (7~15자, 영문+숫자 필수)
         if (!isValidPassword(plainPassword)) {
-            throw new InvalidPasswordFormatException("비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다");
+            throw new ApiException(ErrorCode.INVALID_PASSWORD_FORMAT, "비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다");
         }
 
         // 4. 비밀번호 암호화 (BCrypt)
@@ -127,16 +120,16 @@ public class UserService {
     public Map<String, Object> login(String phoneNumber, String rawPassword) {
         // 1. 전화번호로 사용자 조회 (is_active 필터링 없이 조회하여 탈퇴 여부 확인)
         UserVO user = userMapper.findByPhoneNumberIncludingDeleted(phoneNumber)
-                .orElseThrow(() -> new LoginFailedException(phoneNumber));
+                .orElseThrow(() -> new ApiException(ErrorCode.AUTH_LOGIN_FAILED));
 
         // 2. 비밀번호 검증
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
-            throw new LoginFailedException(phoneNumber);
+            throw new ApiException(ErrorCode.AUTH_LOGIN_FAILED, "로그인 실패: " + phoneNumber);
         }
 
         // 3. 계정 활성화 상태 확인 (탈퇴한 계정은 명시적 에러 반환)
         if (user.getIsActive() == null || !user.getIsActive()) {
-            throw new lookie.backend.domain.user.exception.DeletedUserException();
+            throw new ApiException(ErrorCode.USER_DELETED);
         }
 
         // 4. JWT 토큰 생성
@@ -203,7 +196,7 @@ public class UserService {
     public Map<String, String> reissueToken(String refreshToken) {
         // 1. Refresh Token 유효성 검증
         if (!jwtProvider.validateToken(refreshToken)) {
-            throw new InvalidTokenException("유효하지 않은 Refresh Token입니다.");
+            throw new ApiException(ErrorCode.AUTH_INVALID_TOKEN, "유효하지 않은 Refresh Token입니다.");
         }
 
         // 2. Refresh Token에서 사용자 ID 추출
@@ -214,12 +207,12 @@ public class UserService {
         String hashedStoredToken = redisTemplate.opsForValue().get(redisKey);
 
         if (hashedStoredToken == null) {
-            throw new InvalidTokenException("저장된 Refresh Token이 없습니다. 다시 로그인해주세요.");
+            throw new ApiException(ErrorCode.AUTH_INVALID_TOKEN, "저장된 Refresh Token이 없습니다. 다시 로그인해주세요.");
         }
 
         // 보안: BCrypt를 사용하여 원본 토큰과 해시 비교
         if (!passwordEncoder.matches(refreshToken, hashedStoredToken)) {
-            throw new InvalidTokenException("Refresh Token이 일치하지 않습니다. 다시 로그인해주세요.");
+            throw new ApiException(ErrorCode.AUTH_INVALID_TOKEN, "Refresh Token이 일치하지 않습니다. 다시 로그인해주세요.");
         }
 
         // 4. RTR 적용: 기존 Refresh Token 삭제
@@ -227,7 +220,7 @@ public class UserService {
 
         // 5. 사용자 정보 조회 (Role 정보 필요)
         UserVO user = userMapper.findById(Long.parseLong(userId))
-                .orElseThrow(() -> new InvalidTokenException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "사용자를 찾을 수 없습니다."));
 
         // 6. 새로운 Access Token 및 Refresh Token 생성
         String newAccessToken = jwtProvider.createAccessToken(userId, user.getRole().name());
@@ -324,7 +317,7 @@ public class UserService {
         // 2. 이메일로 사용자 조회
         UserVO user = userMapper.findByEmail(email);
         if (user == null) {
-            throw new LoginFailedException(); // 계정이 존재하지 않음
+            throw new ApiException(ErrorCode.AUTH_LOGIN_FAILED); // 계정이 존재하지 않음
         }
 
         // 3. resetToken 생성 (UUID)
@@ -352,17 +345,17 @@ public class UserService {
         String resetTokenKey = "reset:token:" + resetToken;
         String userId = redisTemplate.opsForValue().get(resetTokenKey);
         if (userId == null) {
-            throw new InvalidTokenException();
+            throw new ApiException(ErrorCode.AUTH_INVALID_TOKEN);
         }
 
         // 2. 비밀번호 일치 확인
         if (!newPassword.equals(confirmPassword)) {
-            throw new InvalidPasswordFormatException("비밀번호가 일치하지 않습니다");
+            throw new ApiException(ErrorCode.INVALID_PASSWORD_FORMAT, "비밀번호가 일치하지 않습니다");
         }
 
         // 3. 비밀번호 형식 검증
         if (!isValidPassword(newPassword)) {
-            throw new InvalidPasswordFormatException("비밀번호 형식이 올바르지 않습니다");
+            throw new ApiException(ErrorCode.INVALID_PASSWORD_FORMAT, "비밀번호 형식이 올바르지 않습니다");
         }
 
         // 4. 비밀번호 암호화
@@ -418,7 +411,7 @@ public class UserService {
     @Transactional(readOnly = true)
     public UserVO getMyProfile(Long userId) {
         UserVO user = userMapper.findById(userId)
-                .orElseThrow(() -> new lookie.backend.domain.user.exception.UserNotFoundException());
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
 
         // 실시간 상태 주입
         populateUserStatus(user);
@@ -453,7 +446,7 @@ public class UserService {
         if (email != null && !email.trim().isEmpty()) {
             // 2-1. 이메일 형식 검증
             if (!isValidEmail(email)) {
-                throw new InvalidEmailFormatException(email);
+                throw new ApiException(ErrorCode.INVALID_EMAIL_FORMAT, "유효하지 않은 이메일 형식: " + email);
             }
 
             // 2-2. emailChangeToken 검증 (Redis에서 조회)
@@ -461,17 +454,17 @@ public class UserService {
             String verifiedEmail = redisTemplate.opsForValue().get(emailChangeTokenKey);
 
             if (verifiedEmail == null || !verifiedEmail.equals(email)) {
-                throw new lookie.backend.domain.user.exception.EmailChangeTokenRequiredException(email);
+                throw new ApiException(ErrorCode.AUTH_EMAIL_CHANGE_TOKEN_REQUIRED, "이메일 변경 인증이 필요합니다: " + email);
             }
 
             // 2-3. 이메일 중복 체크 개선
             // 현재 사용자의 기존 이메일 조회
             UserVO currentUser = userMapper.findById(userId)
-                    .orElseThrow(() -> new lookie.backend.domain.user.exception.UserNotFoundException());
+                    .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
 
             // 기존 이메일과 다른 경우에만 중복 체크 수행
             if (!email.equals(currentUser.getEmail()) && userMapper.existByEmail(email)) {
-                throw new AlreadyExistsEmailException(email);
+                throw new ApiException(ErrorCode.USER_ALREADY_EXISTS_EMAIL, "중복 가입 시도(이메일): " + email);
             }
 
             params.put("email", email);
@@ -484,7 +477,7 @@ public class UserService {
         if (password != null && !password.trim().isEmpty()) {
             // 3-1. 비밀번호 형식 검증 (기존 isValidPassword() 재사용)
             if (!isValidPassword(password)) {
-                throw new InvalidPasswordFormatException("비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다");
+                throw new ApiException(ErrorCode.INVALID_PASSWORD_FORMAT, "비밀번호는 7~15자의 영문, 숫자 조합이어야 합니다");
             }
 
             // 3-2. 비밀번호 암호화
@@ -527,20 +520,20 @@ public class UserService {
         // 0. 패스워드 null 체크 강화
         if (password == null || password.trim().isEmpty()) {
             log.error("[회원 탈퇴] 입력된 비밀번호가 없습니다. userId={}", userId);
-            throw new InvalidPasswordException();
+            throw new ApiException(ErrorCode.USER_INVALID_PASSWORD);
         }
 
         // 1. 사용자 조회 (예외 처리 및 로깅 강화)
         UserVO user = userMapper.findById(userId)
                 .orElseThrow(() -> {
                     log.error("[회원 탈퇴] 사용자를 찾을 수 없습니다. userId={}", userId);
-                    return new lookie.backend.domain.user.exception.UserNotFoundException();
+                    return new ApiException(ErrorCode.USER_NOT_FOUND);
                 });
 
         // 2. 비밀번호 검증
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
             log.warn("[회원 탈퇴] 비밀번호가 일치하지 않습니다. userId={}", userId);
-            throw new InvalidPasswordException();
+            throw new ApiException(ErrorCode.USER_INVALID_PASSWORD);
         }
 
         // 3. DB 업데이트 (MyBatis XML에서 CONCAT, NOW() 처리)

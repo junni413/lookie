@@ -2,7 +2,8 @@ package lookie.backend.domain.tote.service;
 
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.task.exception.InvalidToteBarcodeException;
-import lookie.backend.domain.tote.exception.ToteAlreadyInUseException;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.tote.mapper.ToteMapper;
 import lookie.backend.domain.tote.vo.ToteVO;
 import org.springframework.stereotype.Service;
@@ -35,7 +36,7 @@ public class ToteService {
      */
     public void validateToteAvailability(ToteVO tote, Long taskId) {
         if (tote.getCurrentBatchTaskId() != null && !tote.getCurrentBatchTaskId().equals(taskId)) {
-            throw new ToteAlreadyInUseException();
+            throw new ApiException(ErrorCode.TOTE_ALREADY_IN_USE);
         }
     }
 }
