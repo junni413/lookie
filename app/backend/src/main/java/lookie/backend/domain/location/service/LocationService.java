@@ -1,8 +1,8 @@
 package lookie.backend.domain.location.service;
 
 import lombok.RequiredArgsConstructor;
-import lookie.backend.domain.location.exception.LocationNotFoundException;
-import lookie.backend.domain.location.exception.LocationZoneMismatchException;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.location.mapper.LocationMapper;
 import lookie.backend.domain.location.vo.LocationVO;
 import org.springframework.stereotype.Service;
@@ -19,7 +19,7 @@ public class LocationService {
     public LocationVO getByCode(String code) {
         LocationVO location = locationMapper.findByCode(code);
         if (location == null) {
-            throw new LocationNotFoundException();
+            throw new ApiException(ErrorCode.LOCATION_NOT_FOUND);
         }
         return location;
     }
@@ -29,7 +29,7 @@ public class LocationService {
      */
     public void validateZone(LocationVO location, Long zoneId) {
         if (!location.getZoneId().equals(zoneId)) {
-            throw new LocationZoneMismatchException();
+            throw new ApiException(ErrorCode.LOCATION_ZONE_MISMATCH);
         }
     }
 }

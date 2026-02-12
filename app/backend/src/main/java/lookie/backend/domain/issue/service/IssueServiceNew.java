@@ -2,7 +2,18 @@ package lookie.backend.domain.issue.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import lookie.backend.domain.issue.dto.*;
+
+import lookie.backend.domain.issue.dto.AdminIssueListRequest;
+import lookie.backend.domain.issue.dto.AdminIssueListResponse;
+import lookie.backend.domain.issue.dto.AdminIssueSummary;
+import lookie.backend.domain.issue.dto.AiResultRequest;
+import lookie.backend.domain.issue.dto.AiResultResponse;
+import lookie.backend.domain.issue.dto.CreateIssueRequest;
+import lookie.backend.domain.issue.dto.IssueDetailResponse;
+import lookie.backend.domain.issue.dto.IssueNextAction;
+import lookie.backend.domain.issue.dto.IssueResponse;
+import lookie.backend.domain.issue.dto.IssueStatus;
+import lookie.backend.domain.issue.dto.MyIssueSummary;
 import lookie.backend.domain.issue.mapper.IssueMapper;
 import lookie.backend.domain.issue.vo.AiJudgmentVO;
 import lookie.backend.domain.issue.vo.IssueImageVO;
@@ -176,10 +187,10 @@ public class IssueServiceNew {
             if (isCallMandatory) {
                 // 1. 관리자 연결 시도 여부 체크
                 if ("NONE".equals(issue.getWebrtcStatus()) || issue.getWebrtcStatus() == null) {
-                    throw new AdminCallRequiredException(); // 연결 시도 필요
+                    throw new ApiException(ErrorCode.ADMIN_CALL_REQUIRED); // 연결 시도 필요
                 }
                 if ("WAITING".equals(issue.getWebrtcStatus())) {
-                    throw new AdminCallInProgressException(); // 연결 시도 중 (통과 불가)
+                    throw new ApiException(ErrorCode.ADMIN_CALL_IN_PROGRESS); // 연결 시도 중 (통과 불가)
                 }
 
                 // AI 판독 결과 조회

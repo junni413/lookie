@@ -2,11 +2,8 @@ package lookie.backend.domain.user.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import lookie.backend.domain.user.exception.AlreadyExistsEmailException;
-import lookie.backend.domain.user.exception.EmailAlreadySentException;
-import lookie.backend.domain.user.exception.EmailCodeExpiredException;
-import lookie.backend.domain.user.exception.EmailSendFailedException;
-import lookie.backend.domain.user.exception.InvalidEmailFormatException;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.user.mapper.UserMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
@@ -50,18 +47,18 @@ public class MailService {
     public void sendVerificationCode(String email) {
         // 0. 이메일 형식 검증
         if (!isValidEmail(email)) {
-            throw new InvalidEmailFormatException(email);
+            throw new ApiException(ErrorCode.INVALID_EMAIL_FORMAT, "유효하지 않은 이메일 형식: " + email);
         }
 
         // 1. DB에서 이메일 중복 체크 (발송 전 체크)
         if (userMapper.existByEmail(email)) {
-            throw new AlreadyExistsEmailException(email);
+            throw new ApiException(ErrorCode.USER_ALREADY_EXISTS_EMAIL, "중복 가입 시도(이메일): " + email);
         }
 
         // 2. 재발송 제한 체크 (1분 내 중복 발송 방지)
         String limitKey = EMAIL_LIMIT_PREFIX + email;
         if (Boolean.TRUE.equals(redisTemplate.hasKey(limitKey))) {
-            throw new EmailAlreadySentException(email);
+            throw new ApiException(ErrorCode.AUTH_EMAIL_ALREADY_SENT, "1분 내 재발송 제한: " + email);
         }
 
         // 3. 6자리 인증번호 생성
@@ -92,7 +89,7 @@ public class MailService {
     public void sendPasswordResetCode(String email) {
         // 0. 이메일 형식 검증
         if (!isValidEmail(email)) {
-            throw new InvalidEmailFormatException(email);
+            throw new ApiException(ErrorCode.INVALID_EMAIL_FORMAT, "유효하지 않은 이메일 형식: " + email);
         }
 
         // 1. DB에서 이메일 존재 체크 (비밀번호 재설정은 기존 계정만)
@@ -105,7 +102,7 @@ public class MailService {
         // 2. 재발송 제한 체크 (1분 내 중복 발송 방지)
         String limitKey = EMAIL_LIMIT_PREFIX + email;
         if (Boolean.TRUE.equals(redisTemplate.hasKey(limitKey))) {
-            throw new EmailAlreadySentException(email);
+            throw new ApiException(ErrorCode.AUTH_EMAIL_ALREADY_SENT, "1분 내 재발송 제한: " + email);
         }
 
         // 3. 6자리 인증번호 생성
@@ -137,7 +134,7 @@ public class MailService {
 
         // 2. 인증번호 검증 (없거나 불일치 시 예외)
         if (savedCode == null || !savedCode.equals(inputCode)) {
-            throw new EmailCodeExpiredException(email);
+            throw new ApiException(ErrorCode.AUTH_EMAIL_CODE_EXPIRED, "인증번호가 만료되었거나 일치하지 않습니다: " + email);
         }
 
         // 3. 검증 성공 - verified 플래그 저장 (TTL 10분)
@@ -197,7 +194,7 @@ public class MailService {
             log.info("[이메일 발송] 성공: {}", to);
         } catch (Exception e) {
             log.error("[이메일 발송] 실패: {}", to, e);
-            throw new EmailSendFailedException(to);
+            throw new ApiException(ErrorCode.EMAIL_SEND_FAILED, "이메일 발송 실패: " + to);
         }
     }
 
@@ -220,7 +217,7 @@ public class MailService {
             log.info("[비밀번호 재설정 이메일 발송] 성공: {}", to);
         } catch (Exception e) {
             log.error("[비밀번호 재설정 이메일 발송] 실패: {}", to, e);
-            throw new EmailSendFailedException(to);
+            throw new ApiException(ErrorCode.EMAIL_SEND_FAILED, "비밀번호 재설정 이메일 발송 실패: " + to);
         }
     }
 
@@ -248,18 +245,18 @@ public class MailService {
     public void sendEmailChangeCode(String newEmail) {
         // 0. 이메일 형식 검증
         if (!isValidEmail(newEmail)) {
-            throw new InvalidEmailFormatException(newEmail);
+            throw new ApiException(ErrorCode.INVALID_EMAIL_FORMAT, "유효하지 않은 이메일 형식: " + newEmail);
         }
 
         // 1. DB에서 이메일 중복 체크 (새 이메일이 이미 다른 사용자에 의해 사용 중인지)
         if (userMapper.existByEmail(newEmail)) {
-            throw new AlreadyExistsEmailException(newEmail);
+            throw new ApiException(ErrorCode.USER_ALREADY_EXISTS_EMAIL, "중복 가입 시도(이메일): " + newEmail);
         }
 
         // 2. 재발송 제한 체크 (1분 내 중복 발송 방지)
         String limitKey = EMAIL_LIMIT_PREFIX + newEmail;
         if (Boolean.TRUE.equals(redisTemplate.hasKey(limitKey))) {
-            throw new EmailAlreadySentException(newEmail);
+            throw new ApiException(ErrorCode.AUTH_EMAIL_ALREADY_SENT, "1분 내 재발송 제한: " + newEmail);
         }
 
         // 3. 6자리 인증번호 생성
@@ -291,7 +288,7 @@ public class MailService {
 
         // 2. 인증번호 검증 (없거나 불일치 시 예외)
         if (savedCode == null || !savedCode.equals(inputCode)) {
-            throw new EmailCodeExpiredException(newEmail);
+            throw new ApiException(ErrorCode.AUTH_EMAIL_CODE_EXPIRED, "인증번호가 만료되었거나 일치하지 않습니다: " + newEmail);
         }
 
         // 3. 검증 성공 - verified 플래그 저장 (TTL 10분)
@@ -323,8 +320,7 @@ public class MailService {
             log.info("[이메일 변경 발송] 성공: {}", to);
         } catch (Exception e) {
             log.error("[이메일 변경 발송] 실패: {}", to, e);
-            throw new EmailSendFailedException(to);
+            throw new ApiException(ErrorCode.EMAIL_SEND_FAILED, "이메일 변경 발송 실패: " + to);
         }
     }
 }
-
