@@ -4,9 +4,8 @@ import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
 import lookie.backend.domain.product.vo.ProductVO;
-import lookie.backend.domain.task.exception.ItemQuantityExceededException;
-import lookie.backend.domain.product.exception.ProductNotFoundException;
-import lookie.backend.domain.task.exception.TaskItemNotAssignedException;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -52,9 +51,10 @@ class TaskItemServiceTest {
         when(taskItemMapper.updatePickedQuantityAtomic(itemId, 1)).thenReturn(0);
 
         // when & then
-        assertThrows(ItemQuantityExceededException.class, () -> {
+        ApiException ex = assertThrows(ApiException.class, () -> {
             taskItemService.updateQuantityAtomic(itemId, 1);
         });
+        assertEquals(ErrorCode.TASK_ITEM_QUANTITY_EXCEEDED, ex.getErrorCode());
     }
 
     @Test
@@ -90,9 +90,10 @@ class TaskItemServiceTest {
         when(productMapper.findByBarcode("WRONG")).thenReturn(null);
 
         // when & then
-        assertThrows(ProductNotFoundException.class, () -> {
+        ApiException ex = assertThrows(ApiException.class, () -> {
             taskItemService.scanAndGetItem(1L, 10L, "WRONG");
         });
+        assertEquals(ErrorCode.PRODUCT_NOT_FOUND, ex.getErrorCode());
     }
 
     @Test
@@ -107,8 +108,9 @@ class TaskItemServiceTest {
         when(taskItemMapper.findPendingOne(anyLong(), anyLong(), eq(100L))).thenReturn(null);
 
         // when & then
-        assertThrows(TaskItemNotAssignedException.class, () -> {
+        ApiException ex = assertThrows(ApiException.class, () -> {
             taskItemService.scanAndGetItem(1L, 10L, barcode);
         });
+        assertEquals(ErrorCode.TASK_ITEM_NOT_ASSIGNED, ex.getErrorCode());
     }
 }
