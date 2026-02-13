@@ -3,17 +3,9 @@ package lookie.backend.domain.issue.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import lookie.backend.domain.issue.dto.AdminIssueListRequest;
-import lookie.backend.domain.issue.dto.AdminIssueListResponse;
-import lookie.backend.domain.issue.dto.AdminIssueSummary;
-import lookie.backend.domain.issue.dto.AiResultRequest;
-import lookie.backend.domain.issue.dto.AiResultResponse;
-import lookie.backend.domain.issue.dto.CreateIssueRequest;
-import lookie.backend.domain.issue.dto.IssueDetailResponse;
+import lookie.backend.domain.issue.dto.IssueDto;
 import lookie.backend.domain.issue.dto.IssueNextAction;
-import lookie.backend.domain.issue.dto.IssueResponse;
 import lookie.backend.domain.issue.dto.IssueStatus;
-import lookie.backend.domain.issue.dto.MyIssueSummary;
 import lookie.backend.domain.issue.mapper.IssueMapper;
 import lookie.backend.domain.issue.vo.AiJudgmentVO;
 import lookie.backend.domain.issue.vo.IssueImageVO;
@@ -68,7 +60,7 @@ public class IssueServiceNew {
     // ========== 3.1 createIssue ==========
 
     @Transactional
-    public IssueResponse createIssue(Long workerId, CreateIssueRequest request) {
+    public IssueDto.Response createIssue(Long workerId, IssueDto.CreateRequest request) {
         log.info("[IssueServiceNew] createIssue - workerId={}, taskId={}, itemId={}, type={}",
                 workerId, request.getTaskId(), request.getTaskItemId(), request.getIssueType());
 
@@ -149,7 +141,7 @@ public class IssueServiceNew {
             aiTask.run();
         }
 
-        return IssueResponse.from(issue);
+        return IssueDto.Response.from(issue);
     }
 
     // ========== 3.2 workerChooseNextItem (NEED_CHECK 가드 반영) ==========
@@ -297,7 +289,7 @@ public class IssueServiceNew {
         }
 
         // [WebSocket] 이미지 등록 알림 (상태 계산 결과가 바뀔 수 있으므로 상세 정보 전송)
-        IssueDetailResponse detail = getIssueDetail(issueId);
+        IssueDto.DetailResponse detail = getIssueDetail(issueId);
         messagingTemplate.convertAndSend("/topic/issues/" + issueId, detail);
         log.info("[IssueServiceNew] reportImage - WebSocket notification sent. issueId={}", issueId);
     }
@@ -358,7 +350,7 @@ public class IssueServiceNew {
     // ========== 5) AI 결과 반영 ==========
 
     @Transactional
-    public void onAiResult(Long issueId, AiResultRequest request) {
+    public void onAiResult(Long issueId, IssueDto.AiResultRequest request) {
         log.info("[IssueServiceNew] onAiResult - issueId={}, aiDecision={}, reasonCode={}",
                 issueId, request.getAiDecision(), request.getReasonCode());
 
@@ -446,7 +438,7 @@ public class IssueServiceNew {
 
         // 6. [WebSocket] UI 실시간 업데이트를 위해 상세 정보 전송
         // 프론트엔드 호환성을 위해 AiResultResponse 규격 사용
-        AiResultResponse wsResponse = new AiResultResponse();
+        IssueDto.AiResultResponse wsResponse = new IssueDto.AiResultResponse();
         wsResponse.setIssueId(issueId);
         wsResponse.setAiResult(decision);
         wsResponse.setReasonCode(mappedReason);
@@ -594,7 +586,7 @@ public class IssueServiceNew {
     // ========== 조회 관련 메서드 ==========
 
     @Transactional(readOnly = true)
-    public IssueDetailResponse getIssueDetail(Long issueId) {
+    public IssueDto.DetailResponse getIssueDetail(Long issueId) {
         IssueVO issue = issueMapper.findById(issueId);
         if (issue == null) {
             throw new ApiException(ErrorCode.ISSUE_NOT_FOUND);
@@ -607,22 +599,22 @@ public class IssueServiceNew {
 
         // IssueDetailResponse.from 내부에서 judgment를 사용하여 aiDetail 등을 이미 매핑하고 있으나,
         // 확실히 하기 위해 workerNextAction과 issueNextAction을 명확히 전달
-        return IssueDetailResponse.from(issue, judgment,
+        return IssueDto.DetailResponse.from(issue, judgment,
                 workerNextAction != null ? workerNextAction.name() : null,
                 workerNextAction != null ? workerNextAction.name() : null,
                 null, availableActions);
     }
 
     @Transactional(readOnly = true)
-    public List<MyIssueSummary> getMyIssueList(Long workerId, IssueStatus status) {
+    public List<IssueDto.MyIssueSummary> getMyIssueList(Long workerId, IssueStatus status) {
         return issueMapper.findMyIssues(workerId, status);
     }
 
     @Transactional(readOnly = true)
-    public AdminIssueListResponse getAdminIssueList(Long adminId, AdminIssueListRequest request) {
-        List<AdminIssueSummary> issues = issueMapper.findAdminIssues(adminId, request);
+    public IssueDto.AdminIssueListResponse getAdminIssueList(Long adminId, IssueDto.AdminIssueListRequest request) {
+        List<IssueDto.AdminIssueSummary> issues = issueMapper.findAdminIssues(adminId, request);
         long totalCount = issueMapper.countAdminIssues(adminId, request);
-        return AdminIssueListResponse.of(issues, request.getPage(), request.getSize(), totalCount);
+        return IssueDto.AdminIssueListResponse.of(issues, request.getPage(), request.getSize(), totalCount);
     }
 
     // ========== 유틸리티 메서드 ==========

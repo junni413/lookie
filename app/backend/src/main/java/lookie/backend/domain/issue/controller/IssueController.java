@@ -5,13 +5,8 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import lookie.backend.domain.issue.dto.AiResultRequest;
-import lookie.backend.domain.issue.dto.AdminConfirmRequest;
-import lookie.backend.domain.issue.dto.CreateIssueRequest;
-import lookie.backend.domain.issue.dto.IssueDetailResponse;
-import lookie.backend.domain.issue.dto.IssueResponse;
-import lookie.backend.domain.issue.dto.AdminIssueListRequest;
-import lookie.backend.domain.issue.dto.AdminIssueListResponse;
+import lookie.backend.domain.issue.dto.IssueDto;
+import lookie.backend.domain.issue.dto.IssueStatus;
 import jakarta.validation.Valid;
 import lookie.backend.domain.issue.service.IssueServiceNew;
 import lookie.backend.global.response.ApiResponse;
@@ -21,8 +16,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import lookie.backend.domain.issue.dto.IssueStatus;
-import lookie.backend.domain.issue.dto.MyIssueSummary;
 
 /**
  * Issue(이슈) 도메인 API 컨트롤러 (FSM 기반)
@@ -43,9 +36,9 @@ public class IssueController {
          */
         @Operation(summary = "이슈 신고", description = "작업자가 집품 중 파손/재고부족 등의 이슈를 신고합니다.")
         @PostMapping
-        public ResponseEntity<ApiResponse<IssueResponse>> createIssue(@RequestBody CreateIssueRequest request) {
+        public ResponseEntity<ApiResponse<IssueDto.Response>> createIssue(@RequestBody IssueDto.CreateRequest request) {
                 Long workerId = SecurityUtil.getCurrentUserId();
-                IssueResponse response = issueServiceNew.createIssue(workerId, request);
+                IssueDto.Response response = issueServiceNew.createIssue(workerId, request);
                 return ResponseEntity.ok(ApiResponse.success("이슈가 등록되었습니다.", response));
         }
 
@@ -57,7 +50,7 @@ public class IssueController {
         @PostMapping("/{issueId}/ai/retake")
         public ResponseEntity<ApiResponse<Void>> retakeIssue(
                         @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
-                        @RequestBody lookie.backend.domain.issue.dto.RetakeIssueRequest request) {
+                        @RequestBody IssueDto.RetakeRequest request) {
 
                 Long workerId = SecurityUtil.getCurrentUserId();
                 issueServiceNew.retakeIssue(workerId, issueId, request.getImageUrl());
@@ -73,7 +66,7 @@ public class IssueController {
         @PostMapping("/{issueId}/image")
         public ResponseEntity<ApiResponse<Void>> reportImage(
                         @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
-                        @RequestBody lookie.backend.domain.issue.dto.ReportImageRequest request) {
+                        @RequestBody IssueDto.ReportImageRequest request) {
 
                 Long workerId = SecurityUtil.getCurrentUserId();
                 issueServiceNew.reportImage(workerId, issueId, request.getImageUrl());
@@ -137,11 +130,11 @@ public class IssueController {
          */
         @Operation(summary = "이슈 상세 조회", description = "이슈 ID로 이슈의 상태, AI 판정 결과, 다음 행동을 조회합니다.")
         @GetMapping("/{issueId}")
-        public ResponseEntity<ApiResponse<IssueDetailResponse>> getIssueDetail(
+        public ResponseEntity<ApiResponse<IssueDto.DetailResponse>> getIssueDetail(
                         @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId) {
                 log.info("[IssueController] getIssueDetail called. issueId={}", issueId);
 
-                IssueDetailResponse response = issueServiceNew.getIssueDetail(issueId);
+                IssueDto.DetailResponse response = issueServiceNew.getIssueDetail(issueId);
 
                 return ResponseEntity.ok(ApiResponse.success("이슈 조회 성공", response));
         }
@@ -154,7 +147,7 @@ public class IssueController {
         @PostMapping("/{issueId}/ai/result")
         public ResponseEntity<ApiResponse<Void>> receiveAiResult(
                         @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
-                        @RequestBody AiResultRequest request) {
+                        @RequestBody IssueDto.AiResultRequest request) {
                 log.info("[IssueController] AI result received. issueId={}, aiDecision={}, reasonCode={}",
                                 issueId, request.getAiDecision(), request.getReasonCode());
 
@@ -171,7 +164,7 @@ public class IssueController {
         @PreAuthorize("hasRole('ADMIN')")
         public ResponseEntity<ApiResponse<Void>> confirmIssue(
                         @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId,
-                        @RequestBody AdminConfirmRequest request) {
+                        @RequestBody IssueDto.AdminConfirmRequest request) {
                 log.info("[IssueController] Admin confirm request. issueId={}, decision={}",
                                 issueId, request.getAdminDecision());
 
@@ -185,10 +178,10 @@ public class IssueController {
          */
         @Operation(summary = "내 이슈 목록 조회", description = "로그인한 작업자의 이슈 목록을 조회합니다.")
         @GetMapping("/my")
-        public ResponseEntity<ApiResponse<List<MyIssueSummary>>> getMyIssues(
+        public ResponseEntity<ApiResponse<List<IssueDto.MyIssueSummary>>> getMyIssues(
                         @Parameter(description = "이슈 상태 (OPEN, RESOLVED)") @RequestParam(required = false) IssueStatus status) {
                 Long workerId = SecurityUtil.getCurrentUserId();
-                List<MyIssueSummary> response = issueServiceNew.getMyIssueList(workerId, status);
+                List<IssueDto.MyIssueSummary> response = issueServiceNew.getMyIssueList(workerId, status);
                 return ResponseEntity.ok(ApiResponse.success("내 이슈 목록 조회 성공", response));
         }
 
@@ -198,11 +191,11 @@ public class IssueController {
         @Operation(summary = "관리자 관제 이슈 목록 조회", description = "관리자 담당 Zone의 이슈 목록을 조회합니다.")
         @GetMapping
         @PreAuthorize("hasRole('ADMIN')")
-        public ResponseEntity<ApiResponse<AdminIssueListResponse>> getIssues(
-                        @Parameter(description = "검색 조건") @ModelAttribute @Valid AdminIssueListRequest request) {
+        public ResponseEntity<ApiResponse<IssueDto.AdminIssueListResponse>> getIssues(
+                        @Parameter(description = "검색 조건") @ModelAttribute @Valid IssueDto.AdminIssueListRequest request) {
 
                 Long adminId = SecurityUtil.getCurrentUserId();
-                AdminIssueListResponse response = issueServiceNew.getAdminIssueList(adminId, request);
+                IssueDto.AdminIssueListResponse response = issueServiceNew.getAdminIssueList(adminId, request);
 
                 return ResponseEntity.ok(ApiResponse.success("이슈 목록 조회 성공", response));
         }

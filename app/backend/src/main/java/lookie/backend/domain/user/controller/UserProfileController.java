@@ -3,7 +3,7 @@ package lookie.backend.domain.user.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import lookie.backend.domain.user.dto.*;
+import lookie.backend.domain.user.dto.UserDto.*;
 import lookie.backend.domain.user.service.UserService;
 import lookie.backend.domain.user.vo.UserVO;
 import lookie.backend.global.response.ApiResponse;
@@ -26,7 +26,7 @@ public class UserProfileController {
      */
     @Operation(summary = "내 정보 조회", description = "현재 로그인된 사용자의 프로필 정보를 조회합니다 (이름, 전화번호, 생년월일, 이메일)")
     @GetMapping("/me")
-    public ResponseEntity<ApiResponse<UserProfileResponse>> getMyProfile(
+    public ResponseEntity<ApiResponse<ProfileResponse>> getMyProfile(
             @RequestHeader("Authorization") String authHeader) {
         // 1. Authorization 헤더에서 "Bearer " 접두사 제거하고 토큰 추출
         String accessToken = authHeader.substring(7);
@@ -37,8 +37,8 @@ public class UserProfileController {
         // 3. 사용자 정보 조회
         UserVO user = userService.getMyProfile(Long.parseLong(userId));
 
-        // 4. UserProfileResponse로 변환
-        UserProfileResponse response = UserProfileResponse.from(user);
+        // 4. ProfileResponse로 변환
+        ProfileResponse response = ProfileResponse.from(user);
 
         return ResponseEntity.ok(ApiResponse.success("프로필 조회에 성공하였습니다.", response));
     }

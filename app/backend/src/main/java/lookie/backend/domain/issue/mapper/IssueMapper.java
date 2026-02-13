@@ -1,5 +1,7 @@
 package lookie.backend.domain.issue.mapper;
 
+import lookie.backend.domain.issue.dto.IssueDto;
+import lookie.backend.domain.issue.dto.IssueStatus;
 import lookie.backend.domain.issue.vo.AiJudgmentVO;
 import lookie.backend.domain.issue.vo.IssueImageVO;
 import lookie.backend.domain.issue.vo.IssueVO;
@@ -7,8 +9,6 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
-import lookie.backend.domain.issue.dto.IssueStatus;
-import lookie.backend.domain.issue.dto.MyIssueSummary;
 
 @Mapper
 public interface IssueMapper {
@@ -41,17 +41,17 @@ public interface IssueMapper {
         AiJudgmentVO findAiJudgmentByIssueId(@Param("issueId") Long issueId);
 
         // 관리자 관제 리스트 조회
-        java.util.List<lookie.backend.domain.issue.dto.AdminIssueSummary> findAdminIssues(
+        java.util.List<IssueDto.AdminIssueSummary> findAdminIssues(
                         @Param("adminId") Long adminId,
-                        @Param("req") lookie.backend.domain.issue.dto.AdminIssueListRequest req);
+                        @Param("req") IssueDto.AdminIssueListRequest req);
 
         // 관리자 관제 리스트 카운트
         long countAdminIssues(
                         @Param("adminId") Long adminId,
-                        @Param("req") lookie.backend.domain.issue.dto.AdminIssueListRequest req);
+                        @Param("req") IssueDto.AdminIssueListRequest req);
 
         // 내 이슈 목록 조회
-        List<MyIssueSummary> findMyIssues(
+        List<IssueDto.MyIssueSummary> findMyIssues(
                         @Param("workerId") Long workerId,
                         @Param("status") IssueStatus status);
 }

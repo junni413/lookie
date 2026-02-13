@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import lookie.backend.domain.user.dto.SignupRequest;
+import lookie.backend.domain.user.dto.UserDto.SignupRequest;
 import org.apache.ibatis.type.Alias;
 
 import java.time.LocalDate;
