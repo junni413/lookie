@@ -4,13 +4,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lookie.backend.domain.task.dto.TaskResponse;
 import lookie.backend.domain.task.service.TaskWorkflowService;
-import lookie.backend.domain.task.mapper.TaskMapper;
 import lookie.backend.domain.task.vo.TaskVO;
 import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.zone.mapper.ZoneAssignmentMapper;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import lookie.backend.global.security.SecurityUtil;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
@@ -33,7 +33,6 @@ public class TaskLockExecutor {
     private final RedissonClient redissonClient;
     private final ZoneAssignmentMapper zoneAssignmentMapper;
     private final TaskWorkflowService taskWorkflowService;
-    private final TaskMapper taskMapper;
 
     // TTL 설정 상수
     private static final long LOCK_WAIT_TIME_MS = 200; // 락 대기 시간 (200ms)
@@ -160,16 +159,11 @@ public class TaskLockExecutor {
         }
 
         try {
-            // 실제 비즈니스 로직은 TaskWorkflowService에 위임
-            // Task 내부에서 workerId를 조회하여 검증
-            TaskVO task = taskMapper.findById(taskId);
-            if (task != null && task.getWorkerId() != null) {
-                taskWorkflowService.completeTask(task.getWorkerId(), taskId);
-            } else {
-                log.error("[TaskLock] Task not found or no worker assigned - taskId={}", taskId);
-                throw new ApiException(ErrorCode.SYSTEM_TEMPORARY_LOCK_FAILED,
-                        "Lock failed: " + "lock:task:complete:" + taskId);
-            }
+            // 1. 현재 사용자 ID 획득
+            Long workerId = SecurityUtil.getCurrentUserId();
+
+            // 2. 비즈니스 로직 및 검증은 TaskWorkflowService에 전적으로 위임
+            taskWorkflowService.completeTask(workerId, taskId);
         } finally {
             // 락 해제
             if (lock.isHeldByCurrentThread()) {

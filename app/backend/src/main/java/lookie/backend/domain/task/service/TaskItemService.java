@@ -62,13 +62,12 @@ public class TaskItemService {
      * - DONE 확정 시 재고 차감 이벤트 발행 (PICK_NORMAL)
      */
     @Transactional
-    public TaskItemVO completeItemManual(Long itemId) {
+    public TaskItemVO completeItemManual(Long itemId, Long workerId) {
         TaskItemVO item = taskItemMapper.findById(itemId);
 
         // 1. 이미 완료되거나 이슈 상태인 경우 체크 (건너뛰기/Pass)
-        // 새 FSM: IN_PROGRESS, ISSUE_PENDING, DONE 상태는 건너뛰기
+        // 새 FSM: DONE, ISSUE_PENDING 상태는 이미 처리된 것이므로 건너뛰기
         if ("DONE".equals(item.getStatus()) ||
-                "IN_PROGRESS".equals(item.getStatus()) ||
                 "ISSUE_PENDING".equals(item.getStatus())) {
             return item;
         }
@@ -93,8 +92,7 @@ public class TaskItemService {
                 -item.getRequiredQty(), // 음수 = 재고 감소
                 "TASK_ITEM",
                 itemId,
-                null // 현재 메서드 시그니처에 workerId가 없으므로 null (필요 시 시그니처 확장 필요)
-        );
+                workerId);
 
         // 5. [Event] 아이템 완료 이벤트 발행 (Redis 집계용)
         // 5. [Event] Redis update logic moved to TaskWorkflowService
@@ -142,7 +140,7 @@ public class TaskItemService {
      * - 새 FSM: ISSUE 상태 제거, DONE으로 통합
      */
     @Transactional
-    public void markAsDone(Long itemId) {
+    public void markAsDone(Long itemId, Long workerId) {
         taskItemMapper.updateStatus(itemId, "DONE");
 
         // [Inventory] 파손 확정 시 재고 차감 (결손 처리)
@@ -156,10 +154,8 @@ public class TaskItemService {
                     -item.getRequiredQty(),
                     "TASK_ITEM",
                     itemId,
-                    null // 시스템/관리자 확정이므로 workerId는 생략
-            );
+                    workerId);
         }
-
         // 이미 PENDING -> ISSUE_PENDING 갈 때 이벤트를 발행했으므로
         // 여기서는 중복 발행할 필요가 있는지 체크 필요.
         // 현재 로직상 ISSUE_PENDING도 '완료' 취급이므로 추가 발행 불필요
