@@ -3,19 +3,21 @@ import { useInterval } from "@/hooks/useInterval";
 import { useSearchParams } from "react-router-dom";
 import { manageService } from "@/services/manageService";
 import { adminService } from "@/services/adminService";
+import { useZoneStats } from "@/hooks/useZoneStats";
 
-import type { DB_Worker, ZoneLayout, ZoneStat } from "@/types/db";
+import type { DB_Worker, ZoneLayout } from "@/types/db";
 import ZoneSummaryCard from "./components/map/ZoneSummaryCard";
 import ZoneMapModal from "./components/map/ZoneMapModal";
 import WorkerList from "./components/map/WorkerList";
 
 import { cn } from "@/utils/cn";
+import { applyWorkerCounts } from "@/utils/zoneUtils";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 
 
 export default function Map() {
     const [searchParams] = useSearchParams();
-    const [stats, setStats] = useState<ZoneStat[]>([]);
+    const { zones: stats } = useZoneStats({ pollingMs: 5000, autoRefresh: true });
     const [workers, setWorkers] = useState<DB_Worker[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -28,32 +30,13 @@ export default function Map() {
     const [isWorkerPanelOpen, setIsWorkerPanelOpen] = useState(false);
     const [selectedLayout, setSelectedLayout] = useState<ZoneLayout | null>(null);
 
-    const applyZonesOverride = () => {
-        try {
-            const raw = localStorage.getItem("zones-override");
-            if (!raw) return false;
-            const parsed = JSON.parse(raw);
-            if (!parsed?.zones || !Array.isArray(parsed.zones)) return false;
-            setStats(parsed.zones.map((z: any) => ({
-                zoneId: z.zoneId,
-                name: z.name,
-                status: z.status,
-                workerCount: z.workerCount,
-                workRate: z.workRate
-            })));
-            return true;
-        } catch {
-            return false;
-        }
-    };
-
+    
     useEffect(() => {
         loadData();
     }, []);
 
     useEffect(() => {
         const onZonesRefresh = () => {
-            applyZonesOverride();
             loadData(true);
             if (isMapModalOpen && selectedZoneId !== null) {
                 updateMapWorkers(selectedZoneId);
@@ -112,11 +95,7 @@ export default function Map() {
         if (!isBackground) setLoading(true);
         setError(null);
         try {
-            const [fetchedStats, fetchedWorkers] = await Promise.all([
-                manageService.getZoneStats(),
-                manageService.getAssignedWorkers()
-            ]);
-            setStats(fetchedStats);
+            const fetchedWorkers = await manageService.getAssignedWorkers();
             setWorkers(fetchedWorkers);
         } catch (error: any) {
             console.error("Failed to load manage data", error);
@@ -126,7 +105,8 @@ export default function Map() {
         }
     };
 
-    const loadZoneLayout = async (zoneId: number) => {
+    
+const loadZoneLayout = async (zoneId: number) => {
         try {
             const layout = await manageService.getZoneLayout(zoneId);
             setSelectedLayout(layout);
@@ -156,6 +136,8 @@ export default function Map() {
                     lineNumber,
                     binNumber,
                     isBottleneck: dto.isBottleneck,
+                    hasOpenIssue: dto.hasOpenIssue ?? false,
+                    openIssueType: dto.openIssueType ?? undefined,
                     workRate: dto.workRate || 0,
                     
                     // Defaults for required DB_Worker fields
@@ -232,10 +214,8 @@ export default function Map() {
         return <div className="h-full flex items-center justify-center text-red-500">오류 발생: {error}</div>;
     }
 
-    const workerCountByZone = stats.map(s => workers.filter(w => w.currentZoneId === s.zoneId).length);
-    const displayStats = stats.map((s, idx) => ({
+    const displayStats = applyWorkerCounts(stats, workers).map(s => ({
         ...s,
-        workerCount: workerCountByZone[idx] ?? 0,
         status: s.status,
     }));
 
@@ -269,6 +249,7 @@ export default function Map() {
                                         status={stat.status}
                                         workerCount={stat.workerCount}
                                         workRate={stat.workRate}
+                                        openIssueCount={stat.openIssueCount}
                                         isSelected={selectedZoneId === stat.zoneId}
                                         onCardClick={() => handleCardClick(stat.zoneId)}
                                         onNameClick={() => handleListButtonClick(stat.zoneId)}

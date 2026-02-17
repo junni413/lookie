@@ -26,7 +26,42 @@ public class RebalanceRecommendResponse {
     @JsonProperty("total_expected_risk_reduction")
     private Double totalExpectedRiskReduction;
 
+    @JsonProperty("zone_risks")
+    private List<ZoneRiskInfo> zoneRisks;
+
     private List<Move> moves;
 
-    // 그 외 policy, target_zones 등은 필요하면 추가 (현재 MVP에서는 moves만 중요)
+    // policy, target_zones are ignored for now (MVP keeps moves only)
+
+    @Data
+    @NoArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class ZoneRiskInfo {
+        @JsonProperty("zone_id")
+        private Long zoneId;
+
+        private Double backlog;
+
+        @JsonProperty("deadline_min")
+        private Double deadlineMin;
+
+        private Integer block;
+
+        @JsonProperty("capacity_h_before")
+        private Double capacityHBefore;
+
+        @JsonProperty("capacity_h_after")
+        private Double capacityHAfter;
+
+        @JsonProperty("risk_before")
+        private Double riskBefore;
+
+        @JsonProperty("risk_after")
+        private Double riskAfter;
+
+        @JsonProperty("risk_reduction")
+        private Double riskReduction;
+    }
 }
+
+

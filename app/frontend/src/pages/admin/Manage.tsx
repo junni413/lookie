@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useInterval } from "@/hooks/useInterval";
 import AdminPageHeader from "@/components/layout/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 
 import { manageService } from "@/services/manageService";
-import { rebalanceService } from "@/services/rebalance.api"; // Import Rebalance Service
+import { rebalanceService, type RebalanceMove } from "@/services/rebalance.api"; // Import Rebalance Service
 import type { ZoneStat } from "@/types/db"; // Import from shared types
 import type { DB_Worker } from "@/types/db";
-import { DEFAULT_ZONES, mergeZoneData } from "@/utils/zoneUtils"; // Import shared constant
+import { applyWorkerCounts, mergeZoneData } from "@/utils/zoneUtils"; // Import shared constant
+import { useZoneStats } from "@/hooks/useZoneStats";
 import ManageStatisticCard from "./components/manage/ManageStatisticCard";
 import ManageZoneColumn from "./components/manage/ManageZoneColumn";
 import AiReallocationModal from "./components/manage/AiReallocationModal";
@@ -16,7 +17,7 @@ import { RotateCcw, Wand2, Check } from "lucide-react";
 
 export default function Manage() {
     // Init with Defaults to prevent flash of empty content
-    const [stats, setStats] = useState<ZoneStat[]>(DEFAULT_ZONES);
+    const { zones: stats, setZones: setStats, refreshZones } = useZoneStats({ pollingMs: 5000, autoRefresh: false });
     const [workers, setWorkers] = useState<DB_Worker[]>([]);
 
     // History State
@@ -27,22 +28,18 @@ export default function Manage() {
     const [error, setError] = useState<string | null>(null);
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
     const [lastMovedWorkerIds, setLastMovedWorkerIds] = useState<number[]>([]);
-    const [pendingAiMoves, setPendingAiMoves] = useState<any[] | null>(null);
+    const [pendingAiMoves, setPendingAiMoves] = useState<RebalanceMove[] | null>(null);
 
     // Check if user has unsaved changes
     const isDirty = JSON.stringify(workers) !== JSON.stringify(lastAppliedWorkers);
 
-    const displayStats: ZoneStat[] = stats.map(stat => {
-        const workerCount = workers.filter(w => w.currentZoneId === stat.zoneId).length;
-        return {
-            ...stat,
-            workerCount,
-            // Zone progress stays as server-provided workload progress
-            workRate: stat.workRate,
-            // Status comes from server (rebalance snapshot / DB logic)
-            status: stat.status,
-        };
-    });
+    const displayStats: ZoneStat[] = applyWorkerCounts(stats, workers).map(stat => ({
+        ...stat,
+        // Zone progress stays as server-provided workload progress
+        workRate: stat.workRate,
+        // Status comes from server (rebalance snapshot / DB logic)
+        status: stat.status,
+    }));
 
     useEffect(() => {
         loadData();
@@ -64,19 +61,13 @@ export default function Manage() {
         setError(null);
         try {
             const [statsResult, workersResult] = await Promise.allSettled([
-                manageService.getZoneStats(),
+                refreshZones(true),
                 manageService.getAssignedWorkers() // Use new API with merged details
             ]);
 
             // 1. Process Stats
-            if (statsResult.status === "fulfilled") {
-                const fetchedStats = statsResult.value;
-                // fetchedStats coming from manageService.getZoneStats() which already uses mergeZoneData
-                // So it is guaranteed to be ZoneStat[] with length 4
-                setStats(fetchedStats.length > 0 ? fetchedStats : DEFAULT_ZONES);
-            } else {
+            if (statsResult.status === "rejected") {
                 console.error("Failed to load zone stats", statsResult.reason);
-                // Keep DEFAULT_ZONES (already init state)
             }
 
             // 2. Process Workers (failure is non-blocking)
@@ -92,7 +83,7 @@ export default function Manage() {
             }
             
             setPrevAppliedWorkers(null); 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Unexpected error in loadData", error);
             // setError(error.message); // Don't block UI
         } finally {
@@ -100,20 +91,51 @@ export default function Manage() {
         }
     };
 
-    const loadStatsOnly = async (isBackground = false) => {
+    const buildMoves = useCallback(() => {
+        const originalById = new Map(lastAppliedWorkers.map(worker => [worker.userId, worker]));
+        const moves: { workerId: number; toZoneId: number }[] = [];
+
+        workers.forEach(worker => {
+            const original = originalById.get(worker.userId);
+            if (!original) return;
+            if (worker.currentZoneId == null) return;
+            if (original.currentZoneId !== worker.currentZoneId) {
+                moves.push({ workerId: worker.userId, toZoneId: worker.currentZoneId });
+            }
+        });
+
+        return moves;
+    }, [lastAppliedWorkers, workers]);
+
+    const previewMovedWorkerIds = isDirty ? buildMoves().map(m => m.workerId) : [];
+
+    const loadStatsOnly = useCallback(async (isBackground = false) => {
         if (!isBackground) setLoading(true);
         setError(null);
         try {
-            const fetchedStats = await manageService.getZoneStats();
-            setStats(fetchedStats.length > 0 ? fetchedStats : DEFAULT_ZONES);
+            if (isDirty) {
+                const moves = buildMoves();
+                const simulated = await manageService.getZoneStatsSimulated(moves);
+                setStats(simulated);
+            } else {
+                await refreshZones(true);
+            }
         } catch (error) {
             console.error("Failed to load zone stats", error);
         } finally {
             if (!isBackground) setLoading(false);
         }
-    };
+    }, [isDirty, buildMoves, refreshZones, setStats]);
 
-    const handleDrop = (workerId: number, targetZoneId: number) => {
+    useEffect(() => {
+        if (!isDirty || isAiModalOpen) return;
+        const timer = setTimeout(() => {
+            loadStatsOnly(true);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [isDirty, isAiModalOpen, loadStatsOnly, workers, lastAppliedWorkers]);
+
+const handleDrop = (workerId: number, targetZoneId: number) => {
         setWorkers(prev => prev.map(w => {
             if (w.userId === workerId) {
                 return { ...w, currentZoneId: targetZoneId };
@@ -143,17 +165,20 @@ export default function Manage() {
 
                 if (zoneOverviews) {
                     alert("AI 추천 배치가 적용되었습니다.");
-                    setLastMovedWorkerIds(pendingAiMoves.map((m: any) => m.worker_id));
+                    setLastMovedWorkerIds(pendingAiMoves.map((m) => m.worker_id));
                     setPendingAiMoves(null);
 
-                    // Update stats immediately from response
+                    // Update stats immediately from response.
+                    // `rebalance/apply` response doesn't include openIssueCount, so keep current values.
+                    const issueCountByZone = new Map(stats.map(s => [s.zoneId, s.openIssueCount ?? 0]));
                     const merged = mergeZoneData(
                         zoneOverviews.map(z => ({
                             zoneId: z.zoneId,
                             name: z.zoneName,
                             status: z.status,
                             workerCount: z.workerCount,
-                            workRate: z.progressRate
+                            workRate: z.progressRate,
+                            openIssueCount: issueCountByZone.get(z.zoneId) ?? 0
                         }))
                     );
                     setStats(merged);
@@ -217,7 +242,7 @@ export default function Manage() {
         setIsAiModalOpen(true);
     };
 
-    const handleAiApply = async (newWorkers: DB_Worker[], moves?: any[]) => {
+    const handleAiApply = async (newWorkers: DB_Worker[], moves?: RebalanceMove[]) => {
         setIsAiModalOpen(false);
         setLoading(true);
 
@@ -226,7 +251,7 @@ export default function Manage() {
             // Apply to UI only, persist when user clicks the black "적용" button
             setWorkers(newWorkers);
             setPendingAiMoves(moves);
-            setLastMovedWorkerIds(moves.map((m: any) => m.worker_id));
+            setLastMovedWorkerIds(moves.map((m) => m.worker_id));
             await loadStatsOnly(true);
             setLoading(false);
         } else {
@@ -248,9 +273,7 @@ export default function Manage() {
     };
 
     if (loading && stats.length === 0) {
-        // Show loading but maybe empty layout first? 
-        // Actually, let's init state with DEFAULT_ZONES so we never show "Loading..." text for empty structure
-        // But if we want to show spinner:
+        // Show loading but maybe empty layout first?
         return <div className="h-full flex items-center justify-center">데이터를 불러오는 중입니다...</div>;
     }
 
@@ -311,6 +334,10 @@ export default function Manage() {
                             status={stat.status}
                             workerCount={stat.workerCount}
                             workRate={stat.workRate}
+                            openIssueCount={stat.openIssueCount}
+                            remainingDeadlineMinutes={stat.remainingDeadlineMinutes}
+                            estimatedCompletionMinutes={stat.estimatedCompletionMinutes}
+                            isPreview={isDirty}
                         />
                     ))}
                 </div>
@@ -325,7 +352,7 @@ export default function Manage() {
                                 zoneName={stat.name}
                                 workers={workers.filter(w => w.currentZoneId === stat.zoneId)}
                                 onDrop={handleDrop}
-                                highlightWorkerIds={lastMovedWorkerIds}
+                                highlightWorkerIds={isDirty ? previewMovedWorkerIds : lastMovedWorkerIds}
                             />
                         ))}
 
@@ -336,7 +363,7 @@ export default function Manage() {
                                 zoneName="대기중"
                                 workers={workers.filter(w => !w.currentZoneId)}
                                 onDrop={handleDrop}
-                                highlightWorkerIds={lastMovedWorkerIds}
+                                highlightWorkerIds={isDirty ? previewMovedWorkerIds : lastMovedWorkerIds}
                             />
                         )}
                     </div>

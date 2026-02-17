@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import List, Optional, Literal, Dict, Any
 from pydantic import BaseModel
 
@@ -26,10 +26,15 @@ class SnapshotRow(BaseModel):
     required_total: Optional[float] = None
 
 
+class MoveInput(BaseModel):
+    worker_id: int
+    to_zone: int
+
+
 class RebalanceRecommendRequest(BaseModel):
     rows: List[SnapshotRow]
+    moves: Optional[List[MoveInput]] = None
 
-    # ✅ 전부 Optional: 백/유저가 안 줘도 됨 (AI가 자동 결정)
     top_risk_zones: Optional[int] = None
     max_moves_cap: Optional[int] = None
     top_workers: Optional[int] = None
@@ -38,7 +43,6 @@ class RebalanceRecommendRequest(BaseModel):
     min_gain_until_deadline: Optional[float] = None
     min_delta_total_risk: Optional[float] = None
 
-    # ✅ 고정 정책(원하면 이것도 Optional로 바꿔도 됨)
     block_risk_discount: float = 0.2
     deadline_urgency_pow: float = 1.0
     lambda_cost: float = 1.0
@@ -83,8 +87,8 @@ class RebalanceRecommendResponse(BaseModel):
     total_risk_after: float
     total_expected_risk_reduction: float
 
-    # ✅ 실제 사용된 정책(자동결정 결과 포함)
     policy: Dict[str, Any]
 
+    zone_risks: List[ZoneRiskInfo]
     target_zones: List[ZoneRiskInfo]
     moves: List[Move]

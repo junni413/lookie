@@ -10,17 +10,20 @@ import jakarta.validation.constraints.NotNull;
 @Setter
 public class AdminIssueListRequest {
     @NotNull(message = "Status is required (OPEN or RESOLVED)")
-    @Schema(description = "이슈 상태 (OPEN: 대기, RESOLVED: 완료)", example = "OPEN")
+    @Schema(description = "Issue status", example = "OPEN")
     private IssueStatus status;
 
-    @Schema(description = "페이지 번호 (1부터 시작)", defaultValue = "1")
+    @Schema(description = "Page number (1-based)", defaultValue = "1")
     private int page = 1;
 
-    @Schema(description = "페이지 크기", defaultValue = "10")
+    @Schema(description = "Page size", defaultValue = "10")
     private int size = 10;
 
-    @Schema(description = "정렬 방식 (LATEST: 최신순, URGENCY: 긴급도순)", defaultValue = "LATEST")
+    @Schema(description = "Sort type (LATEST or URGENCY)", defaultValue = "LATEST")
     private IssueSortType sortType = IssueSortType.LATEST;
+
+    @Schema(description = "Optional zone filter (1:A, 2:B, 3:C, 4:D)")
+    private Long zoneId;
 
     // Offset calculation for MyBatis
     public int getOffset() {

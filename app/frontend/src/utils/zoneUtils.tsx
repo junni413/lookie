@@ -1,15 +1,15 @@
 import { CheckCircle, Activity, AlertCircle } from "lucide-react";
-import type { ZoneStatus, ZoneStat } from "@/types/db";
+import type { DB_Worker, ZoneStatus, ZoneStat } from "@/types/db";
 
 // ===================================
 // Shared Constants & Utilities
 // ===================================
 
 export const DEFAULT_ZONES: ZoneStat[] = [
-    { zoneId: 1, name: "ZONE A", status: "STABLE", workerCount: 0, workRate: 0 },
-    { zoneId: 2, name: "ZONE B", status: "STABLE", workerCount: 0, workRate: 0 },
-    { zoneId: 3, name: "ZONE C", status: "STABLE", workerCount: 0, workRate: 0 },
-    { zoneId: 4, name: "ZONE D", status: "STABLE", workerCount: 0, workRate: 0 },
+    { zoneId: 1, name: "ZONE A", status: "STABLE", workerCount: 0, workRate: 0, openIssueCount: 0 },
+    { zoneId: 2, name: "ZONE B", status: "STABLE", workerCount: 0, workRate: 0, openIssueCount: 0 },
+    { zoneId: 3, name: "ZONE C", status: "STABLE", workerCount: 0, workRate: 0, openIssueCount: 0 },
+    { zoneId: 4, name: "ZONE D", status: "STABLE", workerCount: 0, workRate: 0, openIssueCount: 0 },
 ];
 
 /**
@@ -30,11 +30,39 @@ export const mergeZoneData = (apiData: any[]): ZoneStat[] => {
                 name: match.name || def.name, // Name Fallback
                 status: match.status || def.status,
                 workerCount: match.workerCount ?? match.working ?? 0, // Handle different field names
-                workRate: match.workRate ?? 0
+                workRate: match.workRate ?? 0,
+                openIssueCount: match.openIssueCount ?? def.openIssueCount ?? 0,
+                remainingDeadlineMinutes: match.remainingDeadlineMinutes,
+                estimatedCompletionMinutes: match.estimatedCompletionMinutes
             };
         }
         return def;
     });
+};
+
+export const readZonesOverride = (): ZoneStat[] | null => {
+    try {
+        const raw = localStorage.getItem("zones-override");
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw);
+        if (!parsed?.zones || !Array.isArray(parsed.zones)) return null;
+
+        const normalized = parsed.zones.map((z: any) => ({
+            zoneId: z.zoneId ?? z.id,
+            name: z.name,
+            status: z.status,
+            workerCount: z.workerCount ?? z.working ?? 0,
+            workRate: z.workRate ?? z.progressRate ?? 0,
+            openIssueCount: z.openIssueCount ?? 0,
+            remainingDeadlineMinutes: z.remainingDeadlineMinutes,
+            estimatedCompletionMinutes: z.estimatedCompletionMinutes
+        }));
+
+        return mergeZoneData(normalized);
+    } catch {
+        return null;
+    }
 };
 
 export const getZoneStyle = (status: ZoneStatus) => {
@@ -96,4 +124,20 @@ export const getZoneStyle = (status: ZoneStatus) => {
                 hasBadge: false
             };
     }
+};
+
+export const applyWorkerCounts = (zones: ZoneStat[], workers: DB_Worker[]): ZoneStat[] => {
+    if (!workers || workers.length === 0) {
+        return zones;
+    }
+    const countByZone = new Map<number, number>();
+    for (const w of workers) {
+        if (w.currentZoneId == null) continue;
+        countByZone.set(w.currentZoneId, (countByZone.get(w.currentZoneId) || 0) + 1);
+    }
+
+    return zones.map(z => ({
+        ...z,
+        workerCount: countByZone.get(z.zoneId) ?? 0
+    }));
 };

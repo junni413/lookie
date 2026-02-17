@@ -62,4 +62,6 @@ public class WorkerHoverDto {
      * 상태가 OPEN인 가장 최근 이슈의 타입 (없으면 null)
      */
     private String recentIssueType;
+
+    private Long recentIssueId;
 }

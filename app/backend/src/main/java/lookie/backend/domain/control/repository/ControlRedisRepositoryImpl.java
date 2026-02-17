@@ -48,8 +48,11 @@ public class ControlRedisRepositoryImpl implements ControlRedisRepository {
             hash.put("zoneId", dto.getZoneId());
             hash.put("zoneName", dto.getZoneName());
             hash.put("workerCount", dto.getWorkerCount());
+            hash.put("openIssueCount", dto.getOpenIssueCount());
             hash.put("progressRate", dto.getProgressRate());
             hash.put("status", dto.getStatus());
+            hash.put("remainingDeadlineMinutes", dto.getRemainingDeadlineMinutes());
+            hash.put("estimatedCompletionMinutes", dto.getEstimatedCompletionMinutes());
 
             redisTemplate.opsForHash().putAll(key, hash);
 
@@ -78,8 +81,11 @@ public class ControlRedisRepositoryImpl implements ControlRedisRepository {
                     .zoneId(convertToLong(hash.get("zoneId")))
                     .zoneName((String) hash.get("zoneName"))
                     .workerCount(convertToInteger(hash.get("workerCount")))
+                    .openIssueCount(convertToInteger(hash.get("openIssueCount")))
                     .progressRate(convertToDouble(hash.get("progressRate")))
                     .status((String) hash.get("status"))
+                    .remainingDeadlineMinutes(convertToDouble(hash.get("remainingDeadlineMinutes")))
+                    .estimatedCompletionMinutes(convertToDouble(hash.get("estimatedCompletionMinutes")))
                     .build();
         } catch (Exception e) {
             log.error("[Redis] Zone Overview 조회 실패: zoneId={}, error={}", zoneId, e.getMessage());
@@ -215,6 +221,8 @@ public class ControlRedisRepositoryImpl implements ControlRedisRepository {
             hash.put("name", dto.getName());
             hash.put("currentLocationCode", dto.getCurrentLocationCode());
             hash.put("isBottleneck", dto.getIsBottleneck());
+            hash.put("hasOpenIssue", dto.getHasOpenIssue());
+            hash.put("openIssueType", dto.getOpenIssueType());
             hash.put("lastUpdated", System.currentTimeMillis());
 
             redisTemplate.opsForHash().putAll(key, hash);
@@ -243,6 +251,8 @@ public class ControlRedisRepositoryImpl implements ControlRedisRepository {
                     .name((String) hash.get("name"))
                     .currentLocationCode((String) hash.get("currentLocationCode"))
                     .isBottleneck(convertToBoolean(hash.get("isBottleneck")))
+                    .hasOpenIssue(convertToBoolean(hash.get("hasOpenIssue")))
+                    .openIssueType((String) hash.get("openIssueType"))
                     .build();
         } catch (Exception e) {
             log.error("[Redis] Worker Location 조회 실패: workerId={}, error={}", workerId, e.getMessage());

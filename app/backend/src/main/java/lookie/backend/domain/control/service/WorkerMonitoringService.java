@@ -6,6 +6,7 @@ import lookie.backend.domain.control.dto.AdminZoneAssignmentRequest;
 import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
+import lookie.backend.domain.control.dto.ZoneSimulationRequest;
 
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
 import lookie.backend.domain.control.dto.AdminResponseDto;
@@ -37,7 +38,7 @@ public interface WorkerMonitoringService {
      * @return 대시보드 요약 정보 (전체 작업자 수, 이슈 현황 등)
      */
 
-    DashboardSummaryDto getDashboardSummary();
+    DashboardSummaryDto getDashboardSummary(Long adminId);
 
     /**
      * 작업자 마우스 오버 시 정보를 조회합니다.
@@ -67,4 +68,12 @@ public interface WorkerMonitoringService {
      * 작업 완료 시 해당 구역의 진행률을 증가시킴 (Redis 갱신)
      */
     void incrementZoneProgress(Long zoneId, Long batchId);
+
+    /**
+     * ?묒뾽???댁쟾 ?곌낵???곗씠??(諛곗튂 泥섎━ ?꾨룞) 援ъ뿭 ???곹깭???꾪솴
+     *
+     * @param request 이동 예정 작업자 목록
+     * @return 시뮬레이션된 구역 요약 정보
+     */
+    List<ZoneOverviewDto> simulateZoneOverviews(ZoneSimulationRequest request);
 }

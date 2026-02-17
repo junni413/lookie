@@ -1119,7 +1119,7 @@ public class IssueService {
         long totalCount = issueMapper.countAdminIssues(adminId, request);
 
         return AdminIssueListResponse.of(issues, request.getPage(), request.getSize(),
-                totalCount);
+                        totalCount);
     }
 
     /**

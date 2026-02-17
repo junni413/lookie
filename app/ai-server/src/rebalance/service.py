@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import math
@@ -229,6 +229,26 @@ def recommend_rebalance(req: RebalanceRecommendRequest) -> RebalanceRecommendRes
     if not rows:
         raise ValueError("rows is empty")
 
+    if req.moves:
+        move_map = {m.worker_id: m.to_zone for m in req.moves}
+        moved_rows = []
+        for r in rows:
+            to_zone = move_map.get(r.worker_id, r.zone_id)
+            if to_zone != r.zone_id:
+                moved_rows.append(r.model_copy(update={"zone_id": int(to_zone)}))
+            else:
+                moved_rows.append(r)
+        rows = moved_rows
+
+        # recompute zone_active_workers after moves
+        counts: Dict[int, int] = {}
+        for r in rows:
+            counts[r.zone_id] = counts.get(r.zone_id, 0) + 1
+        rows = [
+            r.model_copy(update={"zone_active_workers": int(counts.get(r.zone_id, 0))})
+            for r in rows
+        ]
+
     ts = rows[0].ts
     batch_id = rows[0].batch_id
 
@@ -273,6 +293,8 @@ def recommend_rebalance(req: RebalanceRecommendRequest) -> RebalanceRecommendRes
         if req.min_active_workers_per_zone is not None
         else tuned["min_active_workers_per_zone"]
     )
+    # Enforce a safer minimum to avoid collapsing donor zones
+    min_active_workers_per_zone = max(int(min_active_workers_per_zone), 4)
     min_gain_until_deadline = (
         req.min_gain_until_deadline
         if req.min_gain_until_deadline is not None
@@ -312,31 +334,44 @@ def recommend_rebalance(req: RebalanceRecommendRequest) -> RebalanceRecommendRes
         },
     }
 
-    # 5) targets 선정
-    if not all_risk:
-        mode = "normal"
-        risk_z = sorted(
-            [(z, rv) for z, rv in risk_before.items() if rv > 0],
-            key=lambda x: x[1],
-            reverse=True,
-        )
-        targets = [z for z, _ in risk_z[: max(int(top_risk_zones), 1)]]
-        if not targets:
-            return RebalanceRecommendResponse(
-                ts=ts,
-                batch_id=batch_id,
-                mode="normal",
-                total_risk_before=total_risk_before,
-                total_risk_after=total_risk_before,
-                total_expected_risk_reduction=0.0,
-                policy=policy,
-                target_zones=[],
-                moves=[],
+    all_zone_infos_pre: List[ZoneRiskInfo] = []
+    for z, st in zone_state.items():
+        all_zone_infos_pre.append(
+            ZoneRiskInfo(
+                zone_id=int(z),
+                backlog=float(st.backlog),
+                deadline_min=float(st.deadline_min),
+                block=int(1 if st.block_cnt > 0 else 0),
+                capacity_h_before=float(cap_h.get(z, 0.0)),
+                capacity_h_after=float(cap_h.get(z, 0.0)),
+                risk_before=float(risk_before.get(z, 0.0)),
+                risk_after=float(risk_before.get(z, 0.0)),
+                risk_reduction=0.0,
             )
-    else:
-        mode = "all-risk"
-        risk_z = sorted(risk_before.items(), key=lambda x: x[1], reverse=True)
-        targets = [z for z, _ in risk_z[: max(int(all_risk_targets), 1)]]
+        )
+
+    # 5) targets 선정
+    # Always target all zones that are at risk (aim to meet all deadlines)
+    mode = "all-risk"
+    risk_z = sorted(
+        [(z, rv) for z, rv in risk_before.items() if rv > 0],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    targets = [z for z, _ in risk_z]
+    if not targets:
+        return RebalanceRecommendResponse(
+            ts=ts,
+            batch_id=batch_id,
+            mode=mode,
+            total_risk_before=total_risk_before,
+            total_risk_after=total_risk_before,
+            total_expected_risk_reduction=0.0,
+            policy=policy,
+            zone_risks=all_zone_infos_pre,
+            target_zones=[],
+            moves=[],
+        )
 
     target_set = set(targets)
 
@@ -446,9 +481,9 @@ def recommend_rebalance(req: RebalanceRecommendRequest) -> RebalanceRecommendRes
             cur_risk = best_risk
             cur_obj = objective(cur_risk)
 
-            if mode == "normal":
-                if all(cur_risk.get(z, 0.0) <= 0 for z in target_set):
-                    break
+            # stop if all zones meet deadline
+            if all(v <= 0.0 for v in cur_risk.values()):
+                break
 
         return moves, cur_cap, cur_risk
 
@@ -460,27 +495,29 @@ def recommend_rebalance(req: RebalanceRecommendRequest) -> RebalanceRecommendRes
         donor_candidates=donor_rows,
     )
 
-    # Adaptive fallback: if no moves but risk exists, relax constraints progressively.
-    if not chosen_moves and total_risk_before > 0:
+    # Adaptive fallback: if risk remains, relax constraints progressively and allow more moves.
+    if total_risk_before > 0 and any(v > 0 for v in current_risk.values()):
         relaxed_top_workers = max(int(top_workers), len(rows))
         relaxed_donors = donor_rows[: max(int(relaxed_top_workers), 1)]
 
         relax_steps = [
             {
-                "min_active_workers": max(int(min_active_workers_per_zone) - 1, 1),
+                "min_active_workers": max(int(min_active_workers_per_zone) - 1, 4),
                 "min_gain": float(min_gain_until_deadline) * 0.5,
                 "min_delta": float(min_delta_total_risk) * 0.5,
+                "max_moves": max(int(max_moves_cap) * 2, int(len(rows) * 0.2)),
             },
             {
-                "min_active_workers": 1,
+                "min_active_workers": 4,
                 "min_gain": 0.0,
                 "min_delta": 0.0,
+                "max_moves": int(len(rows)),
             },
         ]
 
         for step in relax_steps:
             chosen_moves, current_cap, current_risk = choose_moves(
-                max_moves=max_moves_cap,
+                max_moves=step["max_moves"],
                 min_active_workers=step["min_active_workers"],
                 min_gain=step["min_gain"],
                 min_delta=step["min_delta"],
@@ -492,6 +529,22 @@ def recommend_rebalance(req: RebalanceRecommendRequest) -> RebalanceRecommendRes
     risk_after = current_risk
     total_risk_after = float(sum(risk_after.values()))
     total_red = float(max(total_risk_before - total_risk_after, 0.0))
+
+    all_zone_infos: List[ZoneRiskInfo] = []
+    for z, st in zone_state.items():
+        all_zone_infos.append(
+            ZoneRiskInfo(
+                zone_id=int(z),
+                backlog=float(st.backlog),
+                deadline_min=float(st.deadline_min),
+                block=int(1 if st.block_cnt > 0 else 0),
+                capacity_h_before=float(cap_h.get(z, 0.0)),
+                capacity_h_after=float(current_cap.get(z, 0.0)),
+                risk_before=float(risk_before.get(z, 0.0)),
+                risk_after=float(risk_after.get(z, 0.0)),
+                risk_reduction=float(max(risk_before.get(z, 0.0) - risk_after.get(z, 0.0), 0.0)),
+            )
+        )
 
     target_infos: List[ZoneRiskInfo] = []
     for z in targets:
@@ -518,6 +571,7 @@ def recommend_rebalance(req: RebalanceRecommendRequest) -> RebalanceRecommendRes
         total_risk_after=total_risk_after,
         total_expected_risk_reduction=total_red,
         policy=policy,
+        zone_risks=all_zone_infos,
         target_zones=target_infos,
         moves=chosen_moves,
     )

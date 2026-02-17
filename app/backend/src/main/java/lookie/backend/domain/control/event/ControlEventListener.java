@@ -2,6 +2,7 @@ package lookie.backend.domain.control.event;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lookie.backend.domain.control.repository.ControlRedisRepository;
 import lookie.backend.domain.task.event.TaskItemCompletedEvent;
 import lookie.backend.domain.task.event.TaskItemRevertedEvent;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -18,6 +19,7 @@ import java.time.Duration;
 public class ControlEventListener {
 
     private final StringRedisTemplate redisTemplate;
+    private final ControlRedisRepository redisRepository;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -56,6 +58,8 @@ public class ControlEventListener {
             redisTemplate.opsForHash().put(progressKey, "progressRate", String.valueOf(rate));
 
             log.info("[ControlEvent] Zone {} Progress Updated: {}/{} ({}%)", zoneId, completed, total, rate);
+
+            invalidateOverviewCache(zoneId);
 
         } catch (Exception e) {
             log.error("[ControlEvent] Error handling TaskItemCompletedEvent", e);
@@ -105,8 +109,22 @@ public class ControlEventListener {
 
             log.info("[ControlEvent] Zone {} Progress Reverted: {}/{} ({}%)", zoneId, completed, total, rate);
 
+            invalidateOverviewCache(zoneId);
+
         } catch (Exception e) {
             log.error("[ControlEvent] Error handling TaskItemRevertedEvent", e);
+        }
+    }
+
+    private void invalidateOverviewCache(Long zoneId) {
+        // Debounce invalidation to avoid excessive cache churn on high-frequency events.
+        String zoneDirtyKey = "lookie:control:zone:" + zoneId + ":overview:dirty";
+        Boolean shouldInvalidate = redisTemplate.opsForValue()
+                .setIfAbsent(zoneDirtyKey, "1", Duration.ofSeconds(5));
+
+        if (Boolean.TRUE.equals(shouldInvalidate)) {
+            redisRepository.deleteZoneCache(zoneId);
+            redisRepository.deleteDashboardCache();
         }
     }
 }

@@ -1,4 +1,4 @@
-import { request } from "@/api/http";
+﻿import { request } from "@/api/http";
 import type { ApiResponse } from "@/api/type";
 import type { AdminContact } from "@/types/AdminContact";
 
@@ -7,7 +7,7 @@ import type { AdminContact } from "@/types/AdminContact";
 
 
 // ========================================
-// 📡 API Response Types
+// ?뱻 API Response Types
 // ========================================
 
 // Dashboard Summary Code
@@ -24,7 +24,7 @@ interface DashboardSummaryDto {
     pendingIssues: number;
     completedIssues: number;
     totalProgressRate: number;
-    zoneSummaries: any[];
+    zoneSummaries: ZoneOverviewSummaryDto[];
 }
 
 // Zone List Response (Extension of ZoneStat maybe?)
@@ -34,6 +34,29 @@ export interface AdminZoneResponse {
     status: "STABLE" | "NORMAL" | "CRITICAL";
     workerCount: number;
     workRate: number;
+    openIssueCount?: number;
+    remainingDeadlineMinutes?: number;
+    estimatedCompletionMinutes?: number;
+}
+
+interface ZoneOverviewSummaryDto {
+    zoneId: number;
+    zoneName: string;
+    status: "STABLE" | "NORMAL" | "CRITICAL";
+    workerCount: number;
+    progressRate: number;
+    openIssueCount?: number;
+    remainingDeadlineMinutes?: number;
+    estimatedCompletionMinutes?: number;
+}
+
+export interface ZoneMoveRequest {
+    workerId: number;
+    toZoneId: number;
+}
+
+export interface ZoneSimulationRequest {
+    moves: ZoneMoveRequest[];
 }
 
 // Admin List Response
@@ -77,15 +100,17 @@ export interface ZoneMapWorkerDto {
     lineId: number;
     currentLocationCode: string; // "A-01-001"
     isBottleneck: boolean;
+    hasOpenIssue?: boolean;
+    openIssueType?: "DAMAGED" | "OUT_OF_STOCK" | string;
     workRate?: number;
 }
 
 // ========================================
-// 📡 API 함수
+// ?뱻 API ?⑥닔
 // ========================================
 
 /**
- * 대시보드 상단 요약 정보
+ * ??쒕낫???곷떒 ?붿빟 ?뺣낫
  * GET /api/control/summary
  */
 export async function getDashboardSummary(): Promise<DashboardSummary> {
@@ -105,11 +130,11 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
 }
 
 /**
- * 대시보드 구역 현황
+ * ??쒕낫??援ъ뿭 ?꾪솴
  * GET /api/control/zones
  */
 export async function getZones(): Promise<AdminZoneResponse[]> {
-    const response = await request<ApiResponse<any[]>>("/api/control/zones", {
+    const response = await request<ApiResponse<ZoneOverviewSummaryDto[]>>("/api/control/zones", {
         method: "GET",
     });
     const rawData = response.data || [];
@@ -118,12 +143,36 @@ export async function getZones(): Promise<AdminZoneResponse[]> {
         name: item.zoneName, // Backend sends 'zoneName'
         status: item.status,
         workerCount: item.workerCount,
-        workRate: item.progressRate || 0 // Map backend 'progressRate' to frontend 'workRate'
+        workRate: item.progressRate || 0, // Map backend 'progressRate' to frontend 'workRate'
+        openIssueCount: item.openIssueCount ?? 0,
+        remainingDeadlineMinutes: item.remainingDeadlineMinutes,
+        estimatedCompletionMinutes: item.estimatedCompletionMinutes
     }));
 }
 
 /**
- * 관리자 목록 조회
+ * 援ъ뿭 ?꾪솴 ?쒕??덉씠?? * POST /api/control/zones/simulate
+ */
+export async function simulateZones(moves: ZoneMoveRequest[]): Promise<AdminZoneResponse[]> {
+    const response = await request<ApiResponse<ZoneOverviewSummaryDto[]>>("/api/control/zones/simulate", {
+        method: "POST",
+        body: { moves } as ZoneSimulationRequest,
+    });
+    const rawData = response.data || [];
+    return rawData.map(item => ({
+        zoneId: item.zoneId,
+        name: item.zoneName,
+        status: item.status,
+        workerCount: item.workerCount,
+        workRate: item.progressRate || 0,
+        openIssueCount: item.openIssueCount ?? 0,
+        remainingDeadlineMinutes: item.remainingDeadlineMinutes,
+        estimatedCompletionMinutes: item.estimatedCompletionMinutes
+    }));
+}
+
+/**
+ * 愿由ъ옄 紐⑸줉 議고쉶
  * GET /api/control/admins
  */
 export async function getAdmins(token: string, params?: AdminListParams): Promise<AdminContact[]> {
@@ -148,7 +197,7 @@ export async function getAdmins(token: string, params?: AdminListParams): Promis
 
     const rawData = response.data || [];
 
-    // API 응답(adminId)을 프론트엔드 모델(userId)로 맵핑
+    // API ?묐떟(adminId)???꾨줎?몄뿏??紐⑤뜽(userId)濡?留듯븨
     return rawData.map(item => ({
         // User Base Fields
         userId: item.adminId,
@@ -171,7 +220,7 @@ export async function getAdmins(token: string, params?: AdminListParams): Promis
 }
 
 /**
- * 관리자 강제 구역 배정
+ * 愿由ъ옄 媛뺤젣 援ъ뿭 諛곗젙
  * POST /api/control/assignments
  */
 export async function assignWorkerToZone(workerId: number, zoneId: number, reason?: string): Promise<void> {
@@ -182,7 +231,7 @@ export async function assignWorkerToZone(workerId: number, zoneId: number, reaso
 }
 
 /**
- * 구역별 작업자 상세 조회
+ * 援ъ뿭蹂??묒뾽???곸꽭 議고쉶
  * GET /api/control/zones/{zoneId}/workers
  */
 export async function getWorkersByZone(zoneId: number): Promise<ZoneWorkerDto[]> {
@@ -196,12 +245,12 @@ export async function getWorkersByZone(zoneId: number): Promise<ZoneWorkerDto[]>
 export interface ZoneMapResponse {
     zoneId: number;
     zoneName: string;
-    lines: any[]; // We only use workers for now
+    lines: unknown[]; // We only use workers for now
     workers: ZoneMapWorkerDto[];
 }
 
 /**
- * 구역 맵 조회 (실시간 위치 & 병목)
+ * 援ъ뿭 留?議고쉶 (?ㅼ떆媛??꾩튂 & 蹂묐ぉ)
  * GET /api/control/zones/{zoneId}/map
  */
 export async function getZoneMap(zoneId: number): Promise<ZoneMapResponse> {
@@ -212,27 +261,45 @@ export async function getZoneMap(zoneId: number): Promise<ZoneMapResponse> {
 }
 
 /**
- * 위치 코드 파싱 유틸리티 (중앙 집중화)
- * 예: "A-01-001" -> { lineNumber: 1, binNumber: 1 }
+ * ?꾩튂 肄붾뱶 ?뚯떛 ?좏떥由ы떚 (以묒븰 吏묒쨷??
+ * ?? "A-01-001" -> { lineNumber: 1, binNumber: 1 }
  */
 export function parseLocationCode(code: string | null): { lineNumber: number; binNumber: number } {
     if (!code) return { lineNumber: 0, binNumber: 0 };
-    
-    const parts = code.split('-');
-    // 마지막 파트가 binNumber ("001" -> 1)
-    const binNum = parts.length > 0 ? parseInt(parts[parts.length - 1], 10) : 0;
-    // 두 번째 파트가 lineNumber ("01" -> 1)
-    const lineNum = parts.length > 1 ? parseInt(parts[1], 10) : 0;
-    
-    return {
-        lineNumber: isNaN(lineNum) ? 0 : lineNum,
-        binNumber: isNaN(binNum) ? 0 : binNum,
-    };
+
+    const compact = code.trim();
+
+    const lFormat = compact.match(/-L(\d+)-(\d+)$/i);
+    if (lFormat) {
+        return {
+            lineNumber: parseInt(lFormat[1], 10) || 0,
+            binNumber: parseInt(lFormat[2], 10) || 0,
+        };
+    }
+
+    const classicFormat = compact.match(/^[A-Z]-([0-9]+)-([0-9]+)$/i);
+    if (classicFormat) {
+        return {
+            lineNumber: parseInt(classicFormat[1], 10) || 0,
+            binNumber: parseInt(classicFormat[2], 10) || 0,
+        };
+    }
+
+    const nums = compact.match(/\d+/g) || [];
+    if (nums.length >= 2) {
+        return {
+            lineNumber: parseInt(nums[nums.length - 2], 10) || 0,
+            binNumber: parseInt(nums[nums.length - 1], 10) || 0,
+        };
+    }
+
+    return { lineNumber: 0, binNumber: 0 };
 }
 
 export const adminService = {
     getDashboardSummary,
     getZones,
+    simulateZones,
     getAdmins,
     assignWorkerToZone,
     getWorkersByZone,
@@ -251,10 +318,11 @@ export interface WorkerHoverInfo {
     currentLocationCode: string | null;
     todayWorkCount: number;
     recentIssueType: string | null;
+    recentIssueId: number | null;
 }
 
 /**
- * 작업자 호버 정보 조회
+ * ?묒뾽???몃쾭 ?뺣낫 議고쉶
  * GET /api/control/workers/{workerId}/hover
  */
 export async function getWorkerHoverInfo(workerId: number): Promise<WorkerHoverInfo> {
@@ -268,6 +336,8 @@ export async function getWorkerHoverInfo(workerId: number): Promise<WorkerHoverI
         currentZoneName: "-",
         currentLocationCode: "-",
         todayWorkCount: 0,
-        recentIssueType: null
+        recentIssueType: null,
+        recentIssueId: null
     };
 }
+

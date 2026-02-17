@@ -1,19 +1,19 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="lookie.backend.domain.control.mapper.ControlMapper">
 
     <!-- 
-        1. 구역별 현황 조회 
-        - Zones 테이블을 기준으로 Left Join하여 작업자 수를 카운트
-        - Users: 해당 구역에 배정된(assigned_zone_id) 작업자
-        - WorkLogs: 현재 출근 중(ended_at IS NULL)인 작업자
+        1. 援ъ뿭蹂??꾪솴 議고쉶 
+        - Zones ?뚯씠釉붿쓣 湲곗??쇰줈 Left Join?섏뿬 ?묒뾽???섎? 移댁슫??
+        - Users: ?대떦 援ъ뿭??諛곗젙??assigned_zone_id) ?묒뾽??
+        - WorkLogs: ?꾩옱 異쒓렐 以?ended_at IS NULL)???묒뾽??
     -->
     <!--
-        1. 구역별 현황 조회 (AI 재배치 로직 기반)
-        - 예상 소요 시간 = (남은 아이템 수 / 구역 내 작업자 합산 평균 속도)
-        - 안정: 현재 + 예상 소요 시간 < 마감 - 10분
-        - 양호: 현재 + 예상 소요 시간 < 마감
-        - 주의: 현재 + 예상 소요 시간 > 마감
+        1. 援ъ뿭蹂??꾪솴 議고쉶 (AI ?щ같移?濡쒖쭅 湲곕컲)
+        - ?덉긽 ?뚯슂 ?쒓컙 = (?⑥? ?꾩씠????/ 援ъ뿭 ???묒뾽???⑹궛 ?됯퇏 ?띾룄)
+        - ?덉젙: ?꾩옱 + ?덉긽 ?뚯슂 ?쒓컙 < 留덇컧 - 10遺?
+        - ?묓샇: ?꾩옱 + ?덉긽 ?뚯슂 ?쒓컙 < 留덇컧
+        - 二쇱쓽: ?꾩옱 + ?덉긽 ?뚯슂 ?쒓컙 > 留덇컧
     -->
     <select id="selectZoneOverviews" resultType="lookie.backend.domain.control.dto.ZoneOverviewDto">
         <![CDATA[
@@ -22,10 +22,33 @@
                 zone_id,
                 AVG(speed_label) AS avg_speed_per_hour,
                 MAX(zone_backlog) AS total_remaining_qty,
-                MAX(batch_id) AS current_batch_id
+                MAX(batch_id) AS current_batch_id,
+                MAX(time_to_deadline_min) AS time_to_deadline_min,
+                MAX(zone_blocking_issue_cnt) AS block_cnt,
+                SUM(COALESCE(NULLIF(speed_label, 0), worker_speed_30m_avg, 0)) AS cap_per_hour
             FROM rebalance_snapshots
             WHERE ts >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
             GROUP BY zone_id
+        ),
+        zone_risk AS (
+            SELECT
+                zrs.zone_id AS zone_id,
+                zrs.total_remaining_qty AS backlog,
+                zrs.time_to_deadline_min AS deadline_min,
+                zrs.cap_per_hour AS cap_per_hour,
+                CASE
+                    WHEN COALESCE(zrs.block_cnt, 0) > 0 THEN
+                        GREATEST(
+                            COALESCE(zrs.total_remaining_qty, 0) - (COALESCE(zrs.cap_per_hour, 0) * (COALESCE(zrs.time_to_deadline_min, 0) / 60.0)),
+                            0
+                        ) * 0.2
+                    ELSE
+                        GREATEST(
+                            COALESCE(zrs.total_remaining_qty, 0) - (COALESCE(zrs.cap_per_hour, 0) * (COALESCE(zrs.time_to_deadline_min, 0) / 60.0)),
+                            0
+                        )
+                END AS risk
+            FROM zone_rebalance_stats zrs
         ),
         zone_worker_counts AS (
             SELECT
@@ -45,30 +68,81 @@
                 MIN(worker_count) OVER () AS min_worker_count,
                 MAX(worker_count) OVER () AS max_worker_count
             FROM zone_worker_counts
+        ),
+        current_batch AS (
+            SELECT b.batch_id, b.deadline_at
+            FROM batches b
+            WHERE b.status = 'IN_PROGRESS'
+            ORDER BY b.batch_id DESC
+            LIMIT 1
+        ),
+        zone_open_issue_counts AS (
+            SELECT
+                COALESCE(zl.zone_id, u.assigned_zone_id) AS zone_id,
+                COUNT(*) AS open_issue_count
+            FROM issues i
+            LEFT JOIN zone_locations zl ON zl.location_id = COALESCE(i.zone_location_id, i.new_location_id)
+            LEFT JOIN users u ON u.user_id = i.worker_id
+            WHERE i.status = 'OPEN'
+            GROUP BY COALESCE(zl.zone_id, u.assigned_zone_id)
         )
         SELECT
             z.zone_id AS zoneId,
             COALESCE(zwr.worker_count, 0) AS workerCount,
+            COALESCE(MAX(zoic.open_issue_count), 0) AS openIssueCount,
 
             -- Progress Calculation
             COALESCE(
                 (SUM(CASE WHEN bti.status = 'DONE' THEN 1 ELSE 0 END) * 100.0) / NULLIF(COUNT(bti.batch_task_item_id), 0),
                 0.0
             ) AS progressRate,
+            GREATEST(
+                COALESCE(zrs.time_to_deadline_min, TIMESTAMPDIFF(MINUTE, NOW(), cb.deadline_at)),
+                0
+            ) AS remainingDeadlineMinutes,
+            CASE
+                WHEN COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0) > 0
+                    THEN (
+                        COALESCE(
+                            zrs.total_remaining_qty,
+                            SUM(CASE WHEN bti.status = 'DONE' THEN 0 ELSE 1 END)
+                        )
+                        / COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0)
+                    ) * 60.0
+                ELSE NULL
+            END AS estimatedCompletionMinutes,
 
-            -- Status Calculation (Based on AI rebalancing logic)
+            -- Status Calculation by SLA gap (deadline - ETA)
             CASE
                 WHEN COALESCE(zwr.worker_count, 0) = 0 THEN 'CRITICAL'
-                -- 인원수 랭크 기반 STABLE/CRITICAL 판단은 사용하지 않음
-                WHEN zrs.avg_speed_per_hour IS NULL OR zrs.avg_speed_per_hour = 0 THEN 'CRITICAL'
-                WHEN zrs.total_remaining_qty IS NULL THEN 'STABLE'
-                -- 예상 완료 시간 계산: 현재 시각 + (남은 수량 / 시간당 속도) 시간
-                -- 안정: 예상 완료 <= 마감 - 60분 (1시간 이전)
-                WHEN DATE_ADD(NOW(), INTERVAL CEIL(zrs.total_remaining_qty / zrs.avg_speed_per_hour * 60) MINUTE) <= DATE_SUB(b.deadline_at, INTERVAL 60 MINUTE) THEN 'STABLE'
-                -- 양호: 마감 - 60분 < 예상 완료 <= 마감
-                WHEN DATE_ADD(NOW(), INTERVAL CEIL(zrs.total_remaining_qty / zrs.avg_speed_per_hour * 60) MINUTE) <= b.deadline_at THEN 'NORMAL'
-                -- 주의: 예상 완료 > 마감
-                ELSE 'CRITICAL'
+                WHEN COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0) <= 0 THEN 'CRITICAL'
+                WHEN (
+                    GREATEST(
+                        COALESCE(zrs.time_to_deadline_min, TIMESTAMPDIFF(MINUTE, NOW(), cb.deadline_at)),
+                        0
+                    )
+                    - (
+                        COALESCE(
+                            zrs.total_remaining_qty,
+                            SUM(CASE WHEN bti.status = 'DONE' THEN 0 ELSE 1 END)
+                        )
+                        / COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0)
+                    ) * 60.0
+                ) < 0 THEN 'CRITICAL'
+                WHEN (
+                    GREATEST(
+                        COALESCE(zrs.time_to_deadline_min, TIMESTAMPDIFF(MINUTE, NOW(), cb.deadline_at)),
+                        0
+                    )
+                    - (
+                        COALESCE(
+                            zrs.total_remaining_qty,
+                            SUM(CASE WHEN bti.status = 'DONE' THEN 0 ELSE 1 END)
+                        )
+                        / COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0)
+                    ) * 60.0
+                ) <= 30 THEN 'NORMAL'
+                ELSE 'STABLE'
             END AS status
 
         FROM zones z
@@ -76,23 +150,232 @@
         LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
 
         -- Join Tasks for Progress Stats
-        LEFT JOIN batch_tasks bt ON bt.zone_id = z.zone_id AND bt.status IN ('IN_PROGRESS', 'UNASSIGNED', 'COMPLETED')
+        LEFT JOIN batch_tasks bt ON bt.zone_id = z.zone_id
+            AND bt.batch_id = (
+                SELECT b2.batch_id
+                FROM batches b2
+                WHERE b2.status = 'IN_PROGRESS'
+                ORDER BY b2.batch_id DESC
+                LIMIT 1
+            )
+            AND bt.status IN ('IN_PROGRESS', 'UNASSIGNED', 'COMPLETED')
         LEFT JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
 
-        -- Join Rebalance Stats (AI 재배치 데이터)
+        -- Join Rebalance Stats (AI ?щ같移??곗씠??
         LEFT JOIN zone_rebalance_stats zrs ON zrs.zone_id = z.zone_id
+        LEFT JOIN zone_risk zr ON zr.zone_id = z.zone_id
         LEFT JOIN zone_worker_ranks zwr ON zwr.zone_id = z.zone_id
+        LEFT JOIN zone_open_issue_counts zoic ON zoic.zone_id = z.zone_id
 
         -- Join Batch for Deadline
         LEFT JOIN batches b ON b.batch_id = zrs.current_batch_id AND b.status = 'IN_PROGRESS'
+        LEFT JOIN current_batch cb ON 1=1
 
-        GROUP BY z.zone_id, zrs.avg_speed_per_hour, zrs.total_remaining_qty, b.deadline_at, zwr.worker_count, zwr.rank_low, zwr.rank_high, zwr.min_worker_count, zwr.max_worker_count
+        GROUP BY z.zone_id, zrs.avg_speed_per_hour, zrs.total_remaining_qty, zrs.time_to_deadline_min, zrs.cap_per_hour, b.deadline_at, cb.deadline_at, zwr.worker_count, zwr.rank_low, zwr.rank_high, zwr.min_worker_count, zwr.max_worker_count, zr.risk
+        ORDER BY z.zone_id
+        ]]>
+    </select>
+
+    <!--
+        1-1. 援ъ뿭蹂??꾪솴 議고쉶 (?묒뾽???대룞 ?쒕??덉씠??
+        - moves 紐⑸줉??worker_id -> to_zone_id瑜??꾩떆 ?곸슜?섏뿬 worker_count留?媛??怨꾩궛
+        - ?섎㉧吏 濡쒖쭅(吏꾪뻾瑜??곹깭)? 湲곗〈 selectZoneOverviews? ?숈씪
+    -->
+    <select id="selectZoneOverviewsSimulated" resultType="lookie.backend.domain.control.dto.ZoneOverviewDto">
+        <![CDATA[
+        WITH move_list AS (
+        ]]>
+            <if test="moves != null and moves.size > 0">
+                <foreach collection="moves" item="m" separator=" UNION ALL ">
+                    SELECT #{m.workerId} AS worker_id, #{m.toZoneId} AS to_zone_id
+                </foreach>
+            </if>
+            <if test="moves == null or moves.size == 0">
+                SELECT NULL AS worker_id, NULL AS to_zone_id WHERE 1=0
+            </if>
+        <![CDATA[
+        ),
+        zone_static_stats AS (
+            SELECT
+                zone_id,
+                MAX(zone_backlog) AS total_remaining_qty,
+                MAX(batch_id) AS current_batch_id,
+                MAX(time_to_deadline_min) AS time_to_deadline_min,
+                MAX(zone_blocking_issue_cnt) AS block_cnt
+            FROM rebalance_snapshots
+            WHERE ts >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+            GROUP BY zone_id
+        ),
+        zone_cap_sim AS (
+            SELECT
+                COALESCE(ml.to_zone_id, rs.zone_id) AS zone_id,
+                SUM(COALESCE(NULLIF(rs.speed_label, 0), rs.worker_speed_30m_avg, 0)) AS cap_per_hour
+            FROM rebalance_snapshots rs
+            LEFT JOIN move_list ml ON ml.worker_id = rs.worker_id
+            WHERE rs.ts >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+            GROUP BY COALESCE(ml.to_zone_id, rs.zone_id)
+        ),
+        zone_rebalance_stats AS (
+            SELECT
+                zs.zone_id,
+                zs.total_remaining_qty,
+                zs.current_batch_id,
+                zs.time_to_deadline_min,
+                zs.block_cnt,
+                COALESCE(zc.cap_per_hour, 0) AS cap_per_hour
+            FROM zone_static_stats zs
+            LEFT JOIN zone_cap_sim zc ON zc.zone_id = zs.zone_id
+        ),
+        zone_risk AS (
+            SELECT
+                zrs.zone_id AS zone_id,
+                zrs.total_remaining_qty AS backlog,
+                zrs.time_to_deadline_min AS deadline_min,
+                zrs.cap_per_hour AS cap_per_hour,
+                CASE
+                    WHEN COALESCE(zrs.block_cnt, 0) > 0 THEN
+                        GREATEST(
+                            COALESCE(zrs.total_remaining_qty, 0) - (COALESCE(zrs.cap_per_hour, 0) * (COALESCE(zrs.time_to_deadline_min, 0) / 60.0)),
+                            0
+                        ) * 0.2
+                    ELSE
+                        GREATEST(
+                            COALESCE(zrs.total_remaining_qty, 0) - (COALESCE(zrs.cap_per_hour, 0) * (COALESCE(zrs.time_to_deadline_min, 0) / 60.0)),
+                            0
+                        )
+                END AS risk
+            FROM zone_rebalance_stats zrs
+        ),
+        zone_worker_counts AS (
+            SELECT
+                COALESCE(ml.to_zone_id, u.assigned_zone_id) AS zone_id,
+                COUNT(DISTINCT wl.worker_id) AS worker_count
+            FROM users u
+            LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+            LEFT JOIN move_list ml ON ml.worker_id = u.user_id
+            WHERE u.role = 'WORKER'
+            GROUP BY COALESCE(ml.to_zone_id, u.assigned_zone_id)
+        ),
+        zone_worker_ranks AS (
+            SELECT
+                zone_id,
+                worker_count,
+                DENSE_RANK() OVER (ORDER BY worker_count ASC) AS rank_low,
+                DENSE_RANK() OVER (ORDER BY worker_count DESC) AS rank_high,
+                MIN(worker_count) OVER () AS min_worker_count,
+                MAX(worker_count) OVER () AS max_worker_count
+            FROM zone_worker_counts
+        ),
+        current_batch AS (
+            SELECT b.batch_id, b.deadline_at
+            FROM batches b
+            WHERE b.status = 'IN_PROGRESS'
+            ORDER BY b.batch_id DESC
+            LIMIT 1
+        ),
+        zone_open_issue_counts AS (
+            SELECT
+                COALESCE(zl.zone_id, COALESCE(ml.to_zone_id, u.assigned_zone_id)) AS zone_id,
+                COUNT(*) AS open_issue_count
+            FROM issues i
+            LEFT JOIN zone_locations zl ON zl.location_id = COALESCE(i.zone_location_id, i.new_location_id)
+            LEFT JOIN users u ON u.user_id = i.worker_id
+            LEFT JOIN move_list ml ON ml.worker_id = u.user_id
+            WHERE i.status = 'OPEN'
+            GROUP BY COALESCE(zl.zone_id, COALESCE(ml.to_zone_id, u.assigned_zone_id))
+        )
+        SELECT
+            z.zone_id AS zoneId,
+            COALESCE(zwr.worker_count, 0) AS workerCount,
+            COALESCE(MAX(zoic.open_issue_count), 0) AS openIssueCount,
+
+            -- Progress Calculation
+            COALESCE(
+                (SUM(CASE WHEN bti.status = 'DONE' THEN 1 ELSE 0 END) * 100.0) / NULLIF(COUNT(bti.batch_task_item_id), 0),
+                0.0
+            ) AS progressRate,
+            GREATEST(
+                COALESCE(zrs.time_to_deadline_min, TIMESTAMPDIFF(MINUTE, NOW(), cb.deadline_at)),
+                0
+            ) AS remainingDeadlineMinutes,
+            CASE
+                WHEN COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0) > 0
+                    THEN (
+                        COALESCE(
+                            zrs.total_remaining_qty,
+                            SUM(CASE WHEN bti.status = 'DONE' THEN 0 ELSE 1 END)
+                        )
+                        / COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0)
+                    ) * 60.0
+                ELSE NULL
+            END AS estimatedCompletionMinutes,
+
+            -- Status Calculation by SLA gap (deadline - ETA)
+            CASE
+                WHEN COALESCE(zwr.worker_count, 0) = 0 THEN 'CRITICAL'
+                WHEN COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0) <= 0 THEN 'CRITICAL'
+                WHEN (
+                    GREATEST(
+                        COALESCE(zrs.time_to_deadline_min, TIMESTAMPDIFF(MINUTE, NOW(), cb.deadline_at)),
+                        0
+                    )
+                    - (
+                        COALESCE(
+                            zrs.total_remaining_qty,
+                            SUM(CASE WHEN bti.status = 'DONE' THEN 0 ELSE 1 END)
+                        )
+                        / COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0)
+                    ) * 60.0
+                ) < 0 THEN 'CRITICAL'
+                WHEN (
+                    GREATEST(
+                        COALESCE(zrs.time_to_deadline_min, TIMESTAMPDIFF(MINUTE, NOW(), cb.deadline_at)),
+                        0
+                    )
+                    - (
+                        COALESCE(
+                            zrs.total_remaining_qty,
+                            SUM(CASE WHEN bti.status = 'DONE' THEN 0 ELSE 1 END)
+                        )
+                        / COALESCE(zrs.cap_per_hour, COALESCE(zwr.worker_count, 0) * 10.0)
+                    ) * 60.0
+                ) <= 30 THEN 'NORMAL'
+                ELSE 'STABLE'
+            END AS status
+
+        FROM zones z
+        LEFT JOIN users u ON u.assigned_zone_id = z.zone_id AND u.role = 'WORKER'
+        LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
+
+        -- Join Tasks for Progress Stats
+        LEFT JOIN batch_tasks bt ON bt.zone_id = z.zone_id
+            AND bt.batch_id = (
+                SELECT b2.batch_id
+                FROM batches b2
+                WHERE b2.status = 'IN_PROGRESS'
+                ORDER BY b2.batch_id DESC
+                LIMIT 1
+            )
+            AND bt.status IN ('IN_PROGRESS', 'UNASSIGNED', 'COMPLETED')
+        LEFT JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
+
+        -- Join Rebalance Stats
+        LEFT JOIN zone_rebalance_stats zrs ON zrs.zone_id = z.zone_id
+        LEFT JOIN zone_risk zr ON zr.zone_id = z.zone_id
+        LEFT JOIN zone_worker_ranks zwr ON zwr.zone_id = z.zone_id
+        LEFT JOIN zone_open_issue_counts zoic ON zoic.zone_id = z.zone_id
+
+        -- Join Batch for Deadline
+        LEFT JOIN batches b ON b.batch_id = zrs.current_batch_id AND b.status = 'IN_PROGRESS'
+        LEFT JOIN current_batch cb ON 1=1
+
+        GROUP BY z.zone_id, zrs.total_remaining_qty, zrs.time_to_deadline_min, zrs.cap_per_hour, b.deadline_at, cb.deadline_at, zwr.worker_count, zwr.rank_low, zwr.rank_high, zwr.min_worker_count, zwr.max_worker_count, zr.risk
         ORDER BY z.zone_id
         ]]>
     </select>
 
     <!-- 
-        구역별 작업자 상세 조회 (Real Logic Implemented)
+        援ъ뿭蹂??묒뾽???곸꽭 議고쉶 (Real Logic Implemented)
     -->
     <select id="selectWorkersByZoneId" resultType="lookie.backend.domain.control.dto.ZoneWorkerDto">
         SELECT DISTINCT u.user_id AS workerId,
@@ -107,45 +390,72 @@
         INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
         LEFT JOIN (
             SELECT bt.worker_id, 
-                   -- Daily Count: Tasks completed today
-                   COUNT(CASE WHEN bt.status = 'COMPLETED' AND DATE(bt.completed_at) = CURDATE() THEN 1 END) AS daily_count,
-                   -- Progress: Total done / Total items for current task
+                   -- Work Count: Items completed in current batch
+                   COUNT(CASE WHEN bti.status = 'DONE' THEN 1 END) AS daily_count,
+                   -- Progress: Total done / Total items for current batch task
                    (SUM(CASE WHEN bti.status = 'DONE' THEN 1 ELSE 0 END) * 100.0) / NULLIF(COUNT(bti.batch_task_item_id), 0) AS progress,
                    -- Speed (Dummy logic for now: 10 items/hour?)
                    10.0 AS processing_speed
             FROM batch_tasks bt
             LEFT JOIN batch_task_items bti ON bti.batch_task_id = bt.batch_task_id
+            WHERE bt.batch_id = (
+                SELECT b.batch_id
+                FROM batches b
+                WHERE b.status = 'IN_PROGRESS'
+                ORDER BY b.batch_id DESC
+                LIMIT 1
+            )
+              AND bt.zone_id = #{zoneId}
             GROUP BY bt.worker_id
         ) wc ON wc.worker_id = u.user_id
         WHERE u.assigned_zone_id = #{zoneId}
           AND u.role = 'WORKER'
     </select>
 
-    <!-- 3. 전체 활성 작업자 수 (중복 제거) -->
+    <!-- 3. ?꾩껜 ?쒖꽦 ?묒뾽????(以묐났 ?쒓굅) -->
     <select id="countTotalActiveWorkers" resultType="int">
         SELECT COUNT(DISTINCT wl.worker_id)
         FROM work_logs wl
         INNER JOIN users u ON u.user_id = wl.worker_id
         WHERE wl.ended_at IS NULL
-          AND u.role = 'WORKER' -- WORKER 역할만 필터링 (ADMIN 제외)
+          AND u.role = 'WORKER' -- WORKER ??븷留??꾪꽣留?(ADMIN ?쒖쇅)
     </select>
 
-    <!-- 4. 현재 미처리 이슈 수 (Status=OPEN) -->
+    <!-- 4. ?꾩옱 誘몄쿂由??댁뒋 ??(Status=OPEN) -->
     <select id="countPendingIssues" resultType="int">
         SELECT COUNT(*)
         FROM issues
         WHERE status = 'OPEN'
     </select>
 
-    <!-- 5. 금일 해결된 이슈 수 (Status=RESOLVED AND ResolveDate=Today) -->
+    <select id="countPendingIssuesByAdmin" resultType="int">
+        SELECT COUNT(*)
+        FROM issues i
+        JOIN zone_locations zl ON i.zone_location_id = zl.location_id
+        JOIN users admin_u ON admin_u.user_id = #{adminId}
+        WHERE i.status = 'OPEN'
+          AND zl.zone_id = admin_u.assigned_zone_id
+    </select>
+
+    <!-- 5. 湲덉씪 ?닿껐???댁뒋 ??(Status=RESOLVED AND ResolveDate=Today) -->
     <select id="countTodayCompletedIssues" resultType="int">
         SELECT COUNT(*)
         FROM issues
         WHERE status = 'RESOLVED'
-          AND DATE(resolved_at) = CURDATE()
+          AND DATE(CONVERT_TZ(resolved_at, '+00:00', '+09:00')) = CURDATE()
     </select>
 
-    <!-- 6. 작업자 마우스 오버 상세 정보 조회 -->
+    <select id="countTodayCompletedIssuesByAdmin" resultType="int">
+        SELECT COUNT(*)
+        FROM issues i
+        JOIN zone_locations zl ON i.zone_location_id = zl.location_id
+        JOIN users admin_u ON admin_u.user_id = #{adminId}
+        WHERE i.status = 'RESOLVED'
+          AND zl.zone_id = admin_u.assigned_zone_id
+          AND DATE(CONVERT_TZ(i.resolved_at, '+00:00', '+09:00')) = CURDATE()
+    </select>
+
+    <!-- 6. ?묒뾽??留덉슦???ㅻ쾭 ?곸꽭 ?뺣낫 議고쉶 -->
     <select id="selectWorkerHoverInfo" resultType="lookie.backend.domain.control.dto.WorkerHoverDto">
         SELECT
             u.user_id AS workerId,
@@ -153,7 +463,7 @@
             u.assigned_zone_id AS zoneId,
             u.phone_number AS phoneNumber,
             zl.location_code AS currentLocationCode,
-            -- 금일 작업 처리량 (서브쿼리)
+            -- 湲덉씪 ?묒뾽 泥섎━??(?쒕툕荑쇰━)
             (
                 SELECT COUNT(bti.batch_task_item_id)
                 FROM batch_tasks bt_sub
@@ -162,7 +472,7 @@
                   AND bti.status NOT IN ('PENDING', 'IN_PROGRESS')
                   AND DATE(bti.last_scanned_at) = CURDATE()
             ) AS todayWorkCount,
-            -- 최근 발생한 이슈 (서브쿼리)
+            -- 理쒓렐 諛쒖깮???댁뒋 (?쒕툕荑쇰━)
             (
                 SELECT issue_type
                 FROM issues
@@ -170,31 +480,39 @@
                   AND status = 'OPEN'
                 ORDER BY created_at DESC
                 LIMIT 1
-            ) AS recentIssueType
+            ) AS recentIssueType,
+            (
+                SELECT issue_id
+                FROM issues
+                WHERE worker_id = u.user_id
+                  AND status = 'OPEN'
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) AS recentIssueId
         FROM users u
-        -- 활성 작업자 확인 (출근 중)
+        -- ?쒖꽦 ?묒뾽???뺤씤 (異쒓렐 以?
         INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
-        -- 현재 위치 (진행 중인 작업의 위치)
+        -- ?꾩옱 ?꾩튂 (吏꾪뻾 以묒씤 ?묒뾽???꾩튂)
         LEFT JOIN batch_tasks bt ON bt.worker_id = u.user_id AND bt.status = 'IN_PROGRESS'
         LEFT JOIN zone_locations zl ON zl.location_id = bt.current_location_id
         WHERE u.user_id = #{workerId}
     </select>
 
-    <!-- 작업자 존재 여부 확인 -->
+    <!-- ?묒뾽??議댁옱 ?щ? ?뺤씤 -->
     <select id="existsWorker" resultType="boolean">
         SELECT COUNT(*) > 0
         FROM users
         WHERE user_id = #{workerId}
     </select>
 
-    <!-- 구역 존재 여부 확인 -->
+    <!-- 援ъ뿭 議댁옱 ?щ? ?뺤씤 -->
     <select id="existsZone" resultType="boolean">
         SELECT COUNT(*) > 0
         FROM zones
         WHERE zone_id = #{zoneId}
     </select>
 
-    <!-- 기존 배정 종료 (현재 활성 배정 건에 대해 ended_at 업데이트) -->
+    <!-- 湲곗〈 諛곗젙 醫낅즺 (?꾩옱 ?쒖꽦 諛곗젙 嫄댁뿉 ???ended_at ?낅뜲?댄듃) -->
     <update id="closeActiveAssignment">
         UPDATE zone_assignments
         SET ended_at = NOW()
@@ -202,26 +520,26 @@
           AND ended_at IS NULL
     </update>
 
-    <!-- 새로운 배정 이력 생성 -->
+    <!-- ?덈줈??諛곗젙 ?대젰 ?앹꽦 -->
     <insert id="insertAssignmentHistory">
         INSERT INTO zone_assignments (worker_id, zone_id, assignment_type, source, started_at, reason)
         VALUES (#{workerId}, #{zoneId}, 'BASE', 'ADMIN', NOW(), #{reason})
     </insert>
 
-    <!-- AI/TEMP 배정 이력 생성 -->
+    <!-- AI/TEMP 諛곗젙 ?대젰 ?앹꽦 -->
     <insert id="insertAiAssignmentHistory">
         INSERT INTO zone_assignments (worker_id, zone_id, assignment_type, source, started_at, reason)
         VALUES (#{workerId}, #{zoneId}, #{type}, #{source}, NOW(), #{reason})
     </insert>
 
-    <!-- 사용자 테이블 배정 구역 업데이트 -->
+    <!-- ?ъ슜???뚯씠釉?諛곗젙 援ъ뿭 ?낅뜲?댄듃 -->
     <update id="updateUserAssignedZone">
         UPDATE users
         SET assigned_zone_id = #{zoneId}
         WHERE user_id = #{workerId}
     </update>
 
-    <!-- 구역 내 라인 조회 -->
+    <!-- 援ъ뿭 ???쇱씤 議고쉶 -->
     <select id="selectLinesByZoneId" resultType="lookie.backend.domain.control.dto.map.ZoneLineDto">
         SELECT
             line_id AS lineId,
@@ -230,10 +548,10 @@
         WHERE zone_id = #{zoneId}
     </select>
 
-    <!-- 구역 내 작업자 위치 및 병목 여부 조회 -->
+    <!-- 援ъ뿭 ???묒뾽???꾩튂 諛?蹂묐ぉ ?щ? 議고쉶 -->
     <!--
-        병목 판단 로직:
-        현재 작업(IN_PROGRESS)의 시작 시간과 현재 시간의 차이가 임계값(thresholdSeconds) 이상이면 True(1), 아니면 False(0)
+        蹂묐ぉ ?먮떒 濡쒖쭅:
+        ?꾩옱 ?묒뾽(IN_PROGRESS)???쒖옉 ?쒓컙怨??꾩옱 ?쒓컙??李⑥씠媛 ?꾧퀎媛?thresholdSeconds) ?댁긽?대㈃ True(1), ?꾨땲硫?False(0)
     -->
     <select id="selectWorkerLocationsByZoneId" resultType="lookie.backend.domain.control.dto.map.ZoneWorkerLocationDto">
         SELECT
@@ -244,18 +562,35 @@
             CASE
                 WHEN TIMESTAMPDIFF(SECOND, bt.started_at, NOW()) >= #{thresholdSeconds} THEN 1
                 ELSE 0
-            END AS isBottleneck
+            END AS isBottleneck,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM issues i
+                    WHERE i.worker_id = u.user_id
+                      AND i.status = 'OPEN'
+                ) THEN 1
+                ELSE 0
+            END AS hasOpenIssue,
+            (
+                SELECT i.issue_type
+                FROM issues i
+                WHERE i.worker_id = u.user_id
+                  AND i.status = 'OPEN'
+                ORDER BY i.created_at DESC
+                LIMIT 1
+            ) AS openIssueType
         FROM users u
-        -- 활성 작업자 (출근 중)
+        -- ?쒖꽦 ?묒뾽??(異쒓렐 以?
         INNER JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
-        -- 현재 진행 중인 작업 (위치 파악용)
+        -- ?꾩옱 吏꾪뻾 以묒씤 ?묒뾽 (?꾩튂 ?뚯븙??
         INNER JOIN batch_tasks bt ON bt.worker_id = u.user_id AND bt.status = 'IN_PROGRESS'
         INNER JOIN zone_locations zl ON zl.location_id = bt.current_location_id
         WHERE u.assigned_zone_id = #{zoneId}
-          AND u.role = 'WORKER' -- WORKER 역할만 필터링 (ADMIN 제외)
+          AND u.role = 'WORKER' -- WORKER ??븷留??꾪꽣留?(ADMIN ?쒖쇅)
     </select>
 
-    <!-- 관리자 목록 조회 (Optimized: Returns VO) -->
+    <!-- 愿由ъ옄 紐⑸줉 議고쉶 (Optimized: Returns VO) -->
     <select id="selectAdmins" resultType="lookie.backend.domain.control.repository.vo.AdminQueryVo">
         SELECT
             u.user_id AS adminId,
@@ -263,14 +598,14 @@
             u.phone_number AS phoneNumber,
             u.assigned_zone_id AS assignedZoneId,
             
-            -- 최신 근무 상태 (Window Function 결과 이용)
+            -- 理쒖떊 洹쇰Т ?곹깭 (Window Function 寃곌낵 ?댁슜)
             IFNULL(le.event_type, 'END') AS currentStatus
         FROM users u
         
-        -- 현재 진행 중인 근무 로그 확인 (없으면 퇴근 상태)
+        -- ?꾩옱 吏꾪뻾 以묒씤 洹쇰Т 濡쒓렇 ?뺤씤 (?놁쑝硫??닿렐 ?곹깭)
         LEFT JOIN work_logs wl ON wl.worker_id = u.user_id AND wl.ended_at IS NULL
         
-        -- 최신 이벤트 조인 (ROW_NUMBER 사용, idx_work_log_events_log_time 인덱스 활용)
+        -- 理쒖떊 ?대깽??議곗씤 (ROW_NUMBER ?ъ슜, idx_work_log_events_log_time ?몃뜳???쒖슜)
         LEFT JOIN (
             SELECT work_log_id, event_type,
                    ROW_NUMBER() OVER(PARTITION BY work_log_id ORDER BY occurred_at DESC) as rn
@@ -279,12 +614,12 @@
         
         WHERE u.role = 'ADMIN'
         
-        <!-- 동적 쿼리: 구역 필터링 -->
+        <!-- ?숈쟻 荑쇰━: 援ъ뿭 ?꾪꽣留?-->
         <if test="zoneId != null">
             AND u.assigned_zone_id = #{zoneId}
         </if>
         
-        <!-- 동적 쿼리: 이름 검색 -->
+        <!-- ?숈쟻 荑쇰━: ?대쫫 寃??-->
         <if test="name != null and name != ''">
             AND u.name LIKE CONCAT('%', #{name}, '%')
         </if>
@@ -294,10 +629,10 @@
 
 
     <!-- 
-        가장 적은 수의 활성 작업자가 있는 구역 ID 조회 (자동 배정용)
-        - 모든 구역(Zones)을 기준으로 Left Join
-        - 현재 출근 중(ended_at IS NULL)인 작업자 수 카운트
-        - 작업자 수가 가장 적은 순, 같다면 ID가 작은 순으로 정렬하여 1개 선택
+        媛???곸? ?섏쓽 ?쒖꽦 ?묒뾽?먭? ?덈뒗 援ъ뿭 ID 議고쉶 (?먮룞 諛곗젙??
+        - 紐⑤뱺 援ъ뿭(Zones)??湲곗??쇰줈 Left Join
+        - ?꾩옱 異쒓렐 以?ended_at IS NULL)???묒뾽????移댁슫??
+        - ?묒뾽???섍? 媛???곸? ?? 媛숇떎硫?ID媛 ?묒? ?쒖쑝濡??뺣젹?섏뿬 1媛??좏깮
     -->
     <select id="selectZoneIdWithFewestWorkers" resultType="long">
         SELECT z.zone_id
@@ -310,3 +645,8 @@
         FOR UPDATE
     </select>
 </mapper>
+
+
+
+
+

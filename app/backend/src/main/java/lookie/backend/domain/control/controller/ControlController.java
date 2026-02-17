@@ -10,11 +10,13 @@ import lookie.backend.domain.control.dto.DashboardSummaryDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
+import lookie.backend.domain.control.dto.ZoneSimulationRequest;
 import lookie.backend.domain.control.dto.map.ZoneMapResponse;
 import lookie.backend.domain.control.dto.AdminResponseDto;
 import lookie.backend.domain.control.service.WorkerLocationService;
 import lookie.backend.domain.control.service.WorkerMonitoringService;
 import lookie.backend.global.response.ApiResponse;
+import lookie.backend.global.security.SecurityUtil;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -51,6 +53,17 @@ public class ControlController {
     }
 
     /**
+     * 1-1. 작업자 이동 시뮬레이션 기반 구역 현황 조회
+     */
+    @Operation(summary = "구역 현황 시뮬레이션", description = "작업자 이동을 적용하기 전에 구역 상태 변화를 시뮬레이션합니다.")
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/zones/simulate")
+    public ApiResponse<List<ZoneOverviewDto>> simulateZoneOverviews(@RequestBody ZoneSimulationRequest request) {
+        List<ZoneOverviewDto> result = workerMonitoringService.simulateZoneOverviews(request);
+        return ApiResponse.success(result);
+    }
+
+    /**
      * 2. 구역별 작업자 상세 조회 API
      * 특정 구역 ID에 해당하는 작업자들의 목록(이름, 작업량, 상태 등)을 조회
      * 권한: ADMIN
@@ -72,7 +85,8 @@ public class ControlController {
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/summary")
     public ApiResponse<DashboardSummaryDto> getDashboardSummary() {
-        DashboardSummaryDto result = workerMonitoringService.getDashboardSummary();
+        Long adminId = SecurityUtil.getCurrentUserId();
+        DashboardSummaryDto result = workerMonitoringService.getDashboardSummary(adminId);
         return ApiResponse.success(result);
     }
 
