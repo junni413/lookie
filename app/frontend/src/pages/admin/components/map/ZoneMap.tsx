@@ -92,17 +92,23 @@ export default function ZoneMap({ layout, workers }: ZoneMapProps) {
 
                                             <div className="absolute inset-0 flex gap-0.5 flex-wrap items-center justify-center p-1 content-center pointer-events-auto">
                                                 {binWorkers.map((worker) => {
-                                                    // const isBottleneck = worker.isBottleneck; (Removed)
-                                                    const dotColor = "bg-primary shadow-primary/30";
+                                                    const dotColor = worker.hasOpenIssue
+                                                        ? "bg-rose-500 shadow-rose-500/30"
+                                                        : "bg-primary shadow-primary/30";
+                                                    const issueText = worker.openIssueType === "OUT_OF_STOCK"
+                                                        ? "재고 부족"
+                                                        : worker.openIssueType === "DAMAGED"
+                                                            ? "파손"
+                                                            : "이슈 있음";
 
                                                     return (
-                                                        <WorkerHoverCard key={worker.userId} workerId={worker.userId}>
+                                                        <WorkerHoverCard key={worker.userId} workerId={worker.userId} allowCardHover>
                                                             <div
                                                                 className={cn(
                                                                     "w-3 h-3 rounded-full shadow-sm ring-2 ring-white cursor-pointer hover:scale-110 transition-all shrink-0 relative z-20",
                                                                     dotColor
                                                                 )}
-                                                                title={`${worker.name}`}
+                                                                title={worker.hasOpenIssue ? `${worker.name} (${issueText})` : `${worker.name}`}
                                                             />
                                                         </WorkerHoverCard>
                                                     );

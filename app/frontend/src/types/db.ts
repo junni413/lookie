@@ -294,6 +294,9 @@ export interface ZoneStat {
     status: ZoneStatus;
     workerCount: number;
     workRate: number; // percentage (0-100)
+    openIssueCount?: number;
+    remainingDeadlineMinutes?: number;
+    estimatedCompletionMinutes?: number;
 }
 
 export type ZoneStatus = 'STABLE' | 'NORMAL' | 'CRITICAL';
@@ -323,6 +326,8 @@ export interface DB_Worker extends DB_User {
     currentTaskProgress?: number;
     webrtcStatus?: string;
     isBottleneck?: boolean;
+    hasOpenIssue?: boolean;
+    openIssueType?: string;
 }
 
 // Layout Types for Map

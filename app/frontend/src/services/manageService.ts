@@ -4,6 +4,7 @@ import { zonesLayoutMock } from "@/mocks/mockData";
 import { request } from "@/api/http";
 import type { ApiResponse } from "@/api/type";
 import { adminService } from "./adminService";
+import type { ZoneMoveRequest } from "./adminService";
 
 import { DEFAULT_ZONES, mergeZoneData } from "@/utils/zoneUtils";
 import type { ZoneStat } from "@/types/db"; // Import from types/db
@@ -69,9 +70,10 @@ export const manageService = {
                 } as DB_Worker;
             });
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("API Error fetching workers:", error);
-            if (error.response && error.response.status === 403) {
+            const err = error as { response?: { status?: number } };
+            if (err.response?.status === 403) {
                 // Rethrow with user-friendly message so Map.tsx can show it
                 throw new Error("관리자 권한이 필요합니다. (403 Forbidden)");
             }
@@ -90,6 +92,20 @@ export const manageService = {
             return mergeZoneData(apiZones);
         } catch (error) {
             console.error("Failed to load real zone stats, using defaults:", error);
+            return DEFAULT_ZONES;
+        }
+    },
+
+    getZoneStatsSimulated: async (moves: ZoneMoveRequest[]): Promise<ZoneStat[]> => {
+        try {
+            if (!moves || moves.length === 0) {
+                const apiZones = await adminService.getZones();
+                return mergeZoneData(apiZones);
+            }
+            const apiZones = await adminService.simulateZones(moves);
+            return mergeZoneData(apiZones);
+        } catch (error) {
+            console.error("Failed to load simulated zone stats, using defaults:", error);
             return DEFAULT_ZONES;
         }
     },
@@ -115,6 +131,7 @@ export const manageService = {
                 const zoneId = DEFAULT_ZONES[index].zoneId; // Correct Zone ID from loop
                 
                 zoneWorkers.forEach(dto => {
+
                     // Map DTO status string to Enum
                     let mappedStatus: 'WORKING' | 'PAUSED' | 'OFF_WORK' = 'OFF_WORK';
                     if (dto.status === 'START' || dto.status === 'RESUME' || dto.status === 'WORKING') mappedStatus = 'WORKING';

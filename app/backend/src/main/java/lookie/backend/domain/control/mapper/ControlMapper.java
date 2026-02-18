@@ -8,6 +8,7 @@ import lookie.backend.domain.control.dto.map.ZoneLineDto;
 import lookie.backend.domain.control.dto.map.ZoneWorkerLocationDto;
 
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
+import lookie.backend.domain.control.dto.ZoneMoveRequest;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -21,6 +22,11 @@ public interface ControlMapper {
          * 1. 모든 구역의 기본 현황(작업자 수, 상태 등)을 조회
          */
         List<ZoneOverviewDto> selectZoneOverviews();
+
+        /**
+         * 이동 시뮬레이션 기반 구역 요약 조회
+         */
+        List<ZoneOverviewDto> selectZoneOverviewsSimulated(@Param("moves") List<ZoneMoveRequest> moves);
 
         /**
          * 2. 특정 구역에 속한 작업자 리스트를 조회
@@ -39,10 +45,14 @@ public interface ControlMapper {
          */
         Integer countPendingIssues();
 
+        Integer countPendingIssuesByAdmin(@Param("adminId") Long adminId);
+
         /**
          * 5. 금일 해결(RESOLVED)된 이슈 건수를 조회
          */
         Integer countTodayCompletedIssues();
+
+        Integer countTodayCompletedIssuesByAdmin(@Param("adminId") Long adminId);
 
         /**
          * 6. 작업자 마우스 오버 상세 정보 조회

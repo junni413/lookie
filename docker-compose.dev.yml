@@ -72,6 +72,32 @@ services:
     restart: "no"
 
   # ============================
+  # Dummy Data Seed (dev, on-demand)
+  # ============================
+  seed:
+    profiles: ["seed"]
+    image: mysql:8.0
+    container_name: seed
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    volumes:
+      - ./scripts/dummy-data-dashboard-test.sql:/seed.sql:ro
+    networks:
+      - lookie
+    command:
+      [
+        "sh",
+        "-lc",
+        "mysql -h mysql -uroot -p\"$MYSQL_ROOT_PASSWORD\" \"$MYSQL_DATABASE\" < /seed.sql",
+      ]
+    restart: "no"
+
+  # ============================
   # Backend
   # ============================
   backend:

@@ -138,7 +138,7 @@ public class IssueController {
         @Operation(summary = "이슈 상세 조회", description = "이슈 ID로 이슈의 상태, AI 판정 결과, 다음 행동을 조회합니다.")
         @GetMapping("/{issueId}")
         public ResponseEntity<ApiResponse<IssueDetailResponse>> getIssueDetail(
-                        @Parameter(description = "이슈 ID", required = true) @PathVariable Long issueId) {
+                        @Parameter(description = "Issue ID", required = true) @PathVariable Long issueId) {
                 log.info("[IssueController] getIssueDetail called. issueId={}", issueId);
 
                 IssueDetailResponse response = issueServiceNew.getIssueDetail(issueId);

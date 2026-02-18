@@ -62,6 +62,7 @@ export type AdminIssueListRequest = {
   size?: number;
   status?: IssueStatus;
   sortType?: IssueSortType;
+  zoneId?: number;
 };
 
 /** Admin Issue List Response */

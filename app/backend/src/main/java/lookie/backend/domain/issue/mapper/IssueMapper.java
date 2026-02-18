@@ -50,6 +50,8 @@ public interface IssueMapper {
                         @Param("adminId") Long adminId,
                         @Param("req") lookie.backend.domain.issue.dto.AdminIssueListRequest req);
 
+        boolean existsIssueInAdminZone(@Param("issueId") Long issueId, @Param("adminId") Long adminId);
+
         // 내 이슈 목록 조회
         List<MyIssueSummary> findMyIssues(
                         @Param("workerId") Long workerId,

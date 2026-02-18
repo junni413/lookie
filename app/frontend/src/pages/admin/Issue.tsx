@@ -70,6 +70,71 @@ function PageSizeDropdown({ value, onChange }: { value: number; onChange: (val: 
     );
 }
 
+function ZoneFilterDropdown({
+    value,
+    onChange,
+}: {
+    value: number | "ALL";
+    onChange: (val: number | "ALL") => void;
+}) {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const options: Array<{ value: number | "ALL"; label: string }> = [
+        { value: "ALL", label: "ALL ZONES" },
+        { value: 1, label: "ZONE A" },
+        { value: 2, label: "ZONE B" },
+        { value: 3, label: "ZONE C" },
+        { value: 4, label: "ZONE D" },
+    ];
+
+    const selectedLabel = options.find((option) => option.value === value)?.label ?? "ALL ZONES";
+
+    return (
+        <div className="relative" ref={dropdownRef}>
+            <button
+                onClick={() => setIsOpen((prev) => !prev)}
+                className="h-8 pl-3 pr-2.5 rounded-full border border-slate-200 bg-white text-[11px] font-bold text-slate-600 flex items-center gap-1.5 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm min-w-[108px] justify-between"
+            >
+                <span>{selectedLabel}</span>
+                <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform duration-200", isOpen && "rotate-180")} />
+            </button>
+
+            {isOpen && (
+                <div className="absolute right-0 top-full mt-1 w-32 bg-white border border-slate-100 rounded-xl shadow-lg shadow-slate-200/50 py-1 z-50 animate-in fade-in zoom-in-95 duration-200">
+                    {options.map((option) => (
+                        <button
+                            key={String(option.value)}
+                            onClick={() => {
+                                onChange(option.value);
+                                setIsOpen(false);
+                            }}
+                            className={cn(
+                                "w-full px-3 py-2 text-left text-[11px] font-bold transition-colors",
+                                value === option.value
+                                    ? "text-primary bg-primary/5"
+                                    : "text-slate-600 hover:bg-slate-50"
+                            )}
+                        >
+                            {option.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 
 export default function Issue() {
     const [searchParams] = useSearchParams();
@@ -77,6 +142,7 @@ export default function Issue() {
     const [currentTab, setCurrentTab] = useState<IssueStatus>("OPEN");
     const [sortType, setSortType] = useState<IssueSortType>("LATEST");
     const [issues, setIssues] = useState<AdminIssueSummary[]>([]);
+    const [zoneFilter, setZoneFilter] = useState<number | "ALL">("ALL");
     // Initialize selectedId from URL if present
     const [selectedId, setSelectedId] = useState<number | null>(() => {
         const qId = searchParams.get("issueId");
@@ -109,7 +175,8 @@ export default function Issue() {
                 page,
                 size: pageSize,
                 status: currentTab,
-                sortType: sortType
+                sortType: sortType,
+                zoneId: zoneFilter === "ALL" ? undefined : zoneFilter
             });
 
             if (isMountedRef.current) {
@@ -119,7 +186,7 @@ export default function Issue() {
         } catch (error) {
             console.error("Failed to fetch issues", error);
         }
-    }, [page, pageSize, currentTab, sortType]);
+    }, [page, pageSize, currentTab, sortType, zoneFilter]);
 
     useEffect(() => {
         fetchIssues();
@@ -213,6 +280,14 @@ export default function Issue() {
                                     </Button>
                                 </div>
                             )}
+
+                            <ZoneFilterDropdown
+                                value={zoneFilter}
+                                onChange={(nextZone) => {
+                                    setZoneFilter(nextZone);
+                                    setPage(1);
+                                }}
+                            />
 
                             {/* Page Size Toggle (Custom Dropdown) */}
                             <PageSizeDropdown value={pageSize} onChange={setPageSize} />

@@ -133,7 +133,7 @@ export default function WorkerList({ currentZoneId, allWorkers, onFilterChange, 
 
                                     {/* 정보 영역 */}
                                     <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
-                                        <WorkerHoverCard workerId={worker.userId}>
+                                        <WorkerHoverCard workerId={worker.userId} allowCardHover>
                                             <div className="font-semibold text-sm text-slate-800 truncate hover:text-blue-600 transition-colors cursor-help inline-block align-middle">
                                                 {worker.name}
                                             </div>

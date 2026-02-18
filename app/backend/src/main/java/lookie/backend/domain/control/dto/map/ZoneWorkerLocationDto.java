@@ -21,12 +21,12 @@ public class ZoneWorkerLocationDto {
     private Long workerId;
 
     /**
-     * 작업자 이름 (형식: 이름 + 전화번호 뒷 4자리)
+     * 작업자 이름 (형식: 이름 + 전화번호 뒤 4자리)
      */
     private String name;
 
     /**
-     * 작업자 전화번호 (이름 포맷팅용, JSON 제외)
+     * 작업자 전화번호 (이름 포맷용, JSON 제외)
      */
     @JsonIgnore
     private String phoneNumber;
@@ -38,7 +38,16 @@ public class ZoneWorkerLocationDto {
 
     /**
      * 병목 현상 발생 여부
-     * (현재 작업 시간이 임계값을 초과했는지 여부)
      */
     private Boolean isBottleneck;
+
+    /**
+     * OPEN 이슈 존재 여부
+     */
+    private Boolean hasOpenIssue;
+
+    /**
+     * 최근 OPEN 이슈 타입 (DAMAGED, OUT_OF_STOCK)
+     */
+    private String openIssueType;
 }

@@ -1,61 +1,52 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
 import type { UserRole } from "@/types/db";
 
-import AdminLayout from "./components/layout/AdminLayout";
-import MobileLayout from "./components/layout/MobileLayout";
+const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
+const MobileLayout = lazy(() => import("./components/layout/MobileLayout"));
 
-import Login from "./pages/auth/Login";
-import Signup from "./pages/auth/Signup";
+const Login = lazy(() => import("./pages/auth/Login"));
+const Signup = lazy(() => import("./pages/auth/Signup"));
 
-// ✅ Password Reset pages (로그인 없이 접근)
-import PasswordForgot from "./pages/auth/password/PasswordForgot";
-import PasswordCode from "./pages/auth/password/PasswordCode";
-import PasswordReset from "./pages/auth/password/PasswordReset";
+const PasswordForgot = lazy(() => import("./pages/auth/password/PasswordForgot"));
+const PasswordCode = lazy(() => import("./pages/auth/password/PasswordCode"));
+const PasswordReset = lazy(() => import("./pages/auth/password/PasswordReset"));
 
-// WORKER pages
-import WorkerAttend from "./pages/worker/Attend";
-import WorkerHome from "./pages/worker/Home";
-import MyPage from "./pages/worker/MyPage";
-import ProfileEdit from "./pages/worker/ProfileEdit";
-import WorkHistory from "./pages/worker/WorkHistory";
-import IssueListPage from "./pages/worker/issue/IssueList";
-import IssueReportPage from "./pages/worker/issue/IssueReport";
-import IssueResultPage from "./pages/worker/issue/IssueResult";
-import IssueDetail from "./pages/worker/issue/IssueDetail";
-import AiStockAnalysis from "./pages/worker/issue/AiStockAnalysis";
+const WorkerAttend = lazy(() => import("./pages/worker/Attend"));
+const WorkerHome = lazy(() => import("./pages/worker/Home"));
+const MyPage = lazy(() => import("./pages/worker/MyPage"));
+const ProfileEdit = lazy(() => import("./pages/worker/ProfileEdit"));
+const WorkHistory = lazy(() => import("./pages/worker/WorkHistory"));
+const IssueListPage = lazy(() => import("./pages/worker/issue/IssueList"));
+const IssueReportPage = lazy(() => import("./pages/worker/issue/IssueReport"));
+const IssueResultPage = lazy(() => import("./pages/worker/issue/IssueResult"));
+const IssueDetail = lazy(() => import("./pages/worker/issue/IssueDetail"));
+const AiStockAnalysis = lazy(() => import("./pages/worker/issue/AiStockAnalysis"));
 
-// ADMIN pages
-import AdminDashboard from "./pages/admin/Dashboard";
-import IssuePage from "./pages/admin/Issue";
-import ManagePage from "./pages/admin/Manage";
-import MapPage from "./pages/admin/Map";
-import ContactPage from "./pages/admin/Contact";
+const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
+const IssuePage = lazy(() => import("./pages/admin/Issue"));
+const ManagePage = lazy(() => import("./pages/admin/Manage"));
+const MapPage = lazy(() => import("./pages/admin/Map"));
+const ContactPage = lazy(() => import("./pages/admin/Contact"));
 
-// ✅ 작업 흐름 (프론트만)
-import TaskAssignLoading from "./pages/worker/task/TaskAssignLoading";
-import TaskScanStart from "./pages/worker/task/TaskScanStart";
-import ToteScan from "./pages/worker/task/ToteScan";
-import WorkDetail from "./pages/worker/task/WorkDetail";
-import TaskList from "./pages/worker/task/TaskList";
+const TaskAssignLoading = lazy(() => import("./pages/worker/task/TaskAssignLoading"));
+const TaskScanStart = lazy(() => import("./pages/worker/task/TaskScanStart"));
+const ToteScan = lazy(() => import("./pages/worker/task/ToteScan"));
+const WorkDetail = lazy(() => import("./pages/worker/task/WorkDetail"));
+const TaskList = lazy(() => import("./pages/worker/task/TaskList"));
 
-// ✅ WebRTC
 import VideoCallModal from "./components/webrtc/VideoCallModal";
-
-// ✅ Toast
 import { ToastContainer } from "./components/ui/toast";
 
-import Promo from "./pages/auth/Promo";
+const Promo = lazy(() => import("./pages/auth/Promo"));
 
-// ✅ 인증 가드: token 없으면 /login
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuthStore((s) => s.token);
   if (!token) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
-// ✅ 역할 가드: role 없으면 /login, role 다르면 해당 role 첫 화면으로
 function RequireRole({
   allow,
   children,
@@ -79,7 +70,6 @@ function RequireRole({
   return <>{children}</>;
 }
 
-// ✅ 루트 진입(/): token/role 있으면 해당 첫 화면으로, 아니면 /login
 function IndexRedirect() {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.role);
@@ -97,88 +87,69 @@ function IndexRedirect() {
 export default function App() {
   return (
     <>
-      <Routes>
-        {/* 기본 진입 */}
-        <Route path="/" element={<IndexRedirect />} />
-        <Route path="/auth/promo" element={<Promo />} />
-        {/* Auth */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+      <Suspense fallback={<div className="flex h-full items-center justify-center">Loading...</div>}>
+        <Routes>
+          <Route path="/" element={<IndexRedirect />} />
+          <Route path="/auth/promo" element={<Promo />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
 
-        {/* ✅ 비밀번호 찾기/재설정 (로그인 없이 접근 가능) */}
-        <Route path="/auth/password/forgot" element={<PasswordForgot />} />
-        <Route path="/auth/password/code" element={<PasswordCode />} />
-        <Route path="/auth/password/reset" element={<PasswordReset />} />
+          <Route path="/auth/password/forgot" element={<PasswordForgot />} />
+          <Route path="/auth/password/code" element={<PasswordCode />} />
+          <Route path="/auth/password/reset" element={<PasswordReset />} />
 
-        {/* WORKER */}
-        <Route
-          path="/worker"
-          element={
-            <RequireAuth>
-              <RequireRole allow="WORKER">
-                <MobileLayout />
-              </RequireRole>
-            </RequireAuth>
-          }
-        >
-          {/* 워커 기본 진입 */}
-          <Route index element={<Navigate to="/worker/attend" replace />} />
+          <Route
+            path="/worker"
+            element={
+              <RequireAuth>
+                <RequireRole allow="WORKER">
+                  <MobileLayout />
+                </RequireRole>
+              </RequireAuth>
+            }
+          >
+            <Route index element={<Navigate to="/worker/attend" replace />} />
+            <Route path="attend" element={<WorkerAttend />} />
+            <Route path="home" element={<WorkerHome />} />
+            <Route path="task/loading" element={<TaskAssignLoading />} />
+            <Route path="task/scan-start" element={<TaskScanStart />} />
+            <Route path="task/tote-scan" element={<ToteScan />} />
+            <Route path="task/work-detail" element={<WorkDetail />} />
+            <Route path="task/list" element={<TaskList />} />
+            <Route path="issue" element={<IssueListPage />} />
+            <Route path="issue/report" element={<IssueReportPage />} />
+            <Route path="issue/result" element={<IssueResultPage />} />
+            <Route path="issue/detail" element={<IssueDetail />} />
+            <Route path="issue/stock-analysis" element={<AiStockAnalysis />} />
+            <Route path="mypage" element={<MyPage />} />
+            <Route path="profile/edit" element={<ProfileEdit />} />
+            <Route path="work-history" element={<WorkHistory />} />
+            <Route path="issues" element={<Navigate to="/worker/issue" replace />} />
+          </Route>
 
-          {/* 출근 */}
-          <Route path="attend" element={<WorkerAttend />} />
+          <Route
+            path="/admin"
+            element={
+              <RequireAuth>
+                <RequireRole allow="ADMIN">
+                  <AdminLayout />
+                </RequireRole>
+              </RequireAuth>
+            }
+          >
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="manage" element={<ManagePage />} />
+            <Route path="map" element={<MapPage />} />
+            <Route path="issue" element={<IssuePage />} />
+            <Route path="contact" element={<ContactPage />} />
+          </Route>
 
-          {/* 홈 */}
-          <Route path="home" element={<WorkerHome />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
 
-          {/* 작업 흐름 */}
-          <Route path="task/loading" element={<TaskAssignLoading />} />
-          <Route path="task/scan-start" element={<TaskScanStart />} />
-          <Route path="task/tote-scan" element={<ToteScan />} />
-          <Route path="task/work-detail" element={<WorkDetail />} />
-          <Route path="task/list" element={<TaskList />} />
-
-          {/* ✅ 이슈(목록/신고촬영) */}
-          <Route path="issue" element={<IssueListPage />} />
-          <Route path="issue/report" element={<IssueReportPage />} />
-          <Route path="issue/result" element={<IssueResultPage />} />
-          <Route path="issue/detail" element={<IssueDetail />} />
-          <Route path="issue/stock-analysis" element={<AiStockAnalysis />} />
-
-          {/* 사이드바 연결 페이지들 */}
-          <Route path="mypage" element={<MyPage />} />
-          <Route path="profile/edit" element={<ProfileEdit />} />
-          <Route path="work-history" element={<WorkHistory />} />
-
-          {/* ✅ 기존 /worker/issues를 이미 쓰고 있으면 호환 리다이렉트 */}
-          <Route path="issues" element={<Navigate to="/worker/issue" replace />} />
-        </Route>
-
-        {/* ADMIN */}
-        <Route
-          path="/admin"
-          element={
-            <RequireAuth>
-              <RequireRole allow="ADMIN">
-                <AdminLayout />
-              </RequireRole>
-            </RequireAuth>
-          }
-        >
-          <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
-          <Route path="manage" element={<ManagePage />} />
-          <Route path="map" element={<MapPage />} />
-          <Route path="issue" element={<IssuePage />} />
-          <Route path="contact" element={<ContactPage />} />
-        </Route>
-
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-
-      {/* ✅ WebRTC 모달 (전역) */}
       <VideoCallModal />
-
-      {/* ✅ Toast 알림 (전역) */}
       <ToastContainer />
     </>
   );

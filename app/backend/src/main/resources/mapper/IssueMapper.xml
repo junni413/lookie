@@ -163,25 +163,27 @@
             i.status,
             COALESCE(i.urgency, 5) AS urgency,
             i.worker_id AS workerId,
-            -- WorkerNameFormatter 로직을 DB 레벨로 이관 (name + phone 뒷 4자리)
-            CASE 
+            CASE
                 WHEN CHAR_LENGTH(u.phone_number) >= 4 THEN CONCAT(u.name, RIGHT(u.phone_number, 4))
-                ELSE u.name 
+                ELSE u.name
             END AS workerName,
             p.product_name AS productName,
-            zl.location_code AS locationCode,
+            COALESCE(zl.location_code, '-') AS locationCode,
             i.created_at AS createdAt,
             i.resolved_at AS resolvedAt,
             i.admin_decision AS adminDecision,
             i.ai_decision AS aiDecision
         FROM issues i
-        JOIN zone_locations zl ON i.zone_location_id = zl.location_id
-        JOIN users admin_u ON admin_u.user_id = #{adminId} -- 현재 관리자 정보
-        LEFT JOIN users u ON i.worker_id = u.user_id      -- 작업자 정보
         LEFT JOIN batch_task_items bti ON i.batch_task_item_id = bti.batch_task_item_id
+        LEFT JOIN batch_tasks bt ON bt.batch_task_id = i.batch_task_id
+        LEFT JOIN zone_locations zl
+               ON zl.location_id = COALESCE(i.zone_location_id, i.new_location_id, bt.current_location_id, bti.location_id)
+        LEFT JOIN users u ON i.worker_id = u.user_id
         LEFT JOIN products p ON bti.product_id = p.product_id
-        WHERE zl.zone_id = admin_u.assigned_zone_id        -- 관리자 구역 일치 확인
-          AND i.status = #{req.status}
+        WHERE i.status = #{req.status}
+        <if test="req.zoneId != null">
+            AND zl.zone_id = #{req.zoneId}
+        </if>
         <choose>
             <when test="req.status.name == 'OPEN'">
                 <choose>
@@ -204,10 +206,25 @@
     <select id="countAdminIssues" resultType="long">
         SELECT count(DISTINCT i.issue_id)
         FROM issues i
-        JOIN zone_locations zl ON i.zone_location_id = zl.location_id
-        JOIN users admin_u ON admin_u.user_id = #{adminId} -- 현재 관리자 정보
-        WHERE zl.zone_id = admin_u.assigned_zone_id        -- 관리자 구역 일치 확인
-          AND i.status = #{req.status}
+        LEFT JOIN batch_task_items bti ON i.batch_task_item_id = bti.batch_task_item_id
+        LEFT JOIN batch_tasks bt ON bt.batch_task_id = i.batch_task_id
+        LEFT JOIN zone_locations zl
+               ON zl.location_id = COALESCE(i.zone_location_id, i.new_location_id, bt.current_location_id, bti.location_id)
+        WHERE i.status = #{req.status}
+        <if test="req.zoneId != null">
+            AND zl.zone_id = #{req.zoneId}
+        </if>
+    </select>
+
+    <select id="existsIssueInAdminZone" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM issues i
+            JOIN zone_locations zl ON i.zone_location_id = zl.location_id
+            JOIN users admin_u ON admin_u.user_id = #{adminId}
+            WHERE i.issue_id = #{issueId}
+              AND zl.zone_id = admin_u.assigned_zone_id
+        )
     </select>
     <!-- 내 이슈 목록 조회 (최적화: Window Function 사용) -->
     <select id="findMyIssues" resultType="lookie.backend.domain.issue.dto.MyIssueSummary">

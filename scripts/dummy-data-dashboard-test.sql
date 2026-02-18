@@ -1,12 +1,12 @@
+﻿-- =====================================================
+-- 愿由ъ옄 ??쒕낫??& AI ?щ같移??뚯뒪?몄슜 ?붾? ?곗씠??
 -- =====================================================
--- 관리자 대시보드 & AI 재배치 테스트용 더미 데이터
--- =====================================================
--- 실행 순서:
--- 1. 기존 users, zones, products 데이터가 있어야 함
--- 2. 이 스크립트 실행
+-- ?ㅽ뻾 ?쒖꽌:
+-- 1. 湲곗〈 users, zones, products ?곗씠?곌? ?덉뼱????
+-- 2. ???ㅽ겕由쏀듃 ?ㅽ뻾
 -- =====================================================
 
--- 기존 테스트 데이터 정리
+-- 湲곗〈 ?뚯뒪???곗씠???뺣━
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE rebalance_snapshots;
 TRUNCATE TABLE issues;
@@ -41,66 +41,28 @@ INSERT INTO users (
   created_at,
   updated_at
 )
-VALUES
--- =========================
--- ZONE 1 (1~12)
--- =========================
-(1,'WORKER','$2a$10$demo','김민준','010-3000-0001','worker1@lookie.com',TRUE,1,NOW(),NOW()),
-(2,'WORKER','$2a$10$demo','이서준','010-3000-0002','worker2@lookie.com',TRUE,1,NOW(),NOW()),
-(3,'WORKER','$2a$10$demo','박도윤','010-3000-0003','worker3@lookie.com',TRUE,1,NOW(),NOW()),
-(4,'WORKER','$2a$10$demo','최지훈','010-3000-0004','worker4@lookie.com',TRUE,1,NOW(),NOW()),
-(5,'WORKER','$2a$10$demo','정현우','010-3000-0005','worker5@lookie.com',TRUE,1,NOW(),NOW()),
-(6,'WORKER','$2a$10$demo','강준혁','010-3000-0006','worker6@lookie.com',TRUE,1,NOW(),NOW()),
-(7,'WORKER','$2a$10$demo','조성민','010-3000-0007','worker7@lookie.com',TRUE,1,NOW(),NOW()),
-(8,'WORKER','$2a$10$demo','윤재호','010-3000-0008','worker8@lookie.com',TRUE,1,NOW(),NOW()),
-(9,'WORKER','$2a$10$demo','장우진','010-3000-0009','worker9@lookie.com',TRUE,1,NOW(),NOW()),
-(10,'WORKER','$2a$10$demo','임동현','010-3000-0010','worker10@lookie.com',TRUE,1,NOW(),NOW()),
-(11,'WORKER','$2a$10$demo','한지호','010-3000-0011','worker11@lookie.com',TRUE,1,NOW(),NOW()),
-(12,'WORKER','$2a$10$demo','신태영','010-3000-0012','worker12@lookie.com',TRUE,1,NOW(),NOW()),
--- =========================
--- ZONE 2 (13~24)
--- =========================
-(13,'WORKER','$2a$10$demo','서강민','010-3000-0013','worker13@lookie.com',TRUE,2,NOW(),NOW()),
-(14,'WORKER','$2a$10$demo','오승현','010-3000-0014','worker14@lookie.com',TRUE,2,NOW(),NOW()),
-(15,'WORKER','$2a$10$demo','문재윤','010-3000-0015','worker15@lookie.com',TRUE,2,NOW(),NOW()),
-(16,'WORKER','$2a$10$demo','배현석','010-3000-0016','worker16@lookie.com',TRUE,2,NOW(),NOW()),
-(17,'WORKER','$2a$10$demo','유상훈','010-3000-0017','worker17@lookie.com',TRUE,2,NOW(),NOW()),
-(18,'WORKER','$2a$10$demo','노준호','010-3000-0018','worker18@lookie.com',TRUE,2,NOW(),NOW()),
-(19,'WORKER','$2a$10$demo','전성우','010-3000-0019','worker19@lookie.com',TRUE,2,NOW(),NOW()),
-(20,'WORKER','$2a$10$demo','백종현','010-3000-0020','worker20@lookie.com',TRUE,2,NOW(),NOW()),
-(21,'WORKER','$2a$10$demo','남기훈','010-3000-0021','worker21@lookie.com',TRUE,2,NOW(),NOW()),
-(22,'WORKER','$2a$10$demo','류동욱','010-3000-0022','worker22@lookie.com',TRUE,2,NOW(),NOW()),
-(23,'WORKER','$2a$10$demo','심재현','010-3000-0023','worker23@lookie.com',TRUE,2,NOW(),NOW()),
-(24,'WORKER','$2a$10$demo','곽민석','010-3000-0024','worker24@lookie.com',TRUE,2,NOW(),NOW()),
--- =========================
--- ZONE 3 (25~36)
--- =========================
-(25,'WORKER','$2a$10$demo','허준영','010-3000-0025','worker25@lookie.com',TRUE,3,NOW(),NOW()),
-(26,'WORKER','$2a$10$demo','안태훈','010-3000-0026','worker26@lookie.com',TRUE,3,NOW(),NOW()),
-(27,'WORKER','$2a$10$demo','송민규','010-3000-0027','worker27@lookie.com',TRUE,3,NOW(),NOW()),
-(28,'WORKER','$2a$10$demo','홍석진','010-3000-0028','worker28@lookie.com',TRUE,3,NOW(),NOW()),
-(29,'WORKER','$2a$10$demo','고대현','010-3000-0029','worker29@lookie.com',TRUE,3,NOW(),NOW()),
-(30,'WORKER','$2a$10$demo','차성훈','010-3000-0030','worker30@lookie.com',TRUE,3,NOW(),NOW()),
-(31,'WORKER','$2a$10$demo','우지환','010-3000-0031','worker31@lookie.com',TRUE,3,NOW(),NOW()),
-(32,'WORKER','$2a$10$demo','신우석','010-3000-0032','worker32@lookie.com',TRUE,3,NOW(),NOW()),
-(33,'WORKER','$2a$10$demo','조현수','010-3000-0033','worker33@lookie.com',TRUE,3,NOW(),NOW()),
-(34,'WORKER','$2a$10$demo','문성빈','010-3000-0034','worker34@lookie.com',TRUE,3,NOW(),NOW()),
-(35,'WORKER','$2a$10$demo','김태성','010-3000-0035','worker35@lookie.com',TRUE,3,NOW(),NOW()),
-(36,'WORKER','$2a$10$demo','이상윤','010-3000-0036','worker36@lookie.com',TRUE,3,NOW(),NOW()),
--- =========================
--- ZONE 4 (37~47)
--- =========================
-(37,'WORKER','$2a$10$demo','박진우','010-3000-0037','worker37@lookie.com',TRUE,4,NOW(),NOW()),
-(38,'WORKER','$2a$10$demo','최영준','010-3000-0038','worker38@lookie.com',TRUE,4,NOW(),NOW()),
-(39,'WORKER','$2a$10$demo','정민호','010-3000-0039','worker39@lookie.com',TRUE,4,NOW(),NOW()),
-(40,'WORKER','$2a$10$demo','강성우','010-3000-0040','worker40@lookie.com',TRUE,4,NOW(),NOW()),
-(41,'WORKER','$2a$10$demo','김동현','010-3000-0041','worker41@lookie.com',TRUE,4,NOW(),NOW()),
-(42,'WORKER','$2a$10$demo','이재훈','010-3000-0042','worker42@lookie.com',TRUE,4,NOW(),NOW()),
-(43,'WORKER','$2a$10$demo','박상민','010-3000-0043','worker43@lookie.com',TRUE,4,NOW(),NOW()),
-(44,'WORKER','$2a$10$demo','최원석','010-3000-0044','worker44@lookie.com',TRUE,4,NOW(),NOW()),
-(45,'WORKER','$2a$10$demo','정우성','010-3000-0045','worker45@lookie.com',TRUE,4,NOW(),NOW()),
-(46,'WORKER','$2a$10$demo','한동훈','010-3000-0046','worker46@lookie.com',TRUE,4,NOW(),NOW()),
-(47,'WORKER','$2a$10$demo','윤성호','010-3000-0047','worker47@lookie.com',TRUE,4,NOW(),NOW());
+WITH RECURSIVE seq AS (
+  SELECT 1 AS n
+  UNION ALL
+  SELECT n + 1 FROM seq WHERE n < 47
+)
+SELECT
+  n AS user_id,
+  'WORKER' AS role,
+  '' AS password_hash,
+  CONCAT('Worker', LPAD(n, 4, '0')) AS name,
+  CONCAT('010-3000-', LPAD(n, 4, '0')) AS phone_number,
+  CONCAT('worker', n, '@lookie.com') AS email,
+  TRUE AS is_active,
+  CASE
+    WHEN n <= 12 THEN 1
+    WHEN n <= 24 THEN 2
+    WHEN n <= 36 THEN 3
+    ELSE 4
+  END AS assigned_zone_id,
+  NOW() AS created_at,
+  NOW() AS updated_at
+FROM seq;
 
 INSERT INTO users (
   role,
@@ -114,14 +76,15 @@ INSERT INTO users (
   updated_at
 )
 VALUES
-('ADMIN','$2a$10$demo','김도현','010-9000-0001','admin1@lookie.com',TRUE,1,NOW(),NOW()),
-('ADMIN','$2a$10$demo','이준혁','010-9000-0002','admin2@lookie.com',TRUE,1,NOW(),NOW()),
-('ADMIN','$2a$10$demo','박성훈','010-9000-0003','admin3@lookie.com',TRUE,2,NOW(),NOW()),
-('ADMIN','$2a$10$demo','최재원','010-9000-0004','admin4@lookie.com',TRUE,2,NOW(),NOW()),
-('ADMIN','$2a$10$demo','정수빈','010-9000-0005','admin5@lookie.com',TRUE,3,NOW(),NOW()),
-('ADMIN','$2a$10$demo','한승우','010-9000-0006','admin6@lookie.com',TRUE,3,NOW(),NOW()),
-('ADMIN','$2a$10$demo','오세진','010-9000-0007','admin7@lookie.com',TRUE,4,NOW(),NOW()),
-('ADMIN','$2a$10$demo','윤지후','010-9000-0008','admin8@lookie.com',TRUE,4,NOW(),NOW());
+('ADMIN','','AdminA1','010-9000-0001','admin1@lookie.com',TRUE,1,NOW(),NOW()),
+('ADMIN','','AdminA2','010-9000-0002','admin2@lookie.com',TRUE,1,NOW(),NOW()),
+('ADMIN','','AdminB1','010-9000-0003','admin3@lookie.com',TRUE,2,NOW(),NOW()),
+('ADMIN','','AdminB2','010-9000-0004','admin4@lookie.com',TRUE,2,NOW(),NOW()),
+('ADMIN','','AdminC1','010-9000-0005','admin5@lookie.com',TRUE,3,NOW(),NOW()),
+('ADMIN','','AdminC2','010-9000-0006','admin6@lookie.com',TRUE,3,NOW(),NOW()),
+('ADMIN','','AdminD1','010-9000-0007','admin7@lookie.com',TRUE,4,NOW(),NOW()),
+('ADMIN','','AdminD2','010-9000-0008','admin8@lookie.com',TRUE,4,NOW(),NOW()),
+('ADMIN','','유동훈','010-9000-0099','ydh@lookie.com',TRUE,1,NOW(),NOW());
 
 INSERT INTO zone_lines (zone_id, line_name, is_active)
 VALUES
@@ -190,9 +153,16 @@ SELECT
   zl.zone_id,
   zl.line_id,
   CONCAT(
-    zl.zone_id, '-', LPAD(zl.line_name, 2, '0'), '-', LPAD(loc.seq, 2, '0')
+    CASE zl.zone_id
+      WHEN 1 THEN 'A'
+      WHEN 2 THEN 'B'
+      WHEN 3 THEN 'C'
+      WHEN 4 THEN 'D'
+      ELSE 'Z'
+    END,
+    '-', LPAD(zl.line_name, 2, '0'), '-', LPAD(loc.seq, 2, '0')
   ) AS location_code,
-  -- 더미 좌표값
+  -- ?붾? 醫뚰몴媛?
   CAST(zl.line_name AS UNSIGNED) * 10 AS x,
   loc.seq * 5 AS y,
   true AS is_active
@@ -207,6 +177,9 @@ CROSS JOIN (
 ) loc
 ORDER BY zl.zone_id, zl.line_id, loc.seq;
 
+-- =========================
+-- Products (Sanitized)
+-- =========================
 INSERT INTO products (
   product_id,
   barcode,
@@ -215,154 +188,27 @@ INSERT INTO products (
   zone_id
 )
 VALUES
-(101, 'Z1-BANANA', '바나나', NULL, 1),
-(102, 'Z1-TOMATO', '토마토', NULL, 1),
-(103, 'Z1-STRAWBERRY', '딸기', NULL, 1),
-(104, 'Z1-PEACH', '복숭아', NULL, 1),
-(105, 'Z1-SHINE', '샤인머스켓', NULL, 1),
-(201, 'Z2-APPLE', '사과', NULL, 2),
-(202, 'Z2-CARROT', '당근', NULL, 2),
-(203, 'Z2-LETTUCE', '상추', NULL, 2),
-(204, 'Z2-CUCUMBER', '오이', NULL, 2),
-(205, 'Z2-PAPRIKA', '파프리카', NULL, 2),
-(301, 'Z3-ONION', '양파', NULL, 3),
-(302, 'Z3-POTATO', '감자', NULL, 3),
-(303, 'Z3-GARLIC', '마늘', NULL, 3),
-(304, 'Z3-CABBAGE', '양배추', NULL, 3),
-(305, 'Z3-SPINACH', '시금치', NULL, 3),
-(401, 'Z4-RICE', '쌀', NULL, 4),
-(402, 'Z4-WATER', '생수', NULL, 4),
-(403, 'Z4-FLOUR', '밀가루', NULL, 4),
-(404, 'Z4-OIL', '식용유', NULL, 4),
-(405, 'Z4-SUGAR', '설탕', NULL, 4);
+(101,'Z1-001','Z1 Product 01',NULL,1),
+(102,'Z1-002','Z1 Product 02',NULL,1),
+(103,'Z1-003','Z1 Product 03',NULL,1),
+(104,'Z1-004','Z1 Product 04',NULL,1),
+(105,'Z1-005','Z1 Product 05',NULL,1),
+(201,'Z2-001','Z2 Product 01',NULL,2),
+(202,'Z2-002','Z2 Product 02',NULL,2),
+(203,'Z2-003','Z2 Product 03',NULL,2),
+(204,'Z2-004','Z2 Product 04',NULL,2),
+(205,'Z2-005','Z2 Product 05',NULL,2),
+(301,'Z3-001','Z3 Product 01',NULL,3),
+(302,'Z3-002','Z3 Product 02',NULL,3),
+(303,'Z3-003','Z3 Product 03',NULL,3),
+(304,'Z3-004','Z3 Product 04',NULL,3),
+(305,'Z3-005','Z3 Product 05',NULL,3),
+(401,'Z4-001','Z4 Product 01',NULL,4),
+(402,'Z4-002','Z4 Product 02',NULL,4),
+(403,'Z4-003','Z4 Product 03',NULL,4),
+(404,'Z4-004','Z4 Product 04',NULL,4),
+(405,'Z4-005','Z4 Product 05',NULL,4);
 
--- =====================
--- ZONE 1 : 과일
--- =====================
-UPDATE products SET
-  barcode = 'PROD-001',
-  product_name = 'GAP 인증 달콤한 바나나 1kg'
-WHERE product_id = 101;
-
-UPDATE products SET
-  barcode = 'PROD-002',
-  product_name = '완숙 토마토 2kg 박스'
-WHERE product_id = 102;
-
-UPDATE products SET
-  barcode = 'PROD-003',
-  product_name = '국산 설향 딸기 500g'
-WHERE product_id = 103;
-
-UPDATE products SET
-  barcode = 'PROD-004',
-  product_name = '당도선별 복숭아 4입'
-WHERE product_id = 104;
-
-UPDATE products SET
-  barcode = 'PROD-005',
-  product_name = '고당도 샤인머스켓 800g'
-WHERE product_id = 105;
-
--- =====================
--- ZONE 2 : 채소
--- =====================
-UPDATE products SET
-  barcode = 'PROD-006',
-  product_name = '아삭한 부사 사과 3kg'
-WHERE product_id = 201;
-
-UPDATE products SET
-  barcode = 'PROD-007',
-  product_name = '국내산 흙당근 1kg'
-WHERE product_id = 202;
-
-UPDATE products SET
-  barcode = 'PROD-008',
-  product_name = '친환경 유기농 상추 200g'
-WHERE product_id = 203;
-
-UPDATE products SET
-  barcode = 'PROD-009',
-  product_name = '국산 백오이 5입'
-WHERE product_id = 204;
-
-UPDATE products SET
-  barcode = 'PROD-010',
-  product_name = '컬러 파프리카 혼합 3입'
-WHERE product_id = 205;
-
--- =====================
--- ZONE 3 : 근채 / 엽채
--- =====================
-UPDATE products SET
-  barcode = 'PROD-011',
-  product_name = '국내산 햇양파 2kg'
-WHERE product_id = 301;
-
-UPDATE products SET
-  barcode = 'PROD-012',
-  product_name = '포슬포슬 감자 3kg'
-WHERE product_id = 302;
-
-UPDATE products SET
-  barcode = 'PROD-013',
-  product_name = '국산 마늘 500g'
-WHERE product_id = 303;
-
-UPDATE products SET
-  barcode = 'PROD-014',
-  product_name = '신선한 양배추 1통'
-WHERE product_id = 304;
-
-UPDATE products SET
-  barcode = 'PROD-015',
-  product_name = '무농약 시금치 300g'
-WHERE product_id = 305;
-
--- =====================
--- ZONE 4 : 생필품
--- =====================
-UPDATE products SET
-  barcode = 'PROD-016',
-  product_name = '2025년산 경기미 10kg'
-WHERE product_id = 401;
-
-UPDATE products SET
-  barcode = 'PROD-017',
-  product_name = '제주 삼다수 2L x 6병'
-WHERE product_id = 402;
-
-UPDATE products SET
-  barcode = 'PROD-018',
-  product_name = '중력분 밀가루 2kg'
-WHERE product_id = 403;
-
-UPDATE products SET
-  barcode = 'PROD-019',
-  product_name = '국내산 해바라기유 900ml'
-WHERE product_id = 404;
-
-UPDATE products SET
-  barcode = 'PROD-020',
-  product_name = '백설 하얀설탕 3kg'
-WHERE product_id = 405;
-
--- 복숭아 → 홈런볼
-UPDATE products SET
-  barcode = 'PROD-004',
-  product_name = '해태 홈런볼 초코 146g'
-WHERE product_id = 104;
-
--- 샤인머스켓 → 눈을 감자
-UPDATE products SET
-  barcode = 'PROD-005',
-  product_name = '오리온 눈을감자 오리지널 113g'
-WHERE product_id = 105;
-
--- =====================================================
--- 1. BATCHES (배치 생성)
--- =====================================================
 INSERT INTO batches (
   batch_id,
   batch_round,
@@ -375,7 +221,7 @@ VALUES
 (2, 2, 'IN_PROGRESS', DATE_ADD(NOW(), INTERVAL 8 HOUR), NOW());
 
 -- =====================================================
--- 2. TOTES (토트 박스 생성)
+-- 2. TOTES (?좏듃 諛뺤뒪 ?앹꽦)
 -- =====================================================
 INSERT INTO totes (tote_id, barcode, is_active)
 VALUES
@@ -431,9 +277,9 @@ VALUES
 (50, 'TOTE-050', TRUE);
 
 -- =====================================================
--- 3. WORK_LOGS (근무 기록 - 활성 작업자만)
+-- 3. WORK_LOGS (洹쇰Т 湲곕줉 - ?쒖꽦 ?묒뾽?먮쭔)
 -- =====================================================
--- Zone 1 작업자 (1~12): 6명 출근 (적음 - 이동 대상이 필요)
+-- Zone 1 ?묒뾽??(1~12): 6紐?異쒓렐 (?곸쓬 - ?대룞 ??곸씠 ?꾩슂)
 INSERT INTO work_logs (worker_id, started_at, planned_end_at)
 SELECT
   user_id,
@@ -442,7 +288,7 @@ SELECT
 FROM users
 WHERE user_id BETWEEN 1 AND 6 AND role = 'WORKER';
 
--- Zone 2 작업자 (13~24): 8명 출근
+-- Zone 2 ?묒뾽??(13~24): 8紐?異쒓렐
 INSERT INTO work_logs (worker_id, started_at, planned_end_at)
 SELECT
   user_id,
@@ -451,7 +297,7 @@ SELECT
 FROM users
 WHERE user_id BETWEEN 13 AND 20 AND role = 'WORKER';
 
--- Zone 3 작업자 (25~36): 10명 출근
+-- Zone 3 ?묒뾽??(25~36): 10紐?異쒓렐
 INSERT INTO work_logs (worker_id, started_at, planned_end_at)
 SELECT
   user_id,
@@ -460,7 +306,7 @@ SELECT
 FROM users
 WHERE user_id BETWEEN 25 AND 34 AND role = 'WORKER';
 
--- Zone 4 작업자 (37~47): 11명 출근 (많음 - 이동 출발지)
+-- Zone 4 ?묒뾽??(37~47): 11紐?異쒓렐 (留롮쓬 - ?대룞 異쒕컻吏)
 INSERT INTO work_logs (worker_id, started_at, planned_end_at)
 SELECT
   user_id,
@@ -470,13 +316,13 @@ FROM users
 WHERE user_id BETWEEN 37 AND 47 AND role = 'WORKER';
 
 -- =====================================================
--- 4. WORK_LOG_EVENTS (근무 이벤트)
+-- 4. WORK_LOG_EVENTS (洹쇰Т ?대깽??
 -- =====================================================
 INSERT INTO work_log_events (work_log_id, event_type, occurred_at)
 SELECT work_log_id, 'START', started_at
 FROM work_logs;
 
--- 일부 작업자는 일시정지/재개 이벤트 추가
+-- ?쇰? ?묒뾽?먮뒗 ?쇱떆?뺤?/?ш컻 ?대깽??異붽?
 INSERT INTO work_log_events (work_log_id, event_type, occurred_at)
 SELECT
   work_log_id,
@@ -494,9 +340,9 @@ FROM work_logs
 WHERE work_log_id % 3 = 0;
 
 -- =====================================================
--- 5. ZONE_ASSIGNMENTS (구역 배정 이력)
+-- 5. ZONE_ASSIGNMENTS (援ъ뿭 諛곗젙 ?대젰)
 -- =====================================================
--- 현재 활성 작업자들에 대한 zone 배정
+-- ?꾩옱 ?쒖꽦 ?묒뾽?먮뱾?????zone 諛곗젙
 INSERT INTO zone_assignments (worker_id, zone_id, started_at)
 SELECT
   wl.worker_id,
@@ -507,9 +353,9 @@ JOIN users u ON wl.worker_id = u.user_id
 WHERE wl.ended_at IS NULL;
 
 -- =====================================================
--- 6. BATCH_TASKS (작업 할당)
+-- 6. BATCH_TASKS (?묒뾽 ?좊떦)
 -- =====================================================
--- Zone 1: 30개 작업 (완료 10, 진행 10, 대기 10) - 주의
+-- Zone 1: 30媛??묒뾽 (?꾨즺 10, 吏꾪뻾 10, ?湲?10) - 二쇱쓽
 INSERT INTO batch_tasks (
   batch_id,
   worker_id,
@@ -553,7 +399,7 @@ FROM (
   SELECT 26 UNION ALL SELECT 27 UNION ALL SELECT 28 UNION ALL SELECT 29 UNION ALL SELECT 30
 ) nums;
 
--- Zone 2: 25개 작업 (완료 15, 진행 7, 대기 3) - 양호
+-- Zone 2: 25媛??묒뾽 (?꾨즺 15, 吏꾪뻾 7, ?湲?3) - ?묓샇
 INSERT INTO batch_tasks (
   batch_id,
   worker_id,
@@ -596,7 +442,7 @@ FROM (
   SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23 UNION ALL SELECT 24 UNION ALL SELECT 25
 ) nums;
 
--- Zone 3: 40개 작업 (완료 20, 진행 13, 대기 7) - 양호
+-- Zone 3: 40媛??묒뾽 (?꾨즺 20, 吏꾪뻾 13, ?湲?7) - ?묓샇
 INSERT INTO batch_tasks (
   batch_id,
   worker_id,
@@ -642,7 +488,7 @@ FROM (
   SELECT 36 UNION ALL SELECT 37 UNION ALL SELECT 38 UNION ALL SELECT 39 UNION ALL SELECT 40
 ) nums;
 
--- Zone 4: 20개 작업 (완료 18, 진행 2, 대기 0) - 거의 완료
+-- Zone 4: 20媛??묒뾽 (?꾨즺 18, 吏꾪뻾 2, ?湲?0) - 嫄곗쓽 ?꾨즺
 INSERT INTO batch_tasks (
   batch_id,
   worker_id,
@@ -681,10 +527,10 @@ FROM (
 ) nums;
 
 -- =====================================================
--- 7. BATCH_TASK_ITEMS (작업 아이템)
+-- 7. BATCH_TASK_ITEMS (?묒뾽 ?꾩씠??
 -- =====================================================
--- 각 task마다 2~5개의 상품 할당
--- Zone 1 제품 사용 (product_id: 101~105)
+-- 媛?task留덈떎 2~5媛쒖쓽 ?곹뭹 ?좊떦
+-- Zone 1 ?쒗뭹 ?ъ슜 (product_id: 101~105)
 INSERT INTO batch_task_items (
   batch_task_id,
   product_id,
@@ -713,7 +559,7 @@ CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3) items
 WHERE bt.zone_id = 1
 LIMIT 90;
 
--- Zone 2 제품 사용 (product_id: 201~205)
+-- Zone 2 ?쒗뭹 ?ъ슜 (product_id: 201~205)
 INSERT INTO batch_task_items (
   batch_task_id,
   product_id,
@@ -725,7 +571,7 @@ INSERT INTO batch_task_items (
 SELECT
   bt.batch_task_id,
   201 + (FLOOR(RAND() * 5)) AS product_id,
-  (73 + FLOOR(RAND() * 72)) AS location_id, -- zone 2의 location_id
+  (73 + FLOOR(RAND() * 72)) AS location_id, -- zone 2??location_id
   (1 + FLOOR(RAND() * 3)) AS required_qty,
   CASE
     WHEN bt.status = 'COMPLETED' THEN (1 + FLOOR(RAND() * 3))
@@ -742,7 +588,7 @@ CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3) items
 WHERE bt.zone_id = 2
 LIMIT 75;
 
--- Zone 3 제품 사용 (product_id: 301~305)
+-- Zone 3 ?쒗뭹 ?ъ슜 (product_id: 301~305)
 INSERT INTO batch_task_items (
   batch_task_id,
   product_id,
@@ -754,7 +600,7 @@ INSERT INTO batch_task_items (
 SELECT
   bt.batch_task_id,
   301 + (FLOOR(RAND() * 5)) AS product_id,
-  (145 + FLOOR(RAND() * 72)) AS location_id, -- zone 3의 location_id
+  (145 + FLOOR(RAND() * 72)) AS location_id, -- zone 3??location_id
   (1 + FLOOR(RAND() * 3)) AS required_qty,
   CASE
     WHEN bt.status = 'COMPLETED' THEN (1 + FLOOR(RAND() * 3))
@@ -771,7 +617,7 @@ CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3) items
 WHERE bt.zone_id = 3
 LIMIT 120;
 
--- Zone 4 제품 사용 (product_id: 401~405)
+-- Zone 4 ?쒗뭹 ?ъ슜 (product_id: 401~405)
 INSERT INTO batch_task_items (
   batch_task_id,
   product_id,
@@ -783,7 +629,7 @@ INSERT INTO batch_task_items (
 SELECT
   bt.batch_task_id,
   401 + (FLOOR(RAND() * 5)) AS product_id,
-  (217 + FLOOR(RAND() * 72)) AS location_id, -- zone 4의 location_id
+  (217 + FLOOR(RAND() * 72)) AS location_id, -- zone 4??location_id
   (1 + FLOOR(RAND() * 3)) AS required_qty,
   CASE
     WHEN bt.status = 'COMPLETED' THEN (1 + FLOOR(RAND() * 3))
@@ -799,29 +645,29 @@ CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3) items
 WHERE bt.zone_id = 4
 LIMIT 60;
 
--- picked_qty가 required_qty를 초과하지 않도록 수정
+-- picked_qty媛 required_qty瑜?珥덇낵?섏? ?딅룄濡??섏젙
 UPDATE batch_task_items
 SET picked_qty = required_qty
 WHERE picked_qty > required_qty;
 
--- COMPLETED task의 모든 아이템은 DONE으로
+-- COMPLETED task??紐⑤뱺 ?꾩씠?쒖? DONE?쇰줈
 UPDATE batch_task_items bti
 JOIN batch_tasks bt ON bti.batch_task_id = bt.batch_task_id
 SET bti.status = 'DONE', bti.picked_qty = bti.required_qty
 WHERE bt.status = 'COMPLETED';
 
--- last_scanned_at 업데이트 (DONE 상태인 아이템은 오늘 스캔됨)
+-- last_scanned_at ?낅뜲?댄듃 (DONE ?곹깭???꾩씠?쒖? ?ㅻ뒛 ?ㅼ틪??
 UPDATE batch_task_items bti
 JOIN batch_tasks bt ON bti.batch_task_id = bt.batch_task_id
 SET bti.last_scanned_at = NOW()
 WHERE bti.status = 'DONE';
 
 -- =====================================================
--- 8. REBALANCE_SNAPSHOTS (AI 재배치 스냅샷 데이터)
+-- 8. REBALANCE_SNAPSHOTS (AI ?щ같移??ㅻ깄???곗씠??
 -- =====================================================
 -- Use a single snapshot timestamp across all zones to ensure latest batch selection returns all rows.
 SET @snap_ts = NOW();
--- Zone 1: 주의 (risk가 크게 나오도록 backlog↑, speed↓, deadline↓)
+-- Zone 1: 二쇱쓽 (risk媛 ?ш쾶 ?섏삤?꾨줉 backlog?? speed?? deadline??
 INSERT INTO rebalance_snapshots (
   ts, batch_id, worker_id, zone_id,
   progress, remaining_qty,
@@ -838,7 +684,7 @@ SELECT
   0.10 as progress,
   500 as remaining_qty,
   1200 as time_to_planned_end_min,
-  120 as time_to_deadline_min,  -- 마감까지 2시간 = 120분
+  120 as time_to_deadline_min,  -- 留덇컧源뚯? 2?쒓컙 = 120遺?
   3000 as zone_backlog,
   10 as zone_active_workers,
   72 as zone_location_cnt,
@@ -850,7 +696,7 @@ SELECT
 FROM users u
 WHERE u.role = 'WORKER' AND u.assigned_zone_id = 1;
 
--- Zone 2: 양호 (ETA가 deadline-60~deadline 사이)
+-- Zone 2: ?묓샇 (ETA媛 deadline-60~deadline ?ъ씠)
 INSERT INTO rebalance_snapshots (
   ts, batch_id, worker_id, zone_id,
   progress, remaining_qty,
@@ -867,7 +713,7 @@ SELECT
   0.60 as progress,
   15 as remaining_qty,
   180 as time_to_planned_end_min,
-  240 as time_to_deadline_min,  -- 마감까지 4시간 = 240분
+  240 as time_to_deadline_min,  -- 留덇컧源뚯? 4?쒓컙 = 240遺?
   200 as zone_backlog,
   12 as zone_active_workers,
   72 as zone_location_cnt,
@@ -879,7 +725,7 @@ SELECT
 FROM users u
 WHERE u.role = 'WORKER' AND u.assigned_zone_id = 2;
 
--- Zone 3: 양호 (ETA가 deadline-60~deadline 사이)
+-- Zone 3: ?묓샇 (ETA媛 deadline-60~deadline ?ъ씠)
 INSERT INTO rebalance_snapshots (
   ts, batch_id, worker_id, zone_id,
   progress, remaining_qty,
@@ -896,7 +742,7 @@ SELECT
   0.50 as progress,
   15 as remaining_qty,
   180 as time_to_planned_end_min,
-  240 as time_to_deadline_min,  -- 마감까지 4시간 = 240분
+  240 as time_to_deadline_min,  -- 留덇컧源뚯? 4?쒓컙 = 240遺?
   200 as zone_backlog,
   12 as zone_active_workers,
   72 as zone_location_cnt,
@@ -908,7 +754,7 @@ SELECT
 FROM users u
 WHERE u.role = 'WORKER' AND u.assigned_zone_id = 3;
 
--- Zone 4: 안정 (ETA가 deadline-60 이내)
+-- Zone 4: ?덉젙 (ETA媛 deadline-60 ?대궡)
 INSERT INTO rebalance_snapshots (
   ts, batch_id, worker_id, zone_id,
   progress, remaining_qty,
@@ -925,7 +771,7 @@ SELECT
   0.90 as progress,
   5 as remaining_qty,
   60 as time_to_planned_end_min,
-  240 as time_to_deadline_min,  -- 마감까지 4시간 = 240분
+  240 as time_to_deadline_min,  -- 留덇컧源뚯? 4?쒓컙 = 240遺?
   120 as zone_backlog,
   13 as zone_active_workers,
   72 as zone_location_cnt,
@@ -938,9 +784,9 @@ FROM users u
 WHERE u.role = 'WORKER' AND u.assigned_zone_id = 4;
 
 -- =====================================================
--- 9. ISSUES (일부 이슈 데이터 - OPEN 상태)
+-- 9. ISSUES (?쇰? ?댁뒋 ?곗씠??- OPEN ?곹깭)
 -- =====================================================
--- Zone 1에서 2건의 이슈
+-- Zone 1?먯꽌 2嫄댁쓽 ?댁뒋
 INSERT INTO issues (
   batch_task_id,
   worker_id,
@@ -962,7 +808,7 @@ SELECT
   1 AS urgency,
   'BLOCKING' AS issue_handling,
   TRUE AS admin_required,
-  '바나나 외피 손상 의심' AS note,
+  'Damaged package' AS note,
   DATE_SUB(NOW(), INTERVAL 30 MINUTE)
 FROM batch_tasks bt
 JOIN batch_task_items bti ON bt.batch_task_id = bti.batch_task_id
@@ -990,14 +836,14 @@ SELECT
   3 AS urgency,
   'NON_BLOCKING' AS issue_handling,
   FALSE AS admin_required,
-  '딸기 재고 부족' AS note,
+  'Out of stock' AS note,
   DATE_SUB(NOW(), INTERVAL 15 MINUTE)
 FROM batch_tasks bt
 JOIN batch_task_items bti ON bt.batch_task_id = bti.batch_task_id
 WHERE bt.zone_id = 1 AND bt.status = 'IN_PROGRESS'
 LIMIT 1 OFFSET 1;
 
--- Zone 3에서 3건의 이슈 (가장 바쁜 구역)
+-- Zone 3?먯꽌 3嫄댁쓽 ?댁뒋 (媛??諛붿걶 援ъ뿭)
 INSERT INTO issues (
   batch_task_id,
   worker_id,
@@ -1019,7 +865,7 @@ SELECT
   1 AS urgency,
   'BLOCKING' AS issue_handling,
   TRUE AS admin_required,
-  '양파 포장 파손' AS note,
+  'Damaged item' AS note,
   DATE_SUB(NOW(), INTERVAL 45 MINUTE)
 FROM batch_tasks bt
 JOIN batch_task_items bti ON bt.batch_task_id = bti.batch_task_id
@@ -1047,7 +893,7 @@ SELECT
   3 AS urgency,
   'BLOCKING' AS issue_handling,
   TRUE AS admin_required,
-  '감자 일부 썩음' AS note,
+  'Short picked' AS note,
   DATE_SUB(NOW(), INTERVAL 20 MINUTE)
 FROM batch_tasks bt
 JOIN batch_task_items bti ON bt.batch_task_id = bti.batch_task_id
@@ -1075,7 +921,7 @@ SELECT
   5 AS urgency,
   'NON_BLOCKING' AS issue_handling,
   FALSE AS admin_required,
-  '시금치 소량 부족' AS note,
+  'Out of stock' AS note,
   DATE_SUB(NOW(), INTERVAL 10 MINUTE)
 FROM batch_tasks bt
 JOIN batch_task_items bti ON bt.batch_task_id = bti.batch_task_id
@@ -1083,27 +929,27 @@ WHERE bt.zone_id = 3 AND bt.status = 'IN_PROGRESS'
 LIMIT 1 OFFSET 2;
 
 -- =====================================================
--- 9. 호버 데이터 보정 (IN_PROGRESS + current_location_id)
+-- 9. ?몃쾭 ?곗씠??蹂댁젙 (IN_PROGRESS + current_location_id)
 -- =====================================================
--- 9-0) 모든 작업자 출근 처리 (호버 조건 충족)
--- 9-0a) 모든 WORKER의 근무 로그를 출근 상태로 강제 (ended_at = NULL)
+-- 9-0) 紐⑤뱺 ?묒뾽??異쒓렐 泥섎━ (?몃쾭 議곌굔 異⑹”)
+-- 9-0a) 紐⑤뱺 WORKER??洹쇰Т 濡쒓렇瑜?異쒓렐 ?곹깭濡?媛뺤젣 (ended_at = NULL)
 UPDATE work_logs wl
 JOIN users u ON u.user_id = wl.worker_id
 SET wl.ended_at = NULL
 WHERE u.role = 'WORKER';
 
--- 9-0a-1) WORKER 배정 zone 정합성 강제 (id 범위 기준)
+-- 9-0a-1) WORKER 諛곗젙 zone ?뺥빀??媛뺤젣 (id 踰붿쐞 湲곗?)
 UPDATE users
 SET assigned_zone_id = CASE
-  WHEN user_id BETWEEN 1 AND 10 THEN 1   -- zone1: 10명 (최소)
-  WHEN user_id BETWEEN 11 AND 22 THEN 2  -- zone2: 12명 (중간)
-  WHEN user_id BETWEEN 23 AND 34 THEN 3  -- zone3: 12명 (중간)
-  WHEN user_id BETWEEN 35 AND 47 THEN 4  -- zone4: 13명 (최대)
+  WHEN user_id BETWEEN 1 AND 10 THEN 1   -- zone1: 10紐?(理쒖냼)
+  WHEN user_id BETWEEN 11 AND 22 THEN 2  -- zone2: 12紐?(以묎컙)
+  WHEN user_id BETWEEN 23 AND 34 THEN 3  -- zone3: 12紐?(以묎컙)
+  WHEN user_id BETWEEN 35 AND 47 THEN 4  -- zone4: 13紐?(理쒕?)
   ELSE assigned_zone_id
 END
 WHERE role = 'WORKER';
 
--- 9-0b) 근무 로그가 없는 WORKER는 신규 출근 로그 생성
+-- 9-0b) 洹쇰Т 濡쒓렇媛 ?녿뒗 WORKER???좉퇋 異쒓렐 濡쒓렇 ?앹꽦
 INSERT INTO work_logs (
   worker_id,
   started_at,
@@ -1119,7 +965,7 @@ LEFT JOIN work_logs wl
 WHERE u.role = 'WORKER'
   AND wl.work_log_id IS NULL;
 
--- (선택) 출근 이벤트 기록
+-- (?좏깮) 異쒓렐 ?대깽??湲곕줉
 INSERT INTO work_log_events (work_log_id, event_type, occurred_at)
 SELECT wl.work_log_id, 'START', wl.started_at
 FROM work_logs wl
@@ -1128,7 +974,7 @@ LEFT JOIN work_log_events we
 WHERE wl.ended_at IS NULL
   AND we.event_id IS NULL;
 
--- 9-1) 출근 중이지만 IN_PROGRESS 작업이 없는 작업자에게 작업 할당
+-- 9-1) 異쒓렐 以묒씠吏留?IN_PROGRESS ?묒뾽???녿뒗 ?묒뾽?먯뿉寃??묒뾽 ?좊떦
 WITH active_workers AS (
   SELECT
     u.user_id,
@@ -1166,7 +1012,7 @@ SET
   bt.action_status = 'SCAN_TOTE',
   bt.started_at = NOW();
 
--- 9-1b) 그래도 남은 작업자(배정할 UNASSIGNED가 부족한 경우)를 위해 작업 생성
+-- 9-1b) 洹몃옒???⑥? ?묒뾽??諛곗젙??UNASSIGNED媛 遺議깊븳 寃쎌슦)瑜??꾪빐 ?묒뾽 ?앹꽦
 INSERT INTO batch_tasks (
   batch_id,
   zone_id,
@@ -1189,7 +1035,7 @@ LEFT JOIN batch_tasks bt
 WHERE u.role = 'WORKER'
   AND bt.batch_task_id IS NULL;
 
--- 9-1c) 작업자당 IN_PROGRESS 작업 1개만 유지 (나머지는 UNASSIGNED로 되돌림)
+-- 9-1c) ?묒뾽?먮떦 IN_PROGRESS ?묒뾽 1媛쒕쭔 ?좎? (?섎㉧吏??UNASSIGNED濡??섎룎由?
 UPDATE batch_tasks bt
 JOIN (
   SELECT worker_id, MAX(batch_task_id) AS keep_task_id
@@ -1208,7 +1054,7 @@ SET
 WHERE bt.status = 'IN_PROGRESS'
   AND bt.batch_task_id <> k.keep_task_id;
 
--- 9-1d) 모든 WORKER가 자신의 zone에 IN_PROGRESS 작업을 갖도록 보장
+-- 9-1d) 紐⑤뱺 WORKER媛 ?먯떊??zone??IN_PROGRESS ?묒뾽??媛뽯룄濡?蹂댁옣
 INSERT INTO batch_tasks (
   batch_id,
   zone_id,
@@ -1233,7 +1079,7 @@ LEFT JOIN batch_tasks bt
 WHERE u.role = 'WORKER'
   AND bt.batch_task_id IS NULL;
 
--- 9-2) IN_PROGRESS 작업 중 지번이 없는 경우 랜덤 지번 부여
+-- 9-2) IN_PROGRESS ?묒뾽 以?吏踰덉씠 ?녿뒗 寃쎌슦 ?쒕뜡 吏踰?遺??
 UPDATE batch_tasks bt
 JOIN users u ON u.user_id = bt.worker_id
 SET
@@ -1250,7 +1096,7 @@ WHERE bt.status = 'IN_PROGRESS'
   AND bt.worker_id IS NOT NULL
   AND bt.current_location_id IS NULL;
 
--- 9-2b) batch_tasks.zone_id 기준으로 current_location_id 강제 재배정
+-- 9-2b) batch_tasks.zone_id 湲곗??쇰줈 current_location_id 媛뺤젣 ?щ같??
 UPDATE batch_tasks bt
 SET
   bt.current_location_id = (
@@ -1265,7 +1111,7 @@ SET
 WHERE bt.status = 'IN_PROGRESS'
   AND bt.zone_id IS NOT NULL;
 
--- 9-3) 작업자 배정 zone과 작업 zone 동기화 (관제맵 필터 일치 보장)
+-- 9-3) ?묒뾽??諛곗젙 zone怨??묒뾽 zone ?숆린??(愿?쒕㏊ ?꾪꽣 ?쇱튂 蹂댁옣)
 UPDATE batch_tasks bt
 JOIN users u ON u.user_id = bt.worker_id
 SET bt.zone_id = u.assigned_zone_id
@@ -1273,7 +1119,7 @@ WHERE bt.status = 'IN_PROGRESS'
   AND bt.worker_id IS NOT NULL
   AND (bt.zone_id IS NULL OR bt.zone_id <> u.assigned_zone_id);
 
--- 9-4) 동기화 후 지번을 다시 보정 (zone_id 변경 반영)
+-- 9-4) ?숆린????吏踰덉쓣 ?ㅼ떆 蹂댁젙 (zone_id 蹂寃?諛섏쁺)
 UPDATE batch_tasks bt
 JOIN users u ON u.user_id = bt.worker_id
 SET
@@ -1290,8 +1136,8 @@ WHERE bt.status = 'IN_PROGRESS'
   AND bt.worker_id IS NOT NULL
   AND bt.current_location_id IS NOT NULL;
 
--- 9-5) 호버 보장: 작업자별 IN_PROGRESS + current_location_id 최종 보정
--- (작업이 없거나 지번이 없는 작업자가 남아있지 않도록 마지막으로 보정)
+-- 9-5) ?몃쾭 蹂댁옣: ?묒뾽?먮퀎 IN_PROGRESS + current_location_id 理쒖쥌 蹂댁젙
+-- (?묒뾽???녾굅??吏踰덉씠 ?녿뒗 ?묒뾽?먭? ?⑥븘?덉? ?딅룄濡?留덉?留됱쑝濡?蹂댁젙)
 UPDATE batch_tasks bt
 JOIN users u ON u.user_id = bt.worker_id
 SET
@@ -1309,8 +1155,8 @@ WHERE bt.status = 'IN_PROGRESS'
   AND bt.worker_id IS NOT NULL
   AND (bt.current_location_id IS NULL OR bt.zone_id <> u.assigned_zone_id);
 
--- 9-6) 배치 미할당 작업자에게 작업 할당 + zone 지번 강제 지정
--- (모든 WORKER가 IN_PROGRESS 작업 + current_location_id 보유하도록)
+-- 9-6) 諛곗튂 誘명븷???묒뾽?먯뿉寃??묒뾽 ?좊떦 + zone 吏踰?媛뺤젣 吏??
+-- (紐⑤뱺 WORKER媛 IN_PROGRESS ?묒뾽 + current_location_id 蹂댁쑀?섎룄濡?
 INSERT INTO batch_tasks (
   batch_id,
   zone_id,
@@ -1350,9 +1196,9 @@ WHERE bt.status = 'IN_PROGRESS'
   AND bt.worker_id IS NOT NULL;
 
 -- -- =====================================================
--- -- 10. 데이터 검증 쿼리
+-- -- 10. ?곗씠??寃利?荑쇰━
 -- -- =====================================================
--- SELECT '=== 구역별 작업 현황 ===' AS info;
+-- SELECT '=== 援ъ뿭蹂??묒뾽 ?꾪솴 ===' AS info;
 -- SELECT
 --   z.zone_id,
 --   COUNT(DISTINCT CASE WHEN wl.ended_at IS NULL THEN bt.worker_id END) AS active_workers,
@@ -1367,7 +1213,7 @@ WHERE bt.status = 'IN_PROGRESS'
 -- GROUP BY z.zone_id
 -- ORDER BY z.zone_id;
 
--- -- SELECT '=== 이슈 현황 ===' AS info;
+-- -- SELECT '=== ?댁뒋 ?꾪솴 ===' AS info;
 -- -- SELECT
 -- --   zone_id,
 -- --   issue_type,
@@ -1379,7 +1225,7 @@ WHERE bt.status = 'IN_PROGRESS'
 -- -- GROUP BY zone_id, issue_type, urgency
 -- -- ORDER BY zone_id, urgency;
 
--- SELECT '=== 작업자별 작업량 (IN_PROGRESS) ===' AS info;
+-- SELECT '=== ?묒뾽?먮퀎 ?묒뾽??(IN_PROGRESS) ===' AS info;
 -- SELECT
 --   bt.worker_id,
 --   u.name,
@@ -1394,10 +1240,10 @@ WHERE bt.status = 'IN_PROGRESS'
 -- HAVING in_progress > 0
 -- ORDER BY bt.zone_id, task_count DESC;
 
--- SELECT '=== 데이터 생성 완료 ===' AS result;
+-- SELECT '=== ?곗씠???앹꽦 ?꾨즺 ===' AS result;
 
 
-오후 5:35
+-- seed marker
 
 INSERT INTO users (role, password_hash, name, phone_number, email, birth_date, is_active, created_at, updated_at) 
-VALUES ('ADMIN', '$2a$10$Tja7viRaiXFwwdeRHEEEQOC5UsKzqeXfHMLci71dihBMuFqIwRHQK', '총괄관리자', '01012341234', 'admin@lookie.com', '1990-01-01', TRUE, NOW(), NOW());
+VALUES ('ADMIN', '', 'SuperAdmin', '01012341234', 'admin@lookie.com', '1990-01-01', TRUE, NOW(), NOW());

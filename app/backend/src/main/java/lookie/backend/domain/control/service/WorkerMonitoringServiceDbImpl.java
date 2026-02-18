@@ -8,6 +8,8 @@ import lookie.backend.domain.control.dto.ZoneOverviewDto;
 import lookie.backend.domain.control.dto.WorkerHoverDto;
 import lookie.backend.domain.control.dto.ZoneWorkerDto;
 import lookie.backend.domain.control.dto.AdminResponseDto;
+import lookie.backend.domain.control.dto.ZoneSimulationRequest;
+import lookie.backend.domain.control.dto.ZoneMoveRequest;
 import lookie.backend.domain.control.repository.vo.AdminQueryVo;
 import lookie.backend.domain.control.mapper.ControlMapper;
 import lookie.backend.domain.batch.mapper.BatchMapper;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import lookie.backend.global.util.WorkerNameFormatter;
 import lookie.backend.domain.user.vo.UserVO;
+import java.util.Collections;
 
 /**
  * WorkerMonitoringService의 DB 기반 구현체
@@ -54,6 +57,24 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
     }
 
     /**
+     * 작업자 이동 시뮬레이션 기반 구역 요약 조회 (캐시 미사용)
+     */
+    @Override
+    public List<ZoneOverviewDto> simulateZoneOverviews(ZoneSimulationRequest request) {
+        List<ZoneMoveRequest> moves = request != null ? request.getMoves() : Collections.emptyList();
+
+        List<ZoneOverviewDto> overviews = (moves == null || moves.isEmpty())
+                ? controlMapper.selectZoneOverviews()
+                : controlMapper.selectZoneOverviewsSimulated(moves);
+
+        for (ZoneOverviewDto dto : overviews) {
+            dto.setZoneName(ZoneType.getNameById(dto.getZoneId()));
+        }
+
+        return overviews;
+    }
+
+    /**
      * 구역별 작업자 조회 구현
      * 1. 해당 구역의 작업자 리스트를 조회합니다.
      * 2. 개인정보 보호를 위해 이름을 '실명 + 전화번호 뒷 4자리' 형식(예: 홍길동 1234)으로 포맷팅합니다.
@@ -76,11 +97,11 @@ public class WorkerMonitoringServiceDbImpl implements WorkerMonitoringService {
      * 2. 구역별 현황은 기존 getZoneOverviews() 로직과 동일하게 Enum 매핑을 수행하여 리스트에 포함합니다.
      */
     @Override
-    public DashboardSummaryDto getDashboardSummary() {
+    public DashboardSummaryDto getDashboardSummary(Long adminId) {
         // 1. Fetch System Metrics (시스템 전체 지표 조회)
         Integer totalActiveWorkers = controlMapper.countTotalActiveWorkers();
-        Integer pendingIssues = controlMapper.countPendingIssues();
-        Integer completedIssues = controlMapper.countTodayCompletedIssues();
+        Integer pendingIssues = controlMapper.countPendingIssuesByAdmin(adminId);
+        Integer completedIssues = controlMapper.countTodayCompletedIssuesByAdmin(adminId);
 
         // 2. Fetch Zone Summaries (Reuse existing logic)
         // 구역별 요약 정보 재사용 (Enum 매핑 로직 포함)
