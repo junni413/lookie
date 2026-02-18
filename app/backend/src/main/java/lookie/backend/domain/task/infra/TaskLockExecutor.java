@@ -2,14 +2,15 @@ package lookie.backend.domain.task.infra;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import lookie.backend.domain.task.exception.TaskLockFailedException;
 import lookie.backend.domain.task.dto.TaskResponse;
-import lookie.backend.domain.task.service.TaskWorkflowFacade;
+import lookie.backend.domain.task.service.TaskWorkflowService;
 import lookie.backend.domain.task.vo.TaskVO;
-import lookie.backend.domain.zone.exception.WorkerZoneNotAssignedException;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.zone.mapper.ZoneAssignmentMapper;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import lookie.backend.global.security.SecurityUtil;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
@@ -31,7 +32,7 @@ public class TaskLockExecutor {
 
     private final RedissonClient redissonClient;
     private final ZoneAssignmentMapper zoneAssignmentMapper;
-    private final TaskWorkflowFacade taskWorkflowFacade;
+    private final TaskWorkflowService taskWorkflowService;
 
     // TTL 설정 상수
     private static final long LOCK_WAIT_TIME_MS = 200; // 락 대기 시간 (200ms)
@@ -48,17 +49,17 @@ public class TaskLockExecutor {
         // 1. 작업자의 현재 zone 조회
         Long zoneId = zoneAssignmentMapper.findZoneIdByWorkerId(workerId);
         if (zoneId == null) {
-            throw new WorkerZoneNotAssignedException(workerId);
+            throw new ApiException(ErrorCode.WORKER_ZONE_NOT_ASSIGNED, "Worker zone not assigned: " + workerId);
         }
 
         // 2. zone 기준 락 키 생성
         String lockKey = "lock:task:assign:zone:" + zoneId;
 
         // 3. 재시도 로직 포함 락 획득
-        TaskLockFailedException lastException = null;
+        ApiException lastException = null;
         for (int attempt = 1; attempt <= MAX_RETRY_COUNT; attempt++) {
             RLock lock = redissonClient.getLock(lockKey);
-            
+
             boolean locked;
             try {
                 // waitTime: 200ms (짧은 대기로 순차 처리 허용)
@@ -66,12 +67,12 @@ public class TaskLockExecutor {
                 locked = lock.tryLock(LOCK_WAIT_TIME_MS, LOCK_LEASE_TIME_SECONDS, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                lastException = new TaskLockFailedException(lockKey);
+                lastException = new ApiException(ErrorCode.SYSTEM_TEMPORARY_LOCK_FAILED, "Lock failed: " + lockKey);
                 break; // 재시도 중단
             } catch (RuntimeException e) {
-                lastException = new TaskLockFailedException(lockKey);
+                lastException = new ApiException(ErrorCode.SYSTEM_TEMPORARY_LOCK_FAILED, "Lock failed: " + lockKey);
                 if (attempt < MAX_RETRY_COUNT) {
-                    log.warn("[TaskLock] Lock acquisition failed (attempt {}/{}), retrying...", 
+                    log.warn("[TaskLock] Lock acquisition failed (attempt {}/{}), retrying...",
                             attempt, MAX_RETRY_COUNT);
                     continue;
                 }
@@ -82,19 +83,19 @@ public class TaskLockExecutor {
             if (locked) {
                 try {
                     long startTime = System.currentTimeMillis();
-                    // 4. 실제 비즈니스 로직은 Facade에 위임 (zoneId 전달)
-                    TaskResponse<TaskVO> result = taskWorkflowFacade.startTask(workerId, zoneId);
+                    // 4. 실제 비즈니스 로직은 TaskWorkflowService에 위임 (zoneId 전달)
+                    TaskResponse<TaskVO> result = taskWorkflowService.assignTask(workerId, zoneId);
                     long duration = System.currentTimeMillis() - startTime;
-                    
+
                     // 성능 모니터링 로그 (2초 이상이면 경고)
                     if (duration > 1000) {
-                        log.warn("[TaskLock] Task assignment took {}ms (zoneId={}, workerId={})", 
+                        log.warn("[TaskLock] Task assignment took {}ms (zoneId={}, workerId={})",
                                 duration, zoneId, workerId);
                     } else {
-                        log.debug("[TaskLock] Task assignment completed in {}ms (zoneId={}, workerId={})", 
+                        log.debug("[TaskLock] Task assignment completed in {}ms (zoneId={}, workerId={})",
                                 duration, zoneId, workerId);
                     }
-                    
+
                     return result;
                 } finally {
                     // 5. 락 해제
@@ -105,7 +106,7 @@ public class TaskLockExecutor {
             } else {
                 // 락 획득 실패 (다른 작업자가 사용 중)
                 if (attempt < MAX_RETRY_COUNT) {
-                    log.debug("[TaskLock] Lock busy, retrying... (attempt {}/{}, zoneId={})", 
+                    log.debug("[TaskLock] Lock busy, retrying... (attempt {}/{}, zoneId={})",
                             attempt, MAX_RETRY_COUNT, zoneId);
                     // 짧은 지연 후 재시도 (exponential backoff)
                     try {
@@ -115,18 +116,18 @@ public class TaskLockExecutor {
                         break;
                     }
                 } else {
-                    lastException = new TaskLockFailedException(lockKey);
+                    lastException = new ApiException(ErrorCode.SYSTEM_TEMPORARY_LOCK_FAILED, "Lock failed: " + lockKey);
                 }
             }
         }
 
         // 모든 재시도 실패
-        log.error("[TaskLock] Failed to acquire lock after {} attempts (zoneId={}, workerId={})", 
+        log.error("[TaskLock] Failed to acquire lock after {} attempts (zoneId={}, workerId={})",
                 MAX_RETRY_COUNT, zoneId, workerId);
         if (lastException != null) {
             throw lastException;
         }
-        throw new TaskLockFailedException(lockKey);
+        throw new ApiException(ErrorCode.SYSTEM_TEMPORARY_LOCK_FAILED, "Lock failed: " + lockKey);
     }
 
     /**
@@ -146,20 +147,23 @@ public class TaskLockExecutor {
             locked = lock.tryLock(0, 1, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new TaskLockFailedException(lockKey);
+            throw new ApiException(ErrorCode.SYSTEM_TEMPORARY_LOCK_FAILED, "Lock failed: " + lockKey);
         } catch (RuntimeException e) {
-            throw new TaskLockFailedException(lockKey);
+            throw new ApiException(ErrorCode.SYSTEM_TEMPORARY_LOCK_FAILED, "Lock failed: " + lockKey);
         }
 
         // 락 획득 실패
         if (!locked) {
             log.warn("[TaskLock] Task completion lock failed (taskId={}) - duplicate request?", taskId);
-            throw new TaskLockFailedException(lockKey);
+            throw new ApiException(ErrorCode.SYSTEM_TEMPORARY_LOCK_FAILED, "Lock failed: " + lockKey);
         }
 
         try {
-            // 실제 비즈니스 로직은 Facade에 위임
-            taskWorkflowFacade.completeTask(taskId);
+            // 1. 현재 사용자 ID 획득
+            Long workerId = SecurityUtil.getCurrentUserId();
+
+            // 2. 비즈니스 로직 및 검증은 TaskWorkflowService에 전적으로 위임
+            taskWorkflowService.completeTask(workerId, taskId);
         } finally {
             // 락 해제
             if (lock.isHeldByCurrentThread()) {

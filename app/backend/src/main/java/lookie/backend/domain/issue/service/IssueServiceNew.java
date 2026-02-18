@@ -21,8 +21,7 @@ import lookie.backend.domain.issue.vo.IssueVO;
 import lookie.backend.domain.task.event.TaskItemCompletedEvent;
 import lookie.backend.domain.task.event.TaskItemRevertedEvent;
 import lookie.backend.domain.task.vo.TaskActionStatus;
-import lookie.backend.domain.task.exception.InvalidItemStatusException;
-import lookie.backend.domain.task.exception.InvalidTaskStatusException;
+
 import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.mapper.TaskMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
@@ -78,7 +77,7 @@ public class IssueServiceNew {
 
         TaskItemVO item = taskItemMapper.findById(request.getTaskItemId());
         if (item == null || (!("PENDING".equals(item.getStatus()) || "IN_PROGRESS".equals(item.getStatus())))) {
-            throw new InvalidItemStatusException();
+            throw new ApiException(ErrorCode.INVALID_ITEM_STATUS);
         }
 
         // 1. TaskItem 상태 변경 및 초기화
@@ -165,19 +164,18 @@ public class IssueServiceNew {
 
         IssueVO issue = issueMapper.findByIdForUpdate(issueId);
         if (issue == null || !"OPEN".equals(issue.getStatus())) {
-            throw new lookie.backend.global.error.ApiException(
-                    lookie.backend.global.error.ErrorCode.ISSUE_ALREADY_RESOLVED);
+            throw new ApiException(ErrorCode.ISSUE_ALREADY_RESOLVED);
         }
 
         TaskItemVO item = taskItemMapper.findById(issue.getBatchTaskItemId());
         if (item == null) {
-            throw new InvalidItemStatusException();
+            throw new ApiException(ErrorCode.INVALID_ITEM_STATUS);
         }
 
         // 아이템이 이미 DONE이면 검증 없이 다음으로 보냄 (상태 복구용)
         if (!"DONE".equals(item.getStatus())) {
             if (!"ISSUE_PENDING".equals(item.getStatus())) {
-                throw new InvalidItemStatusException();
+                throw new ApiException(ErrorCode.INVALID_ITEM_STATUS);
             }
 
             // 🔥 관리자 확인이 필수적인 상황인지 판단 (NEED_CHECK 또는 OUT_OF_STOCK)
@@ -524,12 +522,12 @@ public class IssueServiceNew {
 
         TaskItemVO item = taskItemMapper.findById(issue.getBatchTaskItemId());
         if (item == null) {
-            throw new InvalidItemStatusException();
+            throw new ApiException(ErrorCode.INVALID_ITEM_STATUS);
         }
 
         TaskVO task = taskMapper.findById(item.getBatchTaskId());
         if (task == null) {
-            throw new InvalidTaskStatusException();
+            throw new ApiException(ErrorCode.INVALID_TASK_STATUS);
         }
 
         issue.setAdminDecision(decision);
@@ -731,7 +729,7 @@ public class IssueServiceNew {
 
     private void assertTaskOwnership(TaskVO task, Long workerId) {
         if (task == null) {
-            throw new InvalidTaskStatusException();
+            throw new ApiException(ErrorCode.INVALID_TASK_STATUS);
         }
         if (!workerId.equals(task.getWorkerId())) {
             throw new ApiException(ErrorCode.ISSUE_TASK_NOT_ASSIGNED);
@@ -740,7 +738,7 @@ public class IssueServiceNew {
 
     private void assertTaskStatus(TaskVO task, String expectedStatus) {
         if (!expectedStatus.equals(task.getStatus())) {
-            throw new InvalidTaskStatusException();
+            throw new ApiException(ErrorCode.INVALID_TASK_STATUS);
         }
     }
 

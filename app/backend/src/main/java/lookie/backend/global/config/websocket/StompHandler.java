@@ -2,7 +2,8 @@ package lookie.backend.global.config.websocket;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
-import lookie.backend.global.exception.WebSocketAuthenticationException;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.global.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,7 +51,7 @@ public class StompHandler implements ChannelInterceptor {
 
             if (user == null) {
                 log.warn("WebSocket 구독 실패: 인증되지 않은 사용자");
-                throw new WebSocketAuthenticationException("Authentication failed: User not authenticated");
+                throw new ApiException(ErrorCode.AUTH_REQUIRED, "Authentication failed: User not authenticated");
             }
 
             if (destination == null)
@@ -82,7 +83,7 @@ public class StompHandler implements ChannelInterceptor {
             }
         } else if (StompCommand.SEND.equals(command)) {
             if (accessor.getUser() == null) {
-                throw new WebSocketAuthenticationException("Authentication failed: User not authenticated");
+                throw new ApiException(ErrorCode.AUTH_REQUIRED, "Authentication failed: User not authenticated");
             }
         }
 
@@ -92,7 +93,7 @@ public class StompHandler implements ChannelInterceptor {
     private void verifyToken(StompHeaderAccessor accessor) {
         String authorization = accessor.getFirstNativeHeader("Authorization");
         if (authorization == null || !authorization.startsWith("Bearer ")) {
-            throw new WebSocketAuthenticationException("Authentication failed: Token missing");
+            throw new ApiException(ErrorCode.AUTH_REQUIRED, "Authentication failed: Token missing");
         }
         String token = authorization.substring(7);
         try {
@@ -106,7 +107,7 @@ public class StompHandler implements ChannelInterceptor {
                 accessor.setUser(auth);
             }
         } catch (JwtException e) {
-            throw new WebSocketAuthenticationException("Authentication failed: Invalid token");
+            throw new ApiException(ErrorCode.AUTH_INVALID_TOKEN, "Authentication failed: Invalid token");
         }
     }
 
@@ -116,11 +117,11 @@ public class StompHandler implements ChannelInterceptor {
             CallHistoryVO call = callHistoryMapper.findById(callId).orElse(null);
 
             if (call == null)
-                throw new WebSocketAuthenticationException("Subscription failed: Call not found");
+                throw new ApiException(ErrorCode.WEBRTC_SESSION_NOT_FOUND, "Subscription failed: Call not found");
 
             long uid = Long.parseLong(userId);
             if (uid != call.getCallerId() && uid != call.getCalleeId()) {
-                throw new WebSocketAuthenticationException("Subscription failed: Access denied");
+                throw new ApiException(ErrorCode.AUTH_REQUIRED, "Subscription failed: Access denied");
             }
         } catch (NumberFormatException e) {
             log.warn("Invalid Call ID format");
@@ -130,7 +131,7 @@ public class StompHandler implements ChannelInterceptor {
     private void validateOwner(String targetUserId, String currentUserId, String type) {
         if (!targetUserId.equals(currentUserId)) {
             log.warn("⛔ WebSocket 보안 경고: 타인의 {} 구독 시도 차단 (User={}, Target={})", type, currentUserId, targetUserId);
-            throw new WebSocketAuthenticationException("Access Denied: Cannot subscribe to other user's " + type);
+            throw new ApiException(ErrorCode.AUTH_REQUIRED, "Access Denied: Cannot subscribe to other user's " + type);
         }
     }
 
@@ -140,12 +141,12 @@ public class StompHandler implements ChannelInterceptor {
             IssueVO issue = issueMapper.findById(issueId);
 
             if (issue == null)
-                throw new WebSocketAuthenticationException("Subscription failed: Issue not found");
+                throw new ApiException(ErrorCode.ISSUE_NOT_FOUND, "Subscription failed: Issue not found");
 
             long uid = Long.parseLong(userId);
             if (uid != issue.getWorkerId()) {
                 log.warn("⛔ WebSocket 보안 경고: 타인의 이슈 구독 시도 차단 (User={}, IssueId={})", userId, issueId);
-                throw new WebSocketAuthenticationException("Subscription failed: Access denied");
+                throw new ApiException(ErrorCode.AUTH_REQUIRED, "Subscription failed: Access denied");
             }
         } catch (NumberFormatException e) {
             log.warn("Invalid Issue ID format");

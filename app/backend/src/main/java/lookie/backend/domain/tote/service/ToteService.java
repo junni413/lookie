@@ -1,7 +1,7 @@
 package lookie.backend.domain.tote.service;
 
 import lombok.RequiredArgsConstructor;
-import lookie.backend.domain.task.exception.InvalidToteBarcodeException;
+
 import lookie.backend.global.error.ApiException;
 import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.tote.mapper.ToteMapper;
@@ -21,7 +21,7 @@ public class ToteService {
     public ToteVO getByBarcode(String barcode) {
         ToteVO tote = toteMapper.findByBarcode(barcode);
         if (tote == null) {
-            throw new InvalidToteBarcodeException();
+            throw new ApiException(ErrorCode.TASK_TOTE_MISMATCH);
         }
         return tote;
     }

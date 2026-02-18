@@ -2,10 +2,8 @@ package lookie.backend.domain.task.service;
 
 import lombok.RequiredArgsConstructor;
 import lookie.backend.domain.inventory.service.InventoryService;
-import lookie.backend.domain.task.exception.ItemQuantityExceededException;
-import lookie.backend.domain.task.exception.ItemQuantityNotSufficientException;
-import lookie.backend.domain.product.exception.ProductNotFoundException;
-import lookie.backend.domain.task.exception.TaskItemNotAssignedException;
+import lookie.backend.global.error.ApiException;
+import lookie.backend.global.error.ErrorCode;
 import lookie.backend.domain.task.mapper.TaskItemMapper;
 import lookie.backend.domain.task.vo.TaskItemVO;
 import lookie.backend.domain.product.mapper.ProductMapper;
@@ -34,13 +32,13 @@ public class TaskItemService {
         ProductVO product = productMapper.findByBarcode(barcode);
         if (product == null) {
             // 시스템에 없는 상품이거나 바코드가 틀린 경우
-            throw new ProductNotFoundException();
+            throw new ApiException(ErrorCode.PRODUCT_NOT_FOUND);
         }
 
         TaskItemVO item = taskItemMapper.findPendingOne(taskId, locationId, product.getProductId());
         if (item == null) {
             // 해당 지번에 이 상품이 할당되어 있지 않거나 이미 완료된 경우
-            throw new TaskItemNotAssignedException();
+            throw new ApiException(ErrorCode.TASK_ITEM_NOT_ASSIGNED);
         }
         return item;
     }
@@ -53,7 +51,7 @@ public class TaskItemService {
         int affected = taskItemMapper.updatePickedQuantityAtomic(itemId, increment);
         if (affected == 0) {
             // WHERE 절 조건(status='PENDING' 및 picked_qty + increment <= required_qty)에 걸림
-            throw new ItemQuantityExceededException();
+            throw new ApiException(ErrorCode.TASK_ITEM_QUANTITY_EXCEEDED);
         }
         return taskItemMapper.findById(itemId);
     }
@@ -64,20 +62,19 @@ public class TaskItemService {
      * - DONE 확정 시 재고 차감 이벤트 발행 (PICK_NORMAL)
      */
     @Transactional
-    public TaskItemVO completeItemManual(Long itemId) {
+    public TaskItemVO completeItemManual(Long itemId, Long workerId) {
         TaskItemVO item = taskItemMapper.findById(itemId);
 
         // 1. 이미 완료되거나 이슈 상태인 경우 체크 (건너뛰기/Pass)
-        // 새 FSM: IN_PROGRESS, ISSUE_PENDING, DONE 상태는 건너뛰기
+        // 새 FSM: DONE, ISSUE_PENDING 상태는 이미 처리된 것이므로 건너뛰기
         if ("DONE".equals(item.getStatus()) ||
-                "IN_PROGRESS".equals(item.getStatus()) ||
                 "ISSUE_PENDING".equals(item.getStatus())) {
             return item;
         }
 
         // 2. 수량 충족 여부 체크
         if (!item.getPickedQty().equals(item.getRequiredQty())) {
-            throw new ItemQuantityNotSufficientException();
+            throw new ApiException(ErrorCode.TASK_ITEM_QUANTITY_NOT_SUFFICIENT);
         }
 
         // 3. 상태 업데이트 (IN_PROGRESS -> DONE)
@@ -95,11 +92,10 @@ public class TaskItemService {
                 -item.getRequiredQty(), // 음수 = 재고 감소
                 "TASK_ITEM",
                 itemId,
-                null // workerId는 TaskWorkflowFacade에서 얻을 수 있지만, 여기서는 null
-        );
+                workerId);
 
         // 5. [Event] 아이템 완료 이벤트 발행 (Redis 집계용)
-        // 5. [Event] Redis update logic moved to Facade
+        // 5. [Event] Redis update logic moved to TaskWorkflowService
 
         return taskItemMapper.findById(itemId);
     }
@@ -144,7 +140,7 @@ public class TaskItemService {
      * - 새 FSM: ISSUE 상태 제거, DONE으로 통합
      */
     @Transactional
-    public void markAsDone(Long itemId) {
+    public void markAsDone(Long itemId, Long workerId) {
         taskItemMapper.updateStatus(itemId, "DONE");
 
         // [Inventory] 파손 확정 시 재고 차감 (결손 처리)
@@ -158,10 +154,8 @@ public class TaskItemService {
                     -item.getRequiredQty(),
                     "TASK_ITEM",
                     itemId,
-                    null // 시스템/관리자 확정이므로 workerId는 생략
-            );
+                    workerId);
         }
-
         // 이미 PENDING -> ISSUE_PENDING 갈 때 이벤트를 발행했으므로
         // 여기서는 중복 발행할 필요가 있는지 체크 필요.
         // 현재 로직상 ISSUE_PENDING도 '완료' 취급이므로 추가 발행 불필요

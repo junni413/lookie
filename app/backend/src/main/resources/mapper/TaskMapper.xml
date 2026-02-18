@@ -149,23 +149,18 @@
         FOR UPDATE
     </select>
 
-    <!-- [수정] Task 전체 업데이트 (새 FSM용) -->
+    <!-- [수정] Task 전체 업데이트 (새 FSM용 - 방어적 개선) -->
     <update id="updateTask" parameterType="TaskVO">
         UPDATE batch_tasks
-        SET
-            action_status = #{actionStatus},
-            current_location_id = #{currentLocationId},
-            tote_id = #{toteId},
-            status = #{status}
-            <if test="completedAt != null">
-                , completed_at = #{completedAt}
-            </if>
-            <if test="toteScannedAt != null">
-                , tote_scanned_at = #{toteScannedAt}
-            </if>
-            <if test="locationScannedAt != null">
-                , location_scanned_at = #{locationScannedAt}
-            </if>
+        <set>
+            <if test="actionStatus != null">action_status = #{actionStatus},</if>
+            <if test="currentLocationId != null">current_location_id = #{currentLocationId},</if>
+            <if test="toteId != null">tote_id = #{toteId},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="completedAt != null">completed_at = #{completedAt},</if>
+            <if test="toteScannedAt != null">tote_scanned_at = #{toteScannedAt},</if>
+            <if test="locationScannedAt != null">location_scanned_at = #{locationScannedAt}</if>
+        </set>
         WHERE
             batch_task_id = #{batchTaskId}
     </update>
